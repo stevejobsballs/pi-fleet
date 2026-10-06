@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"pi-fleet/internal/app"
+	"pi-fleet/internal/blobs"
 	"pi-fleet/internal/domain"
 	"pi-fleet/internal/event"
 	"pi-fleet/internal/httpsig"
@@ -48,6 +49,8 @@ type Server struct {
 	// under /v1/fleet/ for confirmed Pis (DESIGN.md §5.9). The requesting
 	// node is in the request context (NodeFromContext).
 	Fleet http.Handler
+	// Blobs holds attachment files.
+	Blobs *blobs.Store
 
 	mu      sync.Mutex
 	secret  []byte
@@ -85,6 +88,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET "+PathSnapshot, s.signed(s.handleSnapshot, activeOnly))
 	if s.Fleet != nil {
 		mux.HandleFunc(PathFleet, s.signed(s.handleFleet, activeOnly))
+	}
+	if s.Blobs != nil {
+		mux.HandleFunc("HEAD "+PathBlobs+"{sha}", s.signed(s.handleBlobHead, canPush))
+		mux.HandleFunc("PUT "+PathBlobs+"{sha}", s.signedLimit(s.handleBlobPut, canPush, blobs.MaxSize+1))
+		mux.HandleFunc("GET "+PathBlobs+"{sha}", s.signed(s.handleBlobGet, activeOnly))
 	}
 	return mux
 }
@@ -124,8 +132,8 @@ func readJSON(r *http.Request, body []byte, v any) error {
 	return nil
 }
 
-func readBody(r *http.Request) ([]byte, error) {
-	b, err := io.ReadAll(http.MaxBytesReader(nil, r.Body, maxBody))
+func readBody(r *http.Request, limit int64) ([]byte, error) {
+	b, err := io.ReadAll(http.MaxBytesReader(nil, r.Body, limit))
 	if err != nil {
 		return nil, fail(http.StatusRequestEntityTooLarge, "request too large")
 	}
@@ -141,7 +149,7 @@ func (s *Server) limited(h func(http.ResponseWriter, *http.Request, []byte) erro
 			http.Error(w, "too many requests", http.StatusTooManyRequests)
 			return
 		}
-		body, err := readBody(r)
+		body, err := readBody(r, maxBody)
 		if err == nil {
 			err = h(w, r, body)
 		}
@@ -182,9 +190,13 @@ type signedHandler func(w http.ResponseWriter, r *http.Request, n domain.Node, b
 // signed authenticates a request by its RFC 9421 signature with a node's
 // transport key, refusing replayed nonces.
 func (s *Server) signed(h signedHandler, rule statusRule) http.HandlerFunc {
+	return s.signedLimit(h, rule, maxBody)
+}
+
+func (s *Server) signedLimit(h signedHandler, rule statusRule, limit int64) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		err := func() error {
-			body, err := readBody(r)
+			body, err := readBody(r, limit)
 			if err != nil {
 				return err
 			}
@@ -492,6 +504,11 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request, n domain.N
 		}
 		resp.Results = append(resp.Results, res)
 		resp.AcceptedThrough = e.Seq
+		if e.Type == domain.TypeAttachmentDetached {
+			if _, err := s.App.PurgeBlobs(ctx); err != nil {
+				return err
+			}
+		}
 		if e.Type == event.TypePayloadRedacted {
 			if err := s.App.Store.Rebuild(ctx); err != nil {
 				return err
@@ -500,6 +517,55 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request, n domain.N
 	}
 	writeJSON(w, resp)
 	return nil
+}
+
+// attachmentKnown reports whether a live attachment refers to sha: central
+// accepts and serves only files that a recorded attachment names.
+func (s *Server) attachmentKnown(ctx context.Context, sha string) (bool, error) {
+	var n int
+	err := s.App.Store.DB().QueryRowContext(ctx, `SELECT count(*) FROM attachments WHERE sha256 = ? AND status != 'purged'`, sha).Scan(&n)
+	return n > 0, err
+}
+
+func (s *Server) handleBlobHead(w http.ResponseWriter, r *http.Request, _ domain.Node, _ []byte) error {
+	if !s.Blobs.Has(r.PathValue("sha")) {
+		w.WriteHeader(http.StatusNotFound)
+	}
+	return nil
+}
+
+func (s *Server) handleBlobPut(w http.ResponseWriter, r *http.Request, n domain.Node, body []byte) error {
+	sha := r.PathValue("sha")
+	if ok, err := s.attachmentKnown(r.Context(), sha); err != nil || !ok {
+		if err != nil {
+			return err
+		}
+		return fail(http.StatusConflict, "no attachment refers to this file; push events first")
+	}
+	if err := s.Blobs.PutExpected(sha, body); err != nil {
+		return fail(http.StatusBadRequest, "%v", err)
+	}
+	return nil
+}
+
+func (s *Server) handleBlobGet(w http.ResponseWriter, r *http.Request, _ domain.Node, _ []byte) error {
+	sha := r.PathValue("sha")
+	if ok, err := s.attachmentKnown(r.Context(), sha); err != nil || !ok {
+		if err != nil {
+			return err
+		}
+		return fail(http.StatusNotFound, "no such file")
+	}
+	b, err := s.Blobs.Get(sha)
+	if errors.Is(err, blobs.ErrNotFound) {
+		return fail(http.StatusNotFound, "the master Pi doesn't have this file yet")
+	}
+	if err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/octet-stream")
+	_, err = w.Write(b)
+	return err
 }
 
 type nodeKey struct{}

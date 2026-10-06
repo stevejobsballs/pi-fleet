@@ -16,6 +16,7 @@ import (
 	"github.com/google/uuid"
 
 	"pi-fleet/internal/app"
+	"pi-fleet/internal/blobs"
 	"pi-fleet/internal/domain"
 	"pi-fleet/internal/event"
 	"pi-fleet/internal/fleetsync"
@@ -62,9 +63,11 @@ func (e *env) openCentral(dbPath string) {
 	e.t.Cleanup(func() { st.Close() })
 	last, err := st.MaxHLC(e.ctx)
 	e.must(err)
-	e.app = &app.App{Store: st, Params: cheap, Now: e.clock, Author: &store.Author{NodeID: e.nodeID, ChainID: e.chainID,
+	bs := &blobs.Store{Dir: filepath.Join(e.dir, "blobs")}
+	e.app = &app.App{Store: st, Params: cheap, Now: e.clock, Blobs: bs, Author: &store.Author{NodeID: e.nodeID, ChainID: e.chainID,
 		Signer: e.keys.EventSigner(), Clock: hlc.New(e.clock, last), Now: e.clock}}
-	e.runner = &Runner{App: e.app, Dir: filepath.Join(e.dir, "backup-disk"), Recipients: []age.Recipient{e.identity.Recipient()}, Version: "test", Now: e.clock}
+	e.runner = &Runner{App: e.app, Dir: filepath.Join(e.dir, "backup-disk"), Recipients: []age.Recipient{e.identity.Recipient()},
+		Version: "test", Now: e.clock, Blobs: bs}
 }
 
 func newEnv(t *testing.T) *env {
@@ -407,4 +410,47 @@ func (p *pi) sync() fleetsync.Report {
 	r, err := p.client.Sync(p.e.ctx)
 	p.e.must(err)
 	return r
+}
+
+func TestAttachmentFilesBackedUpAndRestored(t *testing.T) {
+	e := newEnv(t)
+	a := e.asset("A1")
+	cert := []byte("%PDF-1.7 certificate 4411")
+	id, err := e.app.AddAttachment(e.ctx, e.super, domain.EntityAsset, a, "cert.pdf", "", cert)
+	e.must(err)
+	att, _ := domain.GetAttachment(e.ctx, e.app.Store.DB(), id)
+
+	_, _, err = e.runner.Nightly(e.ctx)
+	e.must(err)
+	backed := filepath.Join(e.runner.Dir, "blobs", att.SHA256+".age")
+	enc, err := os.ReadFile(backed)
+	if err != nil || bytes.Contains(enc, []byte("certificate")) {
+		t.Fatalf("file not backed up encrypted: %v", err)
+	}
+	disk := t.TempDir()
+	_, err = e.runner.RegisterOffsite(e.ctx, disk, "OFFSITE-A")
+	e.must(err)
+	_, _, err = e.runner.WriteOffsite(e.ctx, disk)
+	e.must(err)
+
+	restored := &blobs.Store{Dir: t.TempDir()}
+	n, err := RestoreBlobs(disk, []age.Identity{e.identity}, restored)
+	e.must(err)
+	if got, _ := restored.Get(att.SHA256); n != 1 || string(got) != string(cert) {
+		t.Fatalf("restored %d files, content %q", n, got)
+	}
+
+	// Purged for patient information: gone from the backup disk, and from
+	// the off-site disk at its next rotation.
+	e.must(e.app.DetachAttachment(e.ctx, e.super, id, "patient label visible", true))
+	_, _, err = e.runner.Nightly(e.ctx)
+	e.must(err)
+	if _, err := os.Stat(backed); !os.IsNotExist(err) {
+		t.Fatal("purged file still on the backup disk")
+	}
+	_, _, err = e.runner.WriteOffsite(e.ctx, disk)
+	e.must(err)
+	if _, err := os.Stat(filepath.Join(disk, "blobs", att.SHA256+".age")); !os.IsNotExist(err) {
+		t.Fatal("purged file still on the off-site disk")
+	}
 }

@@ -19,6 +19,7 @@ import (
 	"golang.org/x/term"
 
 	"pi-fleet/internal/app"
+	"pi-fleet/internal/blobs"
 	"pi-fleet/internal/domain"
 	"pi-fleet/internal/event"
 	"pi-fleet/internal/fleetsync"
@@ -191,6 +192,9 @@ type node struct {
 
 func (n *node) Close() error { return n.store.Close() }
 
+// blobs is the attachment file store in the data directory.
+func (n *node) blobs() *blobs.Store { return &blobs.Store{Dir: filepath.Join(n.dir, "blobs")} }
+
 // open opens an initialised data directory with the projector configured
 // for its role.
 func open(ctx context.Context, dir string) (*node, error) {
@@ -240,7 +244,7 @@ func (n *node) app(ctx context.Context) (*app.App, error) {
 	} else {
 		author.ClockState = func() event.ClockState { return event.ClockVerified } // central runs NTP and an RTC
 	}
-	return &app.App{Store: n.store, Author: author, Params: passwordParams}, nil
+	return &app.App{Store: n.store, Author: author, Params: passwordParams, Blobs: n.blobs(), QueueUploads: n.role == "node"}, nil
 }
 
 func cmdInit(ctx context.Context, args []string, c *cli) error {

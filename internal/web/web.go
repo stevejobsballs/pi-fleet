@@ -143,6 +143,10 @@ func (s *Server) Handler() (http.Handler, error) {
 	mux.Handle("POST /work-orders/{id}/calibration", user(s.calibrationRecord))
 	mux.Handle("POST /calibrations/{id}/void", user(s.calibrationVoid))
 	mux.Handle("POST /signatures/{id}/withdraw", user(s.signatureWithdraw))
+	mux.Handle("POST /work-orders/{id}/attachments", user(s.attachmentUpload(domain.EntityWorkOrder)))
+	mux.Handle("POST /assets/{id}/attachments", user(s.attachmentUpload(domain.EntityAsset)))
+	mux.Handle("GET /attachments/{id}", user(s.attachmentDownload))
+	mux.Handle("POST /attachments/{id}/detach", user(s.attachmentDetach))
 	mux.Handle("GET /inventory", user(s.inventory))
 	mux.Handle("POST /inventory/txn", user(s.stockTxn))
 	mux.Handle("POST /inventory/parts", mid(s.partCreate))
@@ -308,6 +312,11 @@ func (s *Server) auth(minRole string, allowPasswordOnly bool, h handler) http.Ha
 			return
 		}
 		if r.Method == http.MethodPost {
+			r.Body = http.MaxBytesReader(w, r.Body, maxUpload)
+			if err := r.ParseMultipartForm(1 << 20); err != nil && !errors.Is(err, http.ErrNotMultipart) {
+				http.Error(w, "form too large or malformed (attachments are limited to 10 MiB)", http.StatusRequestEntityTooLarge)
+				return
+			}
 			if err := r.ParseForm(); err != nil {
 				http.Error(w, "bad form", http.StatusBadRequest)
 				return

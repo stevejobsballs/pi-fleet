@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"pi-fleet/internal/blobs"
 	"pi-fleet/internal/event"
 	"pi-fleet/internal/httpsig"
 	"pi-fleet/internal/keys"
@@ -67,6 +68,8 @@ type Client struct {
 	Wipe func() error
 	// Now defaults to time.Now.
 	Now func() time.Time
+	// Blobs caches attachment files on this Pi.
+	Blobs *blobs.Store
 
 	// offset corrects request-signing time when this Pi's clock is wrong
 	// (no RTC battery, no NTP). Event timestamps keep the local clock and
@@ -96,17 +99,6 @@ func (c *Client) transportKeyID() string {
 // central refuses the signature time, it retries once using central's
 // clock from the Date header.
 func (c *Client) do(ctx context.Context, method, path string, in, out any, signed bool) (*http.Response, []byte, error) {
-	resp, body, err := c.send(ctx, method, path, in, out, signed)
-	if signed && resp != nil && resp.StatusCode == http.StatusUnauthorized && strings.Contains(string(body), "outside the allowed window") {
-		if d, perr := http.ParseTime(resp.Header.Get("Date")); perr == nil {
-			c.offset = d.Sub(c.now())
-			return c.send(ctx, method, path, in, out, signed)
-		}
-	}
-	return resp, body, err
-}
-
-func (c *Client) send(ctx context.Context, method, path string, in, out any, signed bool) (*http.Response, []byte, error) {
 	var body []byte
 	if in != nil {
 		var err error
@@ -114,6 +106,21 @@ func (c *Client) send(ctx context.Context, method, path string, in, out any, sig
 			return nil, nil, err
 		}
 	}
+	return c.doRaw(ctx, method, path, body, out, signed)
+}
+
+func (c *Client) doRaw(ctx context.Context, method, path string, body []byte, out any, signed bool) (*http.Response, []byte, error) {
+	resp, respBody, err := c.send(ctx, method, path, body, out, signed)
+	if signed && resp != nil && resp.StatusCode == http.StatusUnauthorized && strings.Contains(string(respBody), "outside the allowed window") {
+		if d, perr := http.ParseTime(resp.Header.Get("Date")); perr == nil {
+			c.offset = d.Sub(c.now())
+			return c.send(ctx, method, path, body, out, signed)
+		}
+	}
+	return resp, respBody, err
+}
+
+func (c *Client) send(ctx context.Context, method, path string, body []byte, out any, signed bool) (*http.Response, []byte, error) {
 	req, err := http.NewRequestWithContext(ctx, method, strings.TrimRight(c.BaseURL, "/")+path, bytes.NewReader(body))
 	if err != nil {
 		return nil, nil, err
@@ -136,6 +143,9 @@ func (c *Client) send(ctx context.Context, method, path string, in, out any, sig
 	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 64<<20))
 	if err != nil {
 		return resp, nil, err
+	}
+	if resp.StatusCode == http.StatusNotFound && method == http.MethodHead {
+		return resp, respBody, errNotThere
 	}
 	if resp.StatusCode != http.StatusOK {
 		return resp, respBody, fmt.Errorf("fleetsync: %s %s: %s: %s", method, path, resp.Status, strings.TrimSpace(string(respBody)))
@@ -160,6 +170,95 @@ func (c *Client) FleetGet(ctx context.Context, path string, out any) error {
 func (c *Client) FleetPost(ctx context.Context, path string, in, out any) error {
 	_, _, err := c.do(ctx, http.MethodPost, path, in, out, true)
 	return err
+}
+
+// --- attachment files ---
+
+var errNotThere = errors.New("fleetsync: not on central")
+
+// uploadBlobs sends files added on this Pi that central doesn't have.
+func (c *Client) uploadBlobs(ctx context.Context) (int, error) {
+	if c.Blobs == nil {
+		return 0, nil
+	}
+	rows, err := c.Store.DB().QueryContext(ctx, `SELECT sha256 FROM blob_uploads ORDER BY added_at`)
+	if err != nil {
+		return 0, err
+	}
+	var pending []string
+	for rows.Next() {
+		var s string
+		rows.Scan(&s)
+		pending = append(pending, s)
+	}
+	rows.Close()
+	n := 0
+	for _, sha := range pending {
+		data, err := c.Blobs.Get(sha)
+		if errors.Is(err, blobs.ErrNotFound) {
+			// Purged here before it was uploaded: nothing to send.
+		} else if err != nil {
+			return n, err
+		} else if _, _, err := c.doRaw(ctx, http.MethodHead, PathBlobs+sha, nil, nil, true); errors.Is(err, errNotThere) {
+			if _, _, err := c.doRaw(ctx, http.MethodPut, PathBlobs+sha, data, nil, true); err != nil {
+				return n, err
+			}
+			n++
+		} else if err != nil {
+			return n, err
+		}
+		if err := c.Store.Update(ctx, func(tx *store.Tx) error {
+			_, err := tx.ExecContext(ctx, `DELETE FROM blob_uploads WHERE sha256 = ?`, sha)
+			return err
+		}); err != nil {
+			return n, err
+		}
+	}
+	return n, nil
+}
+
+// cleanBlobs drops cached files no longer in the working set (and purged
+// ones), keeping files still waiting to be uploaded.
+func (c *Client) cleanBlobs(ctx context.Context) error {
+	if c.Blobs == nil {
+		return nil
+	}
+	have, err := c.Blobs.List()
+	if err != nil {
+		return err
+	}
+	for _, sha := range have {
+		var keep int
+		if err := c.Store.DB().QueryRowContext(ctx, `SELECT (SELECT count(*) FROM attachments WHERE sha256 = ?1 AND status != 'purged')
+			+ (SELECT count(*) FROM blob_uploads WHERE sha256 = ?1)`, sha).Scan(&keep); err != nil {
+			return err
+		}
+		if keep == 0 {
+			if err := c.Blobs.Remove(sha); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// FetchBlob returns an attachment file, from this Pi's cache or from
+// central (online only), caching what it fetches.
+func (c *Client) FetchBlob(ctx context.Context, sha string) ([]byte, error) {
+	if c.Blobs == nil {
+		return nil, errors.New("fleetsync: no blob store configured")
+	}
+	if b, err := c.Blobs.Get(sha); err == nil {
+		return b, nil
+	}
+	_, body, err := c.doRaw(ctx, http.MethodGet, PathBlobs+sha, nil, nil, true)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.Blobs.PutExpected(sha, body); err != nil {
+		return nil, err
+	}
+	return body, nil
 }
 
 // --- activation ---
@@ -256,6 +355,7 @@ type Report struct {
 	SnapshotLoaded bool
 	Purged         int64
 	ClockVerified  bool
+	Uploaded       int
 }
 
 // Sync pushes this node's unsynced events, then pulls a fresh working
@@ -306,6 +406,9 @@ func (c *Client) Sync(ctx context.Context) (Report, error) {
 	if rep.Pushed, rep.Flagged, err = c.push(ctx, hello.CentralSeq, headSeq); err != nil {
 		return rep, err
 	}
+	if rep.Uploaded, err = c.uploadBlobs(ctx); err != nil {
+		return rep, err
+	}
 	if hello.Wipe {
 		return rep, c.wipe() // revoked: unsynced work delivered, now wipe
 	}
@@ -316,6 +419,9 @@ func (c *Client) Sync(ctx context.Context) (Report, error) {
 			return rep, err
 		}
 		rep.SnapshotLoaded = true
+		if err := c.cleanBlobs(ctx); err != nil {
+			return rep, err
+		}
 	}
 	if rep.Purged, err = c.purge(ctx, hello.DurableSeq); err != nil {
 		return rep, err

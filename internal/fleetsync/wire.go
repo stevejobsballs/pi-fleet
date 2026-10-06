@@ -24,6 +24,7 @@ const (
 	PathEvents    = "/v1/sync/events"
 	PathSnapshot  = "/v1/sync/snapshot"
 	PathFleet     = "/v1/fleet/"
+	PathBlobs     = "/v1/sync/blobs/"
 )
 
 // SnapshotSignatureHeader carries central's signature over a snapshot body.

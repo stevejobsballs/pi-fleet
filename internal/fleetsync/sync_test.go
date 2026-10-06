@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"net/http"
@@ -18,6 +19,7 @@ import (
 	"github.com/google/uuid"
 
 	"pi-fleet/internal/app"
+	"pi-fleet/internal/blobs"
 	"pi-fleet/internal/domain"
 	"pi-fleet/internal/event"
 	"pi-fleet/internal/hlc"
@@ -80,7 +82,8 @@ func newFleet(t *testing.T) *fleet {
 	f.loc = f.must2(f.app.CreateLocation(f.ctx, f.super, f.site, "", "Shop", "room"))
 	f.mid = f.activeCentralUser("mona", domain.RoleMidTier)
 
-	srv := &Server{App: f.app, CentralKey: k.Event, Now: f.clock, Logf: t.Logf}
+	f.app.Blobs = &blobs.Store{Dir: filepath.Join(dir, "blobs")}
+	srv := &Server{App: f.app, CentralKey: k.Event, Now: f.clock, Logf: t.Logf, Blobs: f.app.Blobs}
 	f.srv = httptest.NewServer(srv.Handler())
 	t.Cleanup(f.srv.Close)
 	return f
@@ -121,12 +124,12 @@ func (f *fleet) newPi() *pi {
 	f.must(st.SetLocalNode(f.ctx, store.LocalNode{NodeID: nodeID, ChainID: chainID}))
 	author := newAuthor(f.t, k, nodeID, chainID, f.clock)
 	author.ClockState = func() event.ClockState { return ClockState(f.ctx, st, f.now) }
-	p.app = &app.App{Store: st, Author: author, Params: cheap, Now: f.clock}
+	p.app = &app.App{Store: st, Author: author, Params: cheap, Now: f.clock, Blobs: &blobs.Store{Dir: filepath.Join(p.dir, "blobs")}, QueueUploads: true}
 	_, err = st.Append(f.ctx, author, event.Draft{ActorUserID: "system:init", ActorSessionID: "system", Type: event.TypeChainStarted,
 		EntityType: "chain", EntityID: chainID, SchemaVersion: 1, Payload: []byte(`{}`)})
 	f.must(err)
 	p.client = &Client{BaseURL: f.srv.URL, Store: st, Keys: k, NodeID: nodeID, ChainID: chainID, Version: "test",
-		Now: f.clock, Wipe: func() error { p.wiped = true; return nil }}
+		Now: f.clock, Wipe: func() error { p.wiped = true; return nil }, Blobs: p.app.Blobs}
 	return p
 }
 
@@ -571,4 +574,63 @@ func TestClockVerification(t *testing.T) {
 	if ClockState(f.ctx, tess.app.Store, f.now.Add(25*time.Hour)) != event.ClockUnverified {
 		t.Fatal("verification should lapse after 24 hours")
 	}
+}
+
+func TestAttachmentFilesTravel(t *testing.T) {
+	f := newFleet(t)
+	tess, bob := f.enrol("tess", domain.RoleUser), f.enrol("bob", domain.RoleUser)
+	a := f.asset("A1")
+	tess.sync()
+	bob.sync()
+
+	// Tess attaches a certificate offline; it uploads on her next sync.
+	cert := []byte("%PDF-1.7 certificate for A1")
+	id, err := tess.app.AddAttachment(f.ctx, tess.user, domain.EntityAsset, a, "cert.pdf", "certificate", cert)
+	f.must(err)
+	if r := tess.sync(); r.Uploaded != 1 {
+		t.Fatalf("uploaded %d", r.Uploaded)
+	}
+	att, err := domain.GetAttachment(f.ctx, f.app.Store.DB(), id)
+	f.must(err)
+	if !f.app.Blobs.Has(att.SHA256) {
+		t.Fatal("central doesn't have the file")
+	}
+	if r := tess.sync(); r.Uploaded != 0 {
+		t.Fatal("uploaded twice")
+	}
+
+	// Bob's Pi lists it, fetches the file on demand, and caches it.
+	bob.sync()
+	if bob.app.Blobs.Has(att.SHA256) {
+		t.Fatal("files should be fetched on demand, not pushed to every Pi")
+	}
+	got, err := bob.client.FetchBlob(f.ctx, att.SHA256)
+	if err != nil || string(got) != string(cert) || !bob.app.Blobs.Has(att.SHA256) {
+		t.Fatalf("fetch: %q %v", got, err)
+	}
+
+	// Central refuses files no attachment refers to.
+	stray := []byte("%PDF-1.4 not attached anywhere")
+	if _, _, err := tess.client.doRaw(f.ctx, http.MethodPut, PathBlobs+sha256hex(stray), stray, nil, true); err == nil || !strings.Contains(err.Error(), "409") {
+		t.Fatalf("stray upload: %v", err)
+	}
+
+	// A mid-tier user purges it on central: gone there, and from Bob's
+	// cache at his next sync.
+	f.must(f.app.DetachAttachment(f.ctx, f.mid, id, "shows a patient wristband", true))
+	if f.app.Blobs.Has(att.SHA256) {
+		t.Fatal("purged file still on central")
+	}
+	bob.sync()
+	if bob.app.Blobs.Has(att.SHA256) {
+		t.Fatal("purged file still cached on a Pi")
+	}
+	if _, err := bob.client.FetchBlob(f.ctx, att.SHA256); err == nil {
+		t.Fatal("central served a purged file")
+	}
+}
+
+func sha256hex(b []byte) string {
+	s := sha256.Sum256(b)
+	return hex.EncodeToString(s[:])
 }

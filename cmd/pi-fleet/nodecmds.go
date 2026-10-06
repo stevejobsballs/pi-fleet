@@ -53,7 +53,7 @@ func (n *node) client(ctx context.Context, baseURL string) (*fleetsync.Client, e
 	return &fleetsync.Client{
 		BaseURL: baseURL, HTTP: httpc, Store: n.store, Keys: n.keys,
 		NodeID: n.local.NodeID, ChainID: n.local.ChainID, Version: version,
-		Wipe: func() error { return wipe(n) },
+		Wipe: func() error { return wipe(n) }, Blobs: n.blobs(),
 	}, nil
 }
 
@@ -66,6 +66,7 @@ func wipe(n *node) error {
 			errs = append(errs, err)
 		}
 	}
+	errs = append(errs, os.RemoveAll(filepath.Join(n.dir, "blobs")))
 	return errors.Join(errs...)
 }
 

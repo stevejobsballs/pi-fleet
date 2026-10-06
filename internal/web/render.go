@@ -54,6 +54,15 @@ var funcs = template.FuncMap{
 	"dict2":       func(a, b any) struct{ A, B any } { return struct{ A, B any }{a, b} },
 	"dict3":       func(a, b, c, d any) struct{ A, B, C, D any } { return struct{ A, B, C, D any }{a, b, c, d} },
 	"slice3":      func(a ...string) []string { return a },
+	"kib": func(n int64) string {
+		if n < 1<<20 {
+			return fmt.Sprintf("%.0f KiB", float64(n)/1024)
+		}
+		return fmt.Sprintf("%.1f MiB", float64(n)/(1<<20))
+	},
+	"files": func(list []domain.Attachment, csrf string, can, mid bool, action string) map[string]any {
+		return map[string]any{"List": list, "CSRF": csrf, "Can": can, "Mid": mid, "Action": action}
+	},
 	"seq": func(n int) []int {
 		out := make([]int, n)
 		for i := range out {

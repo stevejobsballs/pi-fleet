@@ -17,6 +17,7 @@ import (
 	"github.com/google/uuid"
 
 	"pi-fleet/internal/app"
+	"pi-fleet/internal/blobs"
 	"pi-fleet/internal/domain"
 )
 
@@ -127,6 +128,8 @@ type Runner struct {
 	Recipients []age.Recipient
 	Version    string
 	Now        func() time.Time
+	// Blobs holds attachment files to back up.
+	Blobs *blobs.Store
 }
 
 func (r *Runner) now() time.Time {
@@ -149,6 +152,11 @@ func (r *Runner) Nightly(ctx context.Context) (Manifest, []string, error) {
 		File: m.File, SHA256: m.CipherSHA256, LocalOrder: m.LocalOrder, Heads: m.Heads,
 	}); err != nil {
 		return m, nil, err
+	}
+	if r.Blobs != nil {
+		if _, err := backupBlobs(ctx, r.App.Store, r.Blobs, r.Dir, r.Recipients); err != nil {
+			return m, nil, err
+		}
 	}
 	removed, err := Prune(r.Dir, r.now())
 	return m, removed, err
@@ -194,6 +202,14 @@ func (r *Runner) WriteOffsite(ctx context.Context, path string) (string, Manifes
 	}
 	if err := copySnapshot(r.Dir, m, d); err != nil {
 		return "", m, err
+	}
+	if r.Blobs != nil {
+		if _, err := backupBlobs(ctx, r.App.Store, r.Blobs, r.Dir, r.Recipients); err != nil {
+			return "", m, err
+		}
+		if err := copyBlobs(r.Dir, d); err != nil {
+			return "", m, err
+		}
 	}
 	id, err := r.App.RecordBackup(ctx, domain.TypeBackupOffsiteWritten, domain.BackupWritten{
 		DiskID: d.ID, DiskLabel: d.Label, File: m.File, SHA256: m.CipherSHA256, LocalOrder: m.LocalOrder, Heads: m.Heads,

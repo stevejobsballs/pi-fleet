@@ -15,6 +15,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"pi-fleet/internal/blobs"
 	"pi-fleet/internal/domain"
 	"pi-fleet/internal/event"
 	"pi-fleet/internal/password"
@@ -45,6 +46,10 @@ type App struct {
 	Params password.Params
 	// Now defaults to time.Now.
 	Now func() time.Time
+	// Blobs stores attachment files; QueueUploads (employee Pis) queues
+	// new files for upload to central.
+	Blobs        *blobs.Store
+	QueueUploads bool
 }
 
 // Actor is the authenticated user issuing a command.

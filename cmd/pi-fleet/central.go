@@ -245,7 +245,7 @@ func cmdServe(ctx context.Context, args []string, c *cli) error {
 		return err
 	}
 	mux := http.NewServeMux()
-	mux.Handle("/v1/", (&fleetsync.Server{App: a, CentralKey: n.keys.Event, Fleet: (&web.FleetAPI{App: a}).Handler()}).Handler())
+	mux.Handle("/v1/", (&fleetsync.Server{App: a, CentralKey: n.keys.Event, Fleet: (&web.FleetAPI{App: a}).Handler(), Blobs: n.blobs()}).Handler())
 	if *releases != "" {
 		// Releases are verified by each Pi against its compiled-in keys,
 		// so the mirror needs no authentication.

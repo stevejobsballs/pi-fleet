@@ -29,6 +29,9 @@
   <form method="post" action="/assets/{{$a.ID}}/relocate" class="inline">{{template "csrf" .CSRF}}<input type="hidden" name="version" value="{{$a.Version}}">
     <label>Move to <select name="location">{{range .Data.Locations}}<option value="{{.ID}}" {{if eq .ID $a.LocationID}}selected{{end}}>{{.Label}}</option>{{end}}</select></label><button>Move</button></form>
 </section>
+<section><h2>Files</h2>
+{{template "attachments" (files .Data.Attachments .CSRF (ne $a.Status "retired") .IsMid (printf "/assets/%s/attachments" $a.ID))}}
+</section>
 <section><h2>Schedules</h2>
 {{if .Data.Schedules}}<table><thead><tr><th>Schedule</th><th>Type</th><th>Every</th><th>Next due</th><th>Outstanding</th></tr></thead><tbody>
 {{range .Data.Schedules}}<tr><td>{{.Title}}</td><td>{{.Type}}</td><td>{{.Interval}} days</td><td>{{.NextDue}}</td><td>{{.OpenWO}}</td></tr>{{end}}</tbody></table>

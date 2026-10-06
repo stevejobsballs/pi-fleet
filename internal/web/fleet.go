@@ -98,6 +98,7 @@ func (f *FleetAPI) Handler() http.Handler {
 type FleetClient interface {
 	FleetGet(ctx context.Context, path string, out any) error
 	FleetPost(ctx context.Context, path string, in, out any) error
+	FetchBlob(ctx context.Context, sha string) ([]byte, error)
 }
 
 func offline(err error) string {

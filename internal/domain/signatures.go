@@ -79,8 +79,8 @@ func init() {
 }
 
 // WorkOrderContentHash hashes what a signature attests to: the work
-// order's descriptive fields and its valid calibration records with every
-// reading. Status and assignment are excluded, since signing changes
+// order's descriptive fields, its valid calibration records with every
+// reading, and its attached files (certificates, photos) by hash. Status and assignment are excluded, since signing changes
 // them. Nodes and central compute the same value from the same state.
 func WorkOrderContentHash(ctx context.Context, q Querier, woID string) (string, error) {
 	w, err := GetWorkOrder(ctx, q, woID)
@@ -132,6 +132,12 @@ func WorkOrderContentHash(ctx context.Context, q Querier, woID string) (string, 
 		c["points"], c["standards"] = toAny(points), toAny(standards)
 	}
 	content["calibrations"] = toAny(cals)
+	files, err := queryStrings(ctx, q, `SELECT sha256 || ' ' || filename FROM attachments
+		WHERE target_type = 'work_order' AND target_id = ? AND status = 'attached' ORDER BY sha256, filename`, woID)
+	if err != nil {
+		return "", err
+	}
+	content["attachments"] = toAny(files)
 	b, err := canon.Marshal(content)
 	if err != nil {
 		return "", err

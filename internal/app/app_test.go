@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"pi-fleet/internal/blobs"
 	"pi-fleet/internal/domain"
 	"pi-fleet/internal/event"
 	"pi-fleet/internal/hlc"
@@ -64,7 +65,7 @@ func newEnv(t *testing.T) *env {
 		t.Fatal(err)
 	}
 	e.st = st
-	e.app = &App{Store: st, Author: author, Params: cheap, Now: clock}
+	e.app = &App{Store: st, Author: author, Params: cheap, Now: clock, Blobs: &blobs.Store{Dir: filepath.Join(t.TempDir(), "blobs")}}
 
 	superID, err := e.app.BootstrapSuperUser(e.ctx, NewUser{
 		Username: "admin", LegalName: "Ada Admin", Email: "ada@example.org",

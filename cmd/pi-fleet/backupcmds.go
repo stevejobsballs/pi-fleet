@@ -15,6 +15,7 @@ import (
 
 	"pi-fleet/internal/app"
 	"pi-fleet/internal/backup"
+	"pi-fleet/internal/blobs"
 	"pi-fleet/internal/domain"
 	"pi-fleet/internal/store"
 )
@@ -44,7 +45,7 @@ func runner(ctx context.Context, n *node, a *app.App) (*backup.Runner, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &backup.Runner{App: a, Dir: dir, Recipients: recipients, Version: version}, nil
+	return &backup.Runner{App: a, Dir: dir, Recipients: recipients, Version: version, Blobs: n.blobs()}, nil
 }
 
 // signIn asks for a user's password at the console and checks their role.
@@ -307,6 +308,12 @@ func cmdRestore(ctx context.Context, args []string, c *cli) error {
 	if err != nil {
 		return err
 	}
+	// Attachment files sit next to the snapshot (backup or off-site disk).
+	files, err := backup.RestoreBlobs(filepath.Dir(*manifest), ids, &blobs.Store{Dir: filepath.Join(*data, "blobs")})
+	if err != nil {
+		return err
+	}
+	c.printf("restored %d attachment files\n", files)
 	c.printf("restored %s: %d events in the snapshot, %d replayed from segments; %d chains verified\n",
 		rep.Snapshot.File, rep.Snapshot.LocalOrder, rep.EventsReplay, rep.Verify.Chains)
 	if _, err := os.Stat(filepath.Join(*data, "keys", "event.key")); err != nil {

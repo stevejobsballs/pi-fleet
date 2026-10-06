@@ -53,7 +53,7 @@ type SnapshotFlag struct {
 var snapshotTables = []string{
 	"sites", "locations", "users", "user_password_history", "user_lockouts", "nodes",
 	"assets", "pm_schedules", "work_orders", "wo_leases",
-	"calibration_records", "cal_points", "cal_standards", "signatures",
+	"calibration_records", "cal_points", "cal_standards", "signatures", "attachments",
 	"parts", "stock_locations", "stock_levels", "flag_resolutions",
 }
 
@@ -129,6 +129,8 @@ func BuildSnapshot(ctx context.Context, db *sql.DB, centralNodeID string, node d
 		{"cal_points", in("record_id"), []any{records}},
 		{"cal_standards", in("record_id"), []any{records}},
 		{"signatures", "target_type = 'work_order' AND " + in("target_id"), []any{workOrders}},
+		{"attachments", "(target_type = 'work_order' AND " + in("target_id") + ") OR (target_type = 'asset' AND " + in("target_id") + ")",
+			[]any{workOrders, assets}},
 		{"parts", "1", nil},
 		{"stock_locations", "1", nil},
 		{"stock_levels", "1", nil},

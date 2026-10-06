@@ -266,7 +266,10 @@ Trust boundaries: (1) browser ↔ node UI, (2) browser ↔ central UI,
     payload bytes, so a supervisor can issue `payload.redacted`. The payload is
     then removed on central and on any node holding it, while the chain still
     verifies. The redaction itself is audited.
-- Attachments: JPEG/PNG/PDF only, EXIF stripped on upload.
+- Attachments: JPEG/PNG/PDF only (checked by content, not file name). On
+  upload, JPEG EXIF/XMP/comments and PNG text/EXIF/time chunks are stripped.
+  A file showing patient information is **purged** by a mid-tier user and
+  deleted everywhere (§5.10).
 
 ---
 
@@ -686,6 +689,33 @@ a node and would be re-pushed (§8.4).
   part of the persisted working set, so the 31-day footprint stays bounded.
 - Reads are rate-limited. Bulk export (CSV/JSON/PDF beyond a threshold) needs
   the `mid_tier` or `super_user` role and is logged as `system.bulk_read`.
+
+### 5.10 Attachments
+
+- Files (certificates, photos, labels) attach to **work orders** or
+  **equipment**. They are stored by SHA-256 in `blobs/ab/cd/<sha256>` next to
+  the database and are immutable. The `attachment.added` event records the
+  hash, type, size, filename and who attached it.
+- Only JPEG, PNG and PDF up to 10 MiB are accepted, identified by content.
+  Photo metadata is stripped (§3.6).
+- On a work order, the lease holder can attach while it's in progress, and a
+  mid-tier user until it's closed. Attached files are part of the **signature
+  content hash** (§7.2), so a certificate is covered by the signatures, and a
+  file added later makes them stale.
+- **Sync:** a Pi queues files it adds, and uploads them after pushing the
+  events that name them. Central only accepts or serves a file that a live
+  attachment refers to. Other Pis see the attachment in their working set and
+  **fetch the file on demand**, caching it until it leaves the working set.
+- **Removal:** detaching keeps the file. **Purging** (mid-tier, with a reason)
+  deletes the file itself from central, every Pi's cache, the backup disk and,
+  at the next rotation, the off-site disks. Because the content is the
+  problem, a purge covers every record the same file is attached to. The hash
+  and the reason stay in the audit trail.
+- **Backups:** each file is age-encrypted once into `<backup>/blobs/` and
+  copied to off-site disks. `pi-fleet restore` decrypts them and checks every
+  hash.
+- Downloads are always served as attachments, with a sandboxing CSP, never
+  rendered inside the app.
 
 ---
 

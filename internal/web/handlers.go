@@ -162,6 +162,7 @@ type assetData struct {
 	Calibrations []calRow
 	Locations    []option
 	Statuses     []string
+	Attachments  []domain.Attachment
 }
 
 func (s *Server) assetView(w http.ResponseWriter, r *http.Request, sess *session) error {
@@ -194,6 +195,9 @@ func (s *Server) loadAsset(r *http.Request, id string) (assetData, error) {
 		return d, err
 	}
 	if d.Calibrations, err = calibrations(ctx, q, "c.asset_id = ?", a.ID); err != nil {
+		return d, err
+	}
+	if d.Attachments, err = domain.ListAttachments(ctx, q, domain.EntityAsset, a.ID); err != nil {
 		return d, err
 	}
 	d.Locations, err = locationOptions(ctx, q)
@@ -292,6 +296,8 @@ type woData struct {
 	Standards    []option
 	Users        []option
 	Rows         int
+	Attachments  []domain.Attachment
+	CanAttach    bool
 	// SignAs is the meaning the current user may sign with now, if any.
 	SignAs    string
 	Performer bool
@@ -333,7 +339,12 @@ func (s *Server) loadWorkOrder(r *http.Request, sess *session, id string) (woDat
 	if d.Standards, err = standardOptions(ctx, q, wo.AssetID); err != nil {
 		return d, err
 	}
+	if d.Attachments, err = domain.ListAttachments(ctx, q, domain.EntityWorkOrder, wo.ID); err != nil {
+		return d, err
+	}
 	isMid := roleRank[sess.User.Role] >= roleRank[domain.RoleMidTier]
+	open := wo.Status != domain.WOClosed && wo.Status != domain.WOCancelled
+	d.CanAttach = open && (isMid || (d.Holder && wo.Status == domain.WOInProgress))
 	if isMid {
 		if d.Users, err = userOptions(ctx, q); err != nil {
 			return d, err

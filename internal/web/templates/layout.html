@@ -62,3 +62,21 @@
   <td><small>Pi {{printf "%.8s" .Node}} #{{.Seq}}<br>{{printf "%.16s" .Hash}}</small></td></tr>{{end}}
 </tbody></table></div>{{else}}<p>No entries.</p>{{end}}
 {{end}}
+
+{{define "attachments"}}{{$csrf := .CSRF}}{{$mid := .Mid}}
+{{if .List}}<ul class="files">{{range .List}}
+  <li class="{{if ne .Status "attached"}}old{{end}}">{{if eq .Status "purged"}}{{.Filename}} <span class="warn">deleted: {{.DetachReason}}</span>{{else}}<a href="/attachments/{{.ID}}">{{.Filename}}</a>{{end}}
+    · {{kib .Size}} · {{.MIME}} · added by {{.AddedBy}} {{when .AddedAt}}{{if .Description}}<br>{{.Description}}{{end}}
+    {{if eq .Status "detached"}}<span class="warn">removed: {{.DetachReason}}</span>{{end}}
+    <br><small>sha256 {{.SHA256}}</small>
+    {{if ne .Status "purged"}}<details><summary>Remove</summary><form method="post" action="/attachments/{{.ID}}/detach">{{template "csrf" $csrf}}
+      <label>Reason <input name="reason" required></label>
+      {{if $mid}}<label class="check"><input type="checkbox" name="purge" value="yes"> Delete the file itself everywhere (e.g. it shows patient information)</label>{{end}}
+      <button class="danger">Remove</button></form></details>{{end}}
+  </li>{{end}}</ul>{{else}}<p>No files.</p>{{end}}
+{{if .Can}}<form method="post" action="{{.Action}}" enctype="multipart/form-data" class="inline">{{template "csrf" $csrf}}
+  <label>File (JPEG, PNG or PDF, up to 10 MiB) <input type="file" name="file" accept="image/jpeg,image/png,application/pdf" required></label>
+  <label>Description <input name="description" placeholder="e.g. calibration certificate"></label>
+  {{template "nophi"}}<button>Attach</button></form>
+<p class="hint">Photos must not show patients, screens with patient data, or wristbands.</p>{{end}}
+{{end}}

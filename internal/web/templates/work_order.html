@@ -63,6 +63,11 @@
 {{end}}
 
 <section>
+  <h2>Files</h2>
+  {{template "attachments" (files $d.Attachments .CSRF $d.CanAttach .IsMid (printf "/work-orders/%s/attachments" $w.ID))}}
+</section>
+
+<section>
   <h2>Signatures</h2>
   {{if $d.Signatures}}
   <ul class="sigs">{{range $d.Signatures}}

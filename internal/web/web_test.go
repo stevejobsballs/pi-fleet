@@ -17,6 +17,7 @@ import (
 	"github.com/google/uuid"
 
 	"pi-fleet/internal/app"
+	"pi-fleet/internal/blobs"
 	"pi-fleet/internal/domain"
 	"pi-fleet/internal/event"
 	"pi-fleet/internal/hlc"
@@ -50,6 +51,7 @@ func newEnv(t *testing.T) *env {
 	t.Cleanup(func() { st.Close() })
 	st.TrustKey(e.ctx, nodeID, pub)
 	e.app = &app.App{Store: st, Params: password.Params{Time: 1, MemoryKiB: 64, Threads: 1}, Now: clock,
+		Blobs: &blobs.Store{Dir: filepath.Join(t.TempDir(), "blobs")},
 		Author: &store.Author{NodeID: nodeID, ChainID: uuid.Must(uuid.NewV7()).String(),
 			Signer: event.Signer{KeyID: event.KeyID(pub), Key: priv}, Clock: hlc.New(clock, 0), Now: clock}}
 	id, err := e.app.BootstrapSuperUser(e.ctx, app.NewUser{Username: "admin", LegalName: "Ada Admin", Email: "ada@example.org", IdentityVerification: "console"}, "tumbleweed-gasket-42")

@@ -23,6 +23,8 @@ As found: <strong>{{.AsFound}}</strong> · As left: <strong>{{.AsLeft}}</strong>
 {{range .Points}}<tr><td>{{.Parameter}} ({{.Unit}})</td><td>{{.Nominal}}</td><td>{{.Lower}} – {{.Upper}}</td><td>{{.AsFound}} {{if .FoundPass}}pass{{else}}FAIL{{end}}</td><td>{{.AsLeft}} {{if .LeftPass}}pass{{else}}FAIL{{end}}</td></tr>{{end}}
 </tbody></table>
 {{end}}
+<h2>Files</h2>
+{{range .Attachments}}<p>{{.Filename}} ({{.MIME}}, {{kib .Size}}) added by {{.AddedBy}} {{when .AddedAt}}{{if ne .Status "attached"}} · {{.Status}}: {{.DetachReason}}{{end}}<br><small>sha256 {{.SHA256}}</small></p>{{else}}<p>None.</p>{{end}}
 <h2>Electronic signatures</h2>
 {{range .Signatures}}<div class="sig"><p><strong>{{.SignerLegalName}}</strong> ({{.SignerUsername}})<br>Meaning: <strong>{{.Meaning}}</strong> — “{{meaningText .Meaning}}”<br>
 Signed: {{when .SignedAt}} ({{whenLocal .SignedAt $.WO.SiteTZ}}){{if eq .ClockState "unverified"}} · signing Pi's clock was unverified{{end}}<br>
@@ -36,6 +38,8 @@ Signed: {{when .SignedAt}} ({{whenLocal .SignedAt $.WO.SiteTZ}}){{if eq .ClockSt
 <tr><th>Serial</th><td>{{$a.Serial}}</td></tr><tr><th>Site</th><td>{{.Site.Code}} · {{.Site.Name}}</td></tr>
 <tr><th>Location</th><td>{{.Location}}</td></tr><tr><th>Status</th><td>{{label $a.Status}}</td></tr><tr><th>Risk class</th><td>{{$a.RiskClass}}</td></tr>
 </tbody></table>
+<h2>Files</h2>
+{{range .Attachments}}<p>{{.Filename}} ({{.MIME}}, {{kib .Size}}) added by {{.AddedBy}} {{when .AddedAt}}{{if ne .Status "attached"}} · {{.Status}}: {{.DetachReason}}{{end}}<br><small>sha256 {{.SHA256}}</small></p>{{else}}<p>None.</p>{{end}}
 <h2>Work orders</h2>
 <table><thead><tr><th>Number</th><th>Type</th><th>Title</th><th>Status</th><th>Assigned</th></tr></thead><tbody>
 {{range .WorkOrders}}<tr><td>{{.Number}}</td><td>{{.Type}}</td><td>{{.Title}}</td><td>{{label .Status}}</td><td>{{.AssignedTo}}</td></tr>{{end}}</tbody></table>
