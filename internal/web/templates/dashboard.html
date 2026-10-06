@@ -1,0 +1,17 @@
+{{define "content"}}
+<section>
+  <h2>My work</h2>
+  {{template "worows" .Data.Mine}}
+</section>
+<section>
+  <h2>Due in the next 31 days</h2>
+  {{if .Data.Due}}
+  <table><thead><tr><th>Due</th><th>Equipment</th><th>Site</th><th>Schedule</th><th>Work order</th></tr></thead><tbody>
+  {{range .Data.Due}}<tr><td>{{.NextDue}}</td><td><a href="/assets/{{.AssetID}}">{{.Asset}}</a></td><td>{{.Site}}</td><td>{{.Title}} ({{.Type}})</td>
+    <td>{{if .WorkOrderID}}<a href="/work-orders/{{.WorkOrderID}}">{{.WorkOrder}}</a>{{else}}not generated yet{{end}}</td></tr>{{end}}
+  </tbody></table>
+  {{else}}<p>Nothing due.</p>{{end}}
+</section>
+<p><a href="/work-orders?view=unassigned">{{.Data.Unassigned}} unassigned work order{{if ne .Data.Unassigned 1}}s{{end}}</a>
+{{if .IsMid}} · <a href="/review">{{.Data.Flags}} flagged record{{if ne .Data.Flags 1}}s{{end}} to review</a>{{end}}</p>
+{{end}}

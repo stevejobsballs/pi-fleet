@@ -1,0 +1,29 @@
+{{define "content"}}
+{{$a := .Data.Asset}}
+<dl class="facts">
+  <dt>Equipment</dt><dd>{{$a.Manufacturer}} {{$a.Model}}{{if $a.IsReferenceStandard}} <span class="tag">reference standard</span>{{end}}</dd>
+  <dt>Serial</dt><dd>{{$a.Serial}}</dd>
+  <dt>Site</dt><dd>{{.Data.Site.Code}} · {{.Data.Site.Name}}</dd>
+  <dt>Location</dt><dd>{{.Data.Location}}</dd>
+  <dt>Status</dt><dd class="s-{{$a.Status}}"><strong>{{label $a.Status}}</strong></dd>
+  <dt>Risk class</dt><dd>{{$a.RiskClass}}</dd>
+</dl>
+<section class="actions">
+  <a class="button" href="/work-orders/new?asset={{$a.ID}}">New work order</a>
+  <form method="post" action="/assets/{{$a.ID}}/status" class="inline">{{template "csrf" .CSRF}}<input type="hidden" name="version" value="{{$a.Version}}">
+    <label>Status <select name="status">{{range .Data.Statuses}}<option {{if eq . $a.Status}}selected{{end}}>{{.}}</option>{{end}}</select></label>
+    <label>Reason <input name="reason"></label>{{template "nophi"}}<button>Change status</button></form>
+  <form method="post" action="/assets/{{$a.ID}}/relocate" class="inline">{{template "csrf" .CSRF}}<input type="hidden" name="version" value="{{$a.Version}}">
+    <label>Move to <select name="location">{{range .Data.Locations}}<option value="{{.ID}}" {{if eq .ID $a.LocationID}}selected{{end}}>{{.Label}}</option>{{end}}</select></label><button>Move</button></form>
+</section>
+<section><h2>Schedules</h2>
+{{if .Data.Schedules}}<table><thead><tr><th>Schedule</th><th>Type</th><th>Every</th><th>Next due</th><th>Outstanding</th></tr></thead><tbody>
+{{range .Data.Schedules}}<tr><td>{{.Title}}</td><td>{{.Type}}</td><td>{{.Interval}} days</td><td>{{.NextDue}}</td><td>{{.OpenWO}}</td></tr>{{end}}</tbody></table>
+{{else}}<p>None.</p>{{end}}</section>
+<section><h2>Work orders</h2>{{template "worows" .Data.WorkOrders}}</section>
+<section><h2>Calibration history</h2>
+{{if .Data.Calibrations}}<table><thead><tr><th>Date</th><th>Work order</th><th>By</th><th>As found</th><th>As left</th><th>Status</th></tr></thead><tbody>
+{{range .Data.Calibrations}}<tr><td>{{when .PerformedAt}}</td><td>{{.WorkOrder}}</td><td>{{.PerformedBy}}</td><td class="r-{{.AsFound}}">{{.AsFound}}</td><td class="r-{{.AsLeft}}">{{.AsLeft}}</td><td>{{.Status}}</td></tr>{{end}}
+</tbody></table>{{if eq .Role "node"}}<p class="hint">This Pi keeps the last three calibrations; the master Pi has the full history.</p>{{end}}
+{{else}}<p>None on this Pi.</p>{{end}}</section>
+{{end}}

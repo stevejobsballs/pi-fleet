@@ -291,7 +291,10 @@ func (a *App) recordFailure(ctx context.Context, u domain.User) error {
 func (a *App) checkPassword(u domain.User, pw string) error {
 	v, err := password.Parse(u.Verifier)
 	if err != nil {
-		return err
+		// No usable verifier: on an employee Pi, every account but the
+		// Pi's own user has its verifier withheld by central.
+		dummy.Check(pw)
+		return ErrBadCredentials
 	}
 	if !v.Check(pw) || u.Status == domain.UserStatusDisabled {
 		return ErrBadCredentials

@@ -1,0 +1,7 @@
+{{define "content"}}
+<p>{{if eq .Data.What "created"}}Created <strong>{{.Data.Username}}</strong>.{{else}}Reset the password for <strong>{{.Data.Username}}</strong>.{{end}}
+Give them this one-time password in person. It is shown only once and works for 72 hours.</p>
+<p class="otp">{{.Data.Password}}</p>
+<p>They use it to activate their Pi (or to sign in here), and choose their own password straight away.</p>
+<p><a href="/admin/users">Back to users</a></p>
+{{end}}

@@ -880,7 +880,24 @@ organisation's validation, SOPs, and training (marked **Org** below).
 | 11.200(a) | Two distinct components (id + password); re-entry on each signing | **Every signing requires re-entering the password** within the signing dialog (stricter than the continuous-session allowance). The user id is bound to the session and shown. |
 | 11.300 | Password controls: uniqueness, periodic review/aging, loss management, safeguards against unauthorised use and reporting, device testing | Unique usernames. **31-day password expiry** and history (§6.5). Loss handling: revoke the node and reset the password. Lockout + mid-tier/super-user notification via `user.locked` events. |
 
-### 7.2 Signature event
+### 7.2 Signing moves the record
+
+A work order can't be completed, reviewed or closed by a status change
+alone: **the signature is the transition.** Signing *performed* (by the
+lease holder) completes it, *reviewed* (mid-tier, not the performer)
+reviews it, and *approved* (mid-tier) closes it. Each signature and its
+status change are written in one transaction, and central refuses the
+status change unless a valid signature by the same user, in the current
+**signing round**, over the current content, exists. Reopening a work
+order starts a new round, so earlier signatures stay visible but no longer
+count.
+
+The content hash covers the work order's descriptive fields and every
+valid calibration record with all its readings and standards. It excludes
+status and assignment, which signing itself changes. Nodes and central
+compute it from identical state, so central re-checks it.
+
+### 7.3 Signature event
 
 `signature.applied` payload:
 
@@ -1077,7 +1094,27 @@ need a manual update. This is documented and rehearsed.
 
 ---
 
-## 10. Operational security baseline
+## 10. Web interface
+
+- **Server-rendered HTML with no JavaScript.** The Content Security Policy
+  is `default-src 'none'; style-src 'self'; form-action 'self';
+  frame-ancestors 'none'`, so injected script can't run even if escaping
+  failed. `html/template` escapes all output.
+- **Sessions:** random 256-bit token in an `HttpOnly; SameSite=Strict`
+  cookie (`Secure` on central), stored hashed. 15-minute idle timeout and
+  12-hour maximum. Each session has its own id, which is recorded on every
+  event it produces.
+- **CSRF:** a per-session token on every form, plus refusal of
+  cross-origin POSTs by `Origin`/`Referer`.
+- A session whose password is a one-time password or has expired can only
+  change the password. Locked or disabled accounts lose their sessions
+  immediately.
+- **Patient-information check** on free text: configurable patterns, with
+  warn-and-confirm by default and blocking as an option (§3.6).
+- The master Pi serves the interface next to the sync API. An employee Pi
+  serves it on `127.0.0.1` (`pi-fleet run`) and syncs in the background.
+
+## 11. Operational security baseline
 
 - Dedicated `pifleet` system user. systemd sandboxing: `ProtectSystem=strict`,
   `ProtectHome=yes`, `PrivateTmp=yes`, `NoNewPrivileges=yes`,
@@ -1098,7 +1135,7 @@ need a manual update. This is documented and rehearsed.
 
 ---
 
-## 11. Open questions
+## 12. Open questions
 
 None open at rev 4. Decisions D1–D15 are recorded at the top. New
 questions will be added here as implementation planning raises them.

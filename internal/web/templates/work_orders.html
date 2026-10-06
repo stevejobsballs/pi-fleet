@@ -1,0 +1,5 @@
+{{define "content"}}
+<nav class="tabs" aria-label="Filter">{{range .Data.Views}}<a href="/work-orders?view={{.}}" {{if eq . $.Data.View}}aria-current="page"{{end}}>{{.}}</a>{{end}}</nav>
+<p><a class="button" href="/work-orders/new">New work order</a></p>
+{{template "worows" .Data.Rows}}
+{{end}}

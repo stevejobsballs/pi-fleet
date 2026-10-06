@@ -1,0 +1,109 @@
+{{define "content"}}
+{{$d := .Data}}{{$w := .Data.WO}}
+<dl class="facts">
+  <dt>Equipment</dt><dd><a href="/assets/{{$d.Asset.ID}}">{{$d.Asset.Tag}}</a> · {{$d.Asset.Manufacturer}} {{$d.Asset.Model}} · serial {{$d.Asset.Serial}}</dd>
+  <dt>Type</dt><dd>{{$w.Type}}</dd>
+  <dt>Status</dt><dd><strong>{{label $w.Status}}</strong></dd>
+  <dt>Priority</dt><dd class="p-{{$w.Priority}}">{{$w.Priority}}</dd>
+  <dt>Assigned to</dt><dd>{{if $d.Assignee}}{{$d.Assignee}}{{else}}nobody{{end}}</dd>
+  <dt>Due</dt><dd>{{if $w.DueAt}}{{$w.DueAt}}{{else}}not set{{end}}</dd>
+  <dt>Title</dt><dd>{{$w.Title}}</dd>
+  <dt>Problem</dt><dd class="pre">{{$w.Problem}}</dd>
+</dl>
+
+<section class="actions">
+  {{if and (eq $w.Status "open") (not $d.Holder)}}
+  <form method="post" action="/work-orders/{{$w.ID}}/claim">{{template "csrf" .CSRF}}<button>Claim this work</button></form>
+  {{end}}
+  {{if and .IsMid (ne $w.Status "closed") (ne $w.Status "cancelled") (ne $w.Status "completed") (ne $w.Status "reviewed")}}
+  <form method="post" action="/work-orders/{{$w.ID}}/assign" class="inline">{{template "csrf" .CSRF}}
+    <label>Assign to <select name="assignee">{{range $d.Users}}<option value="{{.ID}}">{{.Label}}</option>{{end}}</select></label>
+    <button>{{if $w.AssignedTo}}Reassign{{else}}Assign{{end}}</button></form>
+  {{end}}
+  {{if $d.Holder}}
+    {{if eq $w.Status "assigned"}}{{template "status" (dict3 $w.ID "in_progress" "Start work" $.CSRF)}}{{end}}
+    {{if eq $w.Status "in_progress"}}{{template "status" (dict3 $w.ID "on_hold" "Put on hold" $.CSRF)}}{{end}}
+    {{if eq $w.Status "on_hold"}}{{template "status" (dict3 $w.ID "in_progress" "Resume" $.CSRF)}}{{end}}
+  {{end}}
+  {{if and .IsMid (or (eq $w.Status "completed") (eq $w.Status "reviewed"))}}
+  <form method="post" action="/work-orders/{{$w.ID}}/status" class="inline">{{template "csrf" .CSRF}}
+    <input type="hidden" name="to" value="in_progress"><label>Reason <input name="reason" required></label>{{template "nophi"}}<button>Reopen</button></form>
+  {{end}}
+  {{if and .IsMid (ne $w.Status "closed") (ne $w.Status "cancelled")}}
+  <form method="post" action="/work-orders/{{$w.ID}}/status" class="inline">{{template "csrf" .CSRF}}
+    <input type="hidden" name="to" value="cancelled"><label>Reason <input name="reason" required></label>{{template "nophi"}}<button class="danger">Cancel work order</button></form>
+  {{end}}
+</section>
+
+{{if or (eq $w.Type "calibration") $d.Calibrations}}
+<section>
+  <h2>Calibration</h2>
+  {{range $d.Calibrations}}{{template "calrecord" (dict2 . $.CSRF)}}{{end}}
+  {{if and $d.Holder (eq $w.Status "in_progress") (eq $w.Type "calibration")}}
+  <details {{if not $d.Calibrations}}open{{end}}><summary>Record calibration</summary>
+  <form method="post" action="/work-orders/{{$w.ID}}/calibration">{{template "csrf" .CSRF}}
+    <label>Procedure <input name="procedure" required></label>
+    <div class="row"><label>Temperature °C <input name="temperature" inputmode="decimal"></label><label>Humidity %RH <input name="humidity" inputmode="decimal"></label>
+      <label class="check"><input type="checkbox" name="adjusted" value="yes"> Instrument was adjusted</label></div>
+    <label>Reference standards used <select name="standards" multiple size="4">{{range $d.Standards}}<option value="{{.ID}}">{{.Label}}</option>{{end}}</select></label>
+    <p class="hint">Enter readings as plain decimals, e.g. 120.05. Tolerance: ± value, ± percent of nominal, or lower/upper limits. As-left only if adjusted.</p>
+    <div class="scroll"><table class="points"><thead><tr><th>Parameter</th><th>Unit</th><th>Nominal</th><th>Tolerance</th><th>± / %</th><th>Lower</th><th>Upper</th><th>As found</th><th>As left</th></tr></thead><tbody>
+    {{range seq $d.Rows}}<tr>
+      <td><input name="parameter" aria-label="Parameter"></td><td><input name="unit" size="4" aria-label="Unit"></td><td><input name="nominal" size="7" inputmode="decimal" aria-label="Nominal"></td>
+      <td><select name="tol_kind" aria-label="Tolerance kind"><option value="abs">±</option><option value="pct">± %</option><option value="limits">limits</option></select></td>
+      <td><input name="tol_value" size="5" inputmode="decimal" aria-label="Tolerance"></td><td><input name="tol_lower" size="6" inputmode="decimal" aria-label="Lower limit"></td><td><input name="tol_upper" size="6" inputmode="decimal" aria-label="Upper limit"></td>
+      <td><input name="as_found" size="7" inputmode="decimal" aria-label="As found"></td><td><input name="as_left" size="7" inputmode="decimal" aria-label="As left"></td></tr>{{end}}
+    </tbody></table></div>
+    <p><a href="/work-orders/{{$w.ID}}?rows={{add $d.Rows 6}}">More rows</a></p>
+    <button>Save calibration</button>
+  </form></details>
+  {{end}}
+</section>
+{{end}}
+
+<section>
+  <h2>Signatures</h2>
+  {{if $d.Signatures}}
+  <ul class="sigs">{{range $d.Signatures}}
+    <li class="{{if or .Stale (eq .Status "withdrawn")}}old{{end}}">
+      <strong>{{.SignerLegalName}}</strong> ({{.SignerUsername}}) · <em>{{.Meaning}}</em> · {{when .SignedAt}} ({{whenLocal .SignedAt $d.SiteTZ}})
+      <br>“{{meaningText .Meaning}}”
+      {{if eq .ClockState "unverified"}}<span class="warn">signed with an unverified clock</span>{{end}}
+      {{if eq .Status "withdrawn"}}<span class="warn">withdrawn: {{.WithdrawReason}}</span>{{else if .Stale}}<span class="warn">stale: the record changed or was reopened after signing</span>{{end}}
+      {{if and (eq .SignerUsername $.User.Username) (eq .Status "valid")}}
+      <details><summary>Withdraw</summary><form method="post" action="/signatures/{{.ID}}/withdraw">{{template "csrf" $.CSRF}}<label>Reason <input name="reason" required></label><button class="danger">Withdraw signature</button></form></details>
+      {{end}}
+    </li>{{end}}</ul>
+  {{else}}<p>No signatures yet.</p>{{end}}
+
+  {{with $d.SignAs}}
+  <form method="post" action="/work-orders/{{$w.ID}}/sign" class="sign narrow">{{template "csrf" $.CSRF}}
+    <h3>Sign as {{.}}</h3>
+    <p>By signing you state: <strong>“{{meaningText .}}”</strong></p>
+    <p class="hint">Your signature is linked to the record as it is now (content {{printf "%.12s" $d.ContentHash}}). Any later change makes it stale.</p>
+    <input type="hidden" name="meaning" value="{{.}}">
+    <label>{{$.User.LegalName}}, re-enter your password <input name="password" type="password" autocomplete="current-password" required></label>
+    {{if eq $.Clock "unverified"}}<label class="check warn"><input type="checkbox" name="ack_clock" value="yes"> This Pi's clock hasn't been verified against the master Pi. I understand the signing time may be inaccurate and this will be recorded.</label>{{end}}
+    <button>Sign</button>
+  </form>
+  {{end}}
+</section>
+{{end}}
+
+{{define "status"}}<form method="post" action="/work-orders/{{.A}}/status" class="inline"><input type="hidden" name="csrf" value="{{.D}}"><input type="hidden" name="to" value="{{.B}}"><button>{{.C}}</button></form>{{end}}
+
+{{define "calrecord"}}{{$c := .A}}
+<article class="cal {{if eq $c.Status "voided"}}old{{end}}">
+  <p><strong>As found: <span class="r-{{$c.AsFound}}">{{$c.AsFound}}</span> · As left: <span class="r-{{$c.AsLeft}}">{{$c.AsLeft}}</span></strong>
+   · {{$c.Procedure}} · by {{$c.PerformedBy}} {{when $c.PerformedAt}}{{if $c.Adjusted}} · adjusted{{end}}
+   {{if $c.Temperature}} · {{$c.Temperature}} °C{{end}}{{if $c.Humidity}} · {{$c.Humidity}} %RH{{end}}
+   {{if eq $c.Status "voided"}}<span class="warn">voided: {{$c.VoidReason}}</span>{{end}}</p>
+  {{range $c.Flags}}<p class="warn">{{.}}</p>{{end}}
+  {{if $c.Standards}}<p>Standards: {{range $i, $s := $c.Standards}}{{if $i}}, {{end}}{{$s}}{{end}}</p>{{end}}
+  <div class="scroll"><table><thead><tr><th>Parameter</th><th>Nominal</th><th>Limits</th><th>As found</th><th>As left</th></tr></thead><tbody>
+  {{range $c.Points}}<tr><td>{{.Parameter}} ({{.Unit}})</td><td>{{.Nominal}}</td><td>{{.Lower}} – {{.Upper}}</td>
+    <td class="{{if .FoundPass}}pass{{else}}fail{{end}}">{{.AsFound}}</td><td class="{{if .LeftPass}}pass{{else}}fail{{end}}">{{.AsLeft}}</td></tr>{{end}}
+  </tbody></table></div>
+  {{if eq $c.Status "valid"}}<details><summary>Void</summary><form method="post" action="/calibrations/{{$c.ID}}/void">{{template "csrf" .B}}<label>Reason <input name="reason" required></label><button class="danger">Void calibration</button></form></details>{{end}}
+</article>
+{{end}}

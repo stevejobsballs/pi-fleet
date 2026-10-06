@@ -1,0 +1,6 @@
+{{define "content"}}
+<p>Records the system kept but flagged: conflicts between Pis, work done after a reassignment, recalculated calibration results, overdue standards and similar. Nothing here was discarded.</p>
+{{if .Data}}<table><thead><tr><th>When</th><th>What</th><th>Who</th><th>Flag</th><th>Detail</th></tr></thead><tbody>
+{{range .Data}}<tr><td>{{.WallTime}}</td><td>{{label .Type}}</td><td>{{.Actor}}</td><td>{{label .Flag}}</td><td>{{.Detail}}</td></tr>{{end}}
+</tbody></table>{{else}}<p>Nothing flagged.</p>{{end}}
+{{end}}

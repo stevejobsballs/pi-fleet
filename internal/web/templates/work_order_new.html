@@ -1,0 +1,14 @@
+{{define "content"}}
+<form method="post" action="/work-orders" class="narrow">
+  {{template "csrf" .CSRF}}
+  <label>Equipment
+    <select name="asset" required>{{range .Data.Assets}}<option value="{{.ID}}" {{if eq .ID $.Data.Asset}}selected{{end}}>{{.Tag}} · {{.Manufacturer}} {{.Model}} · {{.Site}} {{.Location}}</option>{{end}}</select></label>
+  <label>Type <select name="type">{{range .Data.Types}}<option>{{.}}</option>{{end}}</select></label>
+  <label>Priority <select name="priority"><option>normal</option><option>low</option><option>high</option><option>urgent</option></select></label>
+  <label>Title <input name="title" required maxlength="200"></label>
+  <label>Problem <textarea name="problem" rows="4" maxlength="4000"></textarea></label>
+  <label>Due date <input name="due_at" type="date"></label>
+  {{template "nophi"}}
+  <button>Open work order</button>
+</form>
+{{end}}

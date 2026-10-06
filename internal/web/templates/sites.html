@@ -1,0 +1,11 @@
+{{define "content"}}
+{{range .Data}}<section><h2>{{.Code}} · {{.Name}}</h2><p>{{.Timezone}}</p>
+<ul>{{range .Locations}}<li>{{.Label}}</li>{{else}}<li>No locations.</li>{{end}}</ul>
+<form method="post" action="/admin/locations" class="inline">{{template "csrf" $.CSRF}}<input type="hidden" name="site" value="{{.ID}}">
+  <label>Location <input name="name" required></label><label>Kind <input name="kind" value="room" required></label><button>Add location</button></form>
+</section>{{end}}
+<section><h2>New site</h2>
+<form method="post" action="/admin/sites" class="inline">{{template "csrf" .CSRF}}
+  <label>Code <input name="code" required pattern="[A-Za-z0-9]{2,8}" size="6"></label><label>Name <input name="name" required></label>
+  <label>Time zone <input name="timezone" required placeholder="America/New_York"></label><button>Create site</button></form></section>
+{{end}}

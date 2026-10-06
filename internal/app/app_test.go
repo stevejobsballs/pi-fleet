@@ -391,7 +391,7 @@ func TestWorkOrderLifecycle(t *testing.T) {
 	e.must(step(tech, domain.WOInProgress, ""))
 	e.must(e.sign(tech, woID, domain.MeaningPerformed))
 	wantRejection(t, e.sign(tech, woID, domain.MeaningReviewed), domain.FlagNotAuthorized) // tech can't review
-	e.must(step(mid, domain.WOInProgress, "as-left reading missing"))             // reopen
+	e.must(step(mid, domain.WOInProgress, "as-left reading missing"))                      // reopen
 	e.must(e.sign(tech, woID, domain.MeaningPerformed))
 	e.must(e.sign(mid, woID, domain.MeaningReviewed))
 	e.must(e.sign(mid, woID, domain.MeaningApproved))

@@ -17,6 +17,7 @@ import (
 	"pi-fleet/internal/app"
 	"pi-fleet/internal/domain"
 	"pi-fleet/internal/fleetsync"
+	"pi-fleet/internal/web"
 )
 
 func openCentral(ctx context.Context, dir string) (*node, *app.App, error) {
@@ -227,9 +228,16 @@ func cmdServe(ctx context.Context, args []string, c *cli) error {
 	defer stop()
 	go runScheduler(ctx, a)
 
+	ui, err := (&web.Server{App: a, Role: "central", Secure: true, PHIPatterns: web.DefaultPHIPatterns}).Handler()
+	if err != nil {
+		return err
+	}
+	mux := http.NewServeMux()
+	mux.Handle("/v1/", (&fleetsync.Server{App: a, CentralKey: n.keys.Event}).Handler())
+	mux.Handle("/", ui)
 	srv := &http.Server{
 		Addr:              *listen,
-		Handler:           (&fleetsync.Server{App: a, CentralKey: n.keys.Event}).Handler(),
+		Handler:           mux,
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       60 * time.Second,
 		WriteTimeout:      120 * time.Second,

@@ -1,0 +1,22 @@
+{{define "content"}}
+<table><thead><tr><th>Username</th><th>Name</th><th>Role</th><th>Status</th><th>Password expires</th><th></th></tr></thead><tbody>
+{{range .Data.Users}}<tr><td>{{.Username}}</td><td>{{.LegalName}}<br><small>{{.Email}}</small></td><td>{{label .Role}}</td>
+  <td>{{label .Status}}{{if not .LockedUntil.IsZero}}<br><span class="warn">locked until {{when .LockedUntil}}</span>{{end}}</td><td>{{when .Expires}}</td>
+  <td><details><summary>Manage</summary>
+    <form method="post" action="/admin/users/{{.ID}}/role" class="inline">{{template "csrf" $.CSRF}}<select name="role">{{range $.Data.Roles}}<option>{{.}}</option>{{end}}</select><button>Set role</button></form>
+    <form method="post" action="/admin/users/{{.ID}}/reset" class="inline">{{template "csrf" $.CSRF}}<label>Identity checked how <input name="verified" required></label><button>Reset password</button></form>
+    <form method="post" action="/admin/users/{{.ID}}/unlock" class="inline">{{template "csrf" $.CSRF}}<label>Reason <input name="reason" required></label><button>Unlock</button></form>
+    <form method="post" action="/admin/users/{{.ID}}/disable" class="inline">{{template "csrf" $.CSRF}}<label>Reason <input name="reason" required></label><button class="danger">Disable</button></form>
+  </details></td></tr>{{end}}
+</tbody></table>
+<section><h2>New user</h2>
+<form method="post" action="/admin/users" class="narrow">{{template "csrf" .CSRF}}
+  <label>Username <input name="username" required pattern="[a-z][a-z0-9._-]{2,31}"></label>
+  <label>Legal name (shown on signatures) <input name="legal_name" required></label>
+  <label>Work email <input name="email" type="email" required></label>
+  <label>Role <select name="role">{{range .Data.Roles}}<option>{{.}}</option>{{end}}</select></label>
+  <label>Home sites <select name="home_sites" multiple size="3">{{range .Data.Sites}}<option value="{{.ID}}">{{.Label}}</option>{{end}}</select></label>
+  <label>How you verified their identity (Part 11 §11.100(b)) <input name="verified" required placeholder="in person, badge 4411"></label>
+  <button>Create user</button>
+</form></section>
+{{end}}

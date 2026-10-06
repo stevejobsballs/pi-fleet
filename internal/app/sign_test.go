@@ -129,7 +129,11 @@ func TestForgedSignaturesRejected(t *testing.T) {
 	}
 	// A signature by someone without the lease.
 	ev := r.write(e, mid, domain.TypeSignatureApplied, domain.EntitySignature, newID(), 0, "",
-		func() domain.SignatureApplied { p := good; p.SignerLegalName, p.SignerUsername = "Mona", "mona"; return p }())
+		func() domain.SignatureApplied {
+			p := good
+			p.SignerLegalName, p.SignerUsername = "Mona", "mona"
+			return p
+		}())
 	e.must(e.st.Ingest(e.ctx, ev))
 	if got := e.flags(ev); !reflect.DeepEqual(got, []string{"non_authorized/false"}) {
 		t.Fatalf("non-holder flags = %v", got)

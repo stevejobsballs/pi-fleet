@@ -33,6 +33,7 @@ const (
 	ConfigStateVersion    = "snapshot_state_version"
 	ConfigClockVerifiedAt = "clock_verified_at"
 	ConfigLastSync        = "last_sync"
+	ConfigAckedSeq        = "acked_seq"
 )
 
 // Errors a node may hit while syncing.
@@ -383,6 +384,9 @@ func (c *Client) pullSnapshot(ctx context.Context, centralPub ed25519.PublicKey)
 	}
 	snap, err := ApplySnapshot(ctx, c.Store, body, sig, centralPub, c.NodeID)
 	if err != nil {
+		return err
+	}
+	if err := c.Store.SetConfig(ctx, ConfigAckedSeq, fmt.Sprint(snap.AckedSeq)); err != nil {
 		return err
 	}
 	return c.Store.SetConfig(ctx, ConfigStateVersion, fmt.Sprint(snap.StateVersion))

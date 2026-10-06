@@ -1,0 +1,55 @@
+{{define "layout"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}} · pi-fleet</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="/">pi-fleet</a>
+  {{if .User.ID}}
+  <nav aria-label="Main">
+    <a href="/">Today</a>
+    <a href="/work-orders">Work orders</a>
+    <a href="/assets">Equipment</a>
+    <a href="/schedules">Schedules</a>
+    <a href="/inventory">Inventory</a>
+    {{if .IsMid}}<a href="/review">Review</a>{{end}}
+    {{if .IsSuper}}<a href="/admin/users">Users</a><a href="/admin/sites">Sites</a>{{if eq .Role "central"}}<a href="/admin/nodes">Pis</a>{{end}}{{end}}
+  </nav>
+  <div class="me">
+    <span>{{.User.LegalName}} · {{label .User.Role}}</span>
+    <a href="/password">Password</a>
+    <form method="post" action="/logout"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="link">Sign out</button></form>
+  </div>
+  {{end}}
+</header>
+{{if .User.ID}}
+<div class="status">
+  <span>{{if eq .Role "central"}}Master Pi{{else}}Employee Pi{{end}}</span>
+  {{with .Sync}}<span>Last sync: {{when .LastSync}}</span>{{if gt .Unsynced 0}}<span class="warn">{{.Unsynced}} record{{if ne .Unsynced 1}}s{{end}} not yet synced</span>{{end}}{{end}}
+  {{if eq .Clock "unverified"}}<span class="warn">Clock not verified: signatures will be flagged</span>{{end}}
+</div>
+{{end}}
+<main>
+  {{if .Flash}}<p class="flash" role="status">{{.Flash}}</p>{{end}}
+  <h1>{{.Title}}</h1>
+  {{template "content" .}}
+</main>
+{{if .PHIWarning}}<footer>Do not enter patient information. This system holds equipment records only.</footer>{{end}}
+</body>
+</html>{{end}}
+
+{{define "csrf"}}<input type="hidden" name="csrf" value="{{.}}">{{end}}
+{{define "nophi"}}<label class="check"><input type="checkbox" name="no_phi" value="yes"> I confirm this contains no patient information</label>{{end}}
+
+{{define "worows"}}
+{{if .}}
+<table><thead><tr><th>Number</th><th>Title</th><th>Equipment</th><th>Type</th><th>Priority</th><th>Status</th><th>Due</th><th>Assigned</th></tr></thead><tbody>
+{{range .}}<tr><td><a href="/work-orders/{{.ID}}">{{.Number}}</a></td><td>{{.Title}}</td><td>{{.Asset}}</td><td>{{.Type}}</td>
+  <td class="p-{{.Priority}}">{{.Priority}}</td><td>{{label .Status}}</td><td>{{.DueAt}}</td><td>{{.AssignedTo}}</td></tr>{{end}}
+</tbody></table>
+{{else}}<p>None.</p>{{end}}
+{{end}}

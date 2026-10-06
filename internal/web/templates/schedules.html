@@ -1,0 +1,16 @@
+{{define "content"}}
+{{if .Data.Rows}}<table><thead><tr><th>Equipment</th><th>Schedule</th><th>Type</th><th>Every</th><th>Grace</th><th>Next due</th><th>Outstanding</th><th>Status</th></tr></thead><tbody>
+{{range .Data.Rows}}<tr><td><a href="/assets/{{.AssetID}}">{{.Asset}}</a></td><td>{{.Title}}</td><td>{{.Type}}</td><td>{{.Interval}} days</td><td>{{.Grace}} days</td><td>{{.NextDue}}</td><td>{{.OpenWO}}</td><td>{{.Status}}</td></tr>{{end}}
+</tbody></table>{{else}}<p>No schedules on this Pi.</p>{{end}}
+{{if .IsMid}}<section><h2>New schedule</h2>
+<form method="post" action="/schedules" class="narrow">{{template "csrf" .CSRF}}
+  <label>Equipment <select name="asset">{{range .Data.Assets}}<option value="{{.ID}}">{{.Tag}} · {{.Manufacturer}} {{.Model}}</option>{{end}}</select></label>
+  <label>Generates <select name="type"><option>pm</option><option>calibration</option><option>inspection</option></select></label>
+  <label>Title <input name="title" required></label>
+  <label>Procedure <input name="procedure"></label>
+  <label>Every (days) <input name="interval" inputmode="numeric" required></label>
+  <label>Grace (days) <input name="grace" inputmode="numeric" value="0"></label>
+  <label>First due <input name="first_due" type="date" required></label>
+  <button>Create schedule</button>
+</form></section>{{end}}
+{{end}}

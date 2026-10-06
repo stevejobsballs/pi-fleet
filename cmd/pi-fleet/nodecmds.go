@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"pi-fleet/internal/fleetsync"
+	"pi-fleet/internal/web"
 )
 
 // ConfigCentralCA holds a PEM CA bundle for a central with a private cert.
@@ -190,4 +191,82 @@ func cmdSync(ctx context.Context, args []string, c *cli) error {
 		case <-time.After(wait):
 		}
 	}
+}
+
+// cmdRun serves the web interface on an employee Pi and keeps it synced.
+func cmdRun(ctx context.Context, args []string, c *cli) error {
+	var listen *string
+	var every *time.Duration
+	_, data, err := parse("run", args, func(fs *flag.FlagSet) {
+		listen = fs.String("listen", "127.0.0.1:8080", "address for the web interface (localhost by default; see DESIGN.md §10)")
+		every = fs.Duration("every", 5*time.Minute, "sync interval")
+	})
+	if err != nil {
+		return err
+	}
+	n, err := openNode(ctx, *data)
+	if err != nil {
+		return err
+	}
+	defer n.Close()
+	a, err := n.app(ctx)
+	if err != nil {
+		return err
+	}
+	cl, err := n.client(ctx, "")
+	if err != nil {
+		return err
+	}
+	cfg := func(key string) func(context.Context) string {
+		return func(ctx context.Context) string { v, _ := n.store.Config(ctx, key); return v }
+	}
+	ui, err := (&web.Server{
+		App: a, Role: "node", PHIPatterns: web.DefaultPHIPatterns,
+		Sync: web.NodeSyncInfo(n.store.DB(), n.local.ChainID, cfg(fleetsync.ConfigLastSync), cfg(fleetsync.ConfigAckedSeq)),
+	}).Handler()
+	if err != nil {
+		return err
+	}
+	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	go func() { // background sync with backoff
+		backoff := 30 * time.Second
+		for {
+			wait := *every
+			r, err := cl.Sync(ctx)
+			switch {
+			case errors.Is(err, fleetsync.ErrRevoked):
+				log.Printf("sync: %v", err)
+				stop()
+				return
+			case err != nil:
+				log.Printf("sync: %v (retrying in %s)", err, backoff)
+				wait, backoff = backoff, min(backoff*2, 30*time.Minute)
+			default:
+				backoff = 30 * time.Second
+				if r.Pushed > 0 || r.SnapshotLoaded {
+					log.Printf("sync: pushed %d (flagged %d), snapshot %v", r.Pushed, r.Flagged, r.SnapshotLoaded)
+				}
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(wait):
+			}
+		}
+	}()
+
+	srv := &http.Server{Addr: *listen, Handler: ui, ReadHeaderTimeout: 10 * time.Second}
+	go func() {
+		<-ctx.Done()
+		shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		srv.Shutdown(shutdown)
+	}()
+	c.printf("pi-fleet %s: open http://%s in a browser on this Pi\n", version, *listen)
+	if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+		return err
+	}
+	return nil
 }

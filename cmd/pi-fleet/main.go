@@ -42,7 +42,7 @@ any Pi:
 master Pi (central):
   bootstrap          create the first super user (prompts for a password)
   user-create        create an account and print its one-time password
-  serve              run the sync API over HTTPS and the PM scheduler
+  serve              run the web interface and sync API over HTTPS, and the PM scheduler
   nodes              list Pis and their status
   node-confirm       confirm a pending Pi after checking its pairing words
   node-reject        reject a pending Pi
@@ -52,6 +52,7 @@ employee Pi (node):
   activate           activate this Pi with the one-time password from a super user
   activation-status  check whether a super user has confirmed this Pi
   sync               sync with the master Pi once, or repeatedly with -every
+  run                serve the web interface on this Pi and sync in the background
 `
 
 // passwordParams is replaced in tests to keep them fast.
@@ -72,7 +73,7 @@ func run(ctx context.Context, args []string, stdin io.Reader, out io.Writer) err
 	cmds := map[string]func(context.Context, []string, *cli) error{
 		"init": cmdInit, "bootstrap": cmdBootstrap, "verify": cmdVerify, "rebuild": cmdRebuild,
 		"serve": cmdServe, "nodes": cmdNodes, "node-confirm": cmdNodeConfirm, "node-reject": cmdNodeReject,
-		"node-revoke": cmdNodeRevoke, "user-create": cmdUserCreate, "activate": cmdActivate, "activation-status": cmdActivationStatus, "sync": cmdSync,
+		"node-revoke": cmdNodeRevoke, "user-create": cmdUserCreate, "run": cmdRun, "activate": cmdActivate, "activation-status": cmdActivationStatus, "sync": cmdSync,
 	}
 	c := &cli{stdin: stdin, out: out}
 	switch cmd := args[0]; cmd {
