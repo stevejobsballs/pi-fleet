@@ -43,13 +43,30 @@ type Projector struct {
 	// console and reaches nodes in their working sets.
 	LocalNodeID   string
 	CentralNodeID string
+	// BlockOverdueStandards rejects calibrations that used a reference
+	// standard past its own calibration due date. When false (default)
+	// they are accepted and flagged standard_overdue for review.
+	BlockOverdueStandards bool
+}
+
+// isCentral reports whether e was authored on the master Pi. A
+// standalone installation with no central configured is its own central.
+func (p *Projector) isCentral(e *event.Event) bool {
+	if p.CentralNodeID == "" {
+		return e.NodeID == p.LocalNodeID
+	}
+	return e.NodeID == p.CentralNodeID
 }
 
 var _ store.Applier = (*Projector)(nil)
 
 // Reset empties every projection table.
 func (p *Projector) Reset(ctx context.Context, tx *sql.Tx) error {
-	for _, t := range []string{"wo_leases", "work_orders", "assets", "locations", "sites", "user_password_history", "users"} {
+	for _, t := range []string{
+		"cal_standards", "cal_points", "calibration_records", "stock_txns", "stock_levels", "stock_locations", "parts",
+		"wo_leases", "work_orders", "pm_schedules", "assets", "locations", "sites",
+		"user_lockouts", "user_password_history", "users",
+	} {
 		if _, err := tx.ExecContext(ctx, `DELETE FROM `+t); err != nil {
 			return err
 		}
@@ -80,7 +97,7 @@ func (p *Projector) Apply(ctx context.Context, tx *sql.Tx, e *event.Event) error
 	if a.mustChange && e.Type != TypeUserPasswordChanged {
 		return store.Reject(FlagNotAuthorized, "user %s must change their password first", a.id)
 	}
-	ap := applier{ctx: ctx, tx: tx, e: e, actor: a}
+	ap := applier{ctx: ctx, tx: tx, e: e, actor: a, p: p}
 	switch pl := v.(type) {
 	case *SiteCreated:
 		return ap.siteCreated(pl)
@@ -112,6 +129,28 @@ func (p *Projector) Apply(ctx context.Context, tx *sql.Tx, e *event.Event) error
 		return ap.workOrderClaimed(pl)
 	case *WorkOrderStatusChanged:
 		return ap.workOrderStatusChanged(pl)
+	case *UserLocked:
+		return ap.userLocked(pl)
+	case *UserUnlocked:
+		return ap.userUnlocked(pl)
+	case *CalibrationRecorded:
+		return ap.calibrationRecorded(pl)
+	case *CalibrationVoided:
+		return ap.calibrationVoided(pl)
+	case *PMScheduleCreated:
+		return ap.scheduleCreated(pl)
+	case *PMScheduleChanged:
+		return ap.scheduleChanged(pl)
+	case *PMScheduleEnded:
+		return ap.scheduleEnded(pl)
+	case *PartCreated:
+		return ap.partCreated(pl)
+	case *StockLocationCreated:
+		return ap.stockLocationCreated(pl)
+	case *StockTxnRecorded:
+		return ap.stockTxnRecorded(pl)
+	case *StockTxnReversed:
+		return ap.stockTxnReversed(pl)
 	}
 	return fmt.Errorf("domain: no handler for %T", v)
 }
@@ -194,9 +233,13 @@ func (a actorInfo) atLeast(role string) bool { return a.system || roleRank[a.rol
 
 func (p *Projector) actor(ctx context.Context, tx *sql.Tx, e *event.Event) (actorInfo, error) {
 	if strings.HasPrefix(e.ActorUserID, "system:") {
+		// Each system actor may author exactly one event type. Console
+		// and scheduler events must come from this node or central;
+		// lockouts may come from any node, since logins fail offline.
 		trusted := e.NodeID == p.LocalNodeID || (p.CentralNodeID != "" && e.NodeID == p.CentralNodeID)
-		if e.ActorUserID != SystemConsole || !trusted {
-			return actorInfo{}, store.Reject(FlagNotAuthorized, "system actor %s not allowed for node %s", e.ActorUserID, e.NodeID)
+		allowed, known := systemActorTypes[e.ActorUserID]
+		if !known || allowed != e.Type || (e.ActorUserID != SystemAuth && !trusted) {
+			return actorInfo{}, store.Reject(FlagNotAuthorized, "system actor %s may not author %s from node %s", e.ActorUserID, e.Type, e.NodeID)
 		}
 		return actorInfo{id: e.ActorUserID, system: true}, nil
 	}
@@ -222,6 +265,7 @@ type applier struct {
 	tx    *sql.Tx
 	e     *event.Event
 	actor actorInfo
+	p     *Projector
 }
 
 func (ap *applier) exec(query string, args ...any) error {
@@ -692,11 +736,19 @@ func (ap *applier) workOrderOpened(p *WorkOrderOpened) error {
 	if ok, err := ap.exists(`SELECT 1 FROM work_orders WHERE number = ?`, p.Number); err != nil || ok {
 		return orConflict(err, "work order number %s already exists", p.Number)
 	}
+	if ap.actor.id == SystemScheduler && p.ScheduleID == "" {
+		return store.Reject(FlagNotAuthorized, "the scheduler may only open scheduled work orders")
+	}
+	if p.ScheduleID != "" {
+		if err := ap.linkSchedule(p); err != nil {
+			return err
+		}
+	}
 	return ap.exec(`INSERT INTO work_orders (id, number, type, asset_id, priority, status, title, problem, due_at,
-			opened_by, assigned_to, lease_id, version, last_event_id)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', '', 1, ?)`,
+			opened_by, assigned_to, lease_id, schedule_id, version, last_event_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', '', ?, 1, ?)`,
 		ap.e.EntityID, p.Number, p.Type, p.AssetID, p.Priority, WOOpen, p.Title, p.Problem, p.DueAt,
-		ap.actor.id, ap.e.EventID)
+		ap.actor.id, p.ScheduleID, ap.e.EventID)
 }
 
 func parseDue(s string) (time.Time, error) {
@@ -839,6 +891,14 @@ func (ap *applier) workOrderStatusChanged(p *WorkOrderStatusChanged) error {
 	}
 	if t.twoPersonRev && ap.actor.id == w.AssignedTo {
 		return store.Reject(FlagNotAuthorized, "the reviewer must be a different user from the performer")
+	}
+	if p.To == WOCompleted {
+		if err := ap.checkCompletion(w); err != nil {
+			return err
+		}
+	}
+	if err := ap.scheduleFollowsWorkOrder(w, p.To); err != nil {
+		return err
 	}
 	if t.endsLease {
 		if err := ap.endLease(w); err != nil {

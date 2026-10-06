@@ -27,7 +27,15 @@ var (
 	ErrTemporaryExpired   = errors.New("app: one-time password has expired; ask a super user for a new one")
 	ErrAlreadyBootstrap   = errors.New("app: users already exist; the console bootstrap can only create the first super user")
 	ErrNotLeaseHolder     = errors.New("app: you do not hold this work order")
+	ErrLocked             = errors.New("app: account is locked; try again later or ask a super user")
 )
+
+// MaxFailedLogins is how many wrong passwords in a row lock an account
+// (DESIGN.md §6.5).
+const MaxFailedLogins = 5
+
+// auth is the actor that records lockouts.
+var auth = Actor{UserID: domain.SystemAuth, SessionID: "auth"}
 
 // App runs commands as one node.
 type App struct {
@@ -224,7 +232,9 @@ var dummy, _ = password.Hash("pi-fleet-dummy-password", password.Params{Time: 1,
 // Authenticate checks a username and password. If the password must be
 // changed (one-time password, or expired after 31 days) it returns the
 // user together with ErrMustChangePassword: the session may then only be
-// used to change the password.
+// used to change the password. Five wrong passwords in a row lock the
+// account for 15 minutes; three lockouts in 24 hours lock it until a
+// super user unlocks it.
 func (a *App) Authenticate(ctx context.Context, username, pw string) (domain.User, error) {
 	u, err := domain.GetUserByUsername(ctx, a.Store.DB(), username)
 	if errors.Is(err, domain.ErrNotFound) {
@@ -234,13 +244,48 @@ func (a *App) Authenticate(ctx context.Context, username, pw string) (domain.Use
 	if err != nil {
 		return domain.User{}, err
 	}
-	if err := a.checkPassword(u, pw); err != nil {
-		if errors.Is(err, ErrMustChangePassword) {
-			return u, err
+	err = a.checkPassword(u, pw)
+	if u.Locked(a.now()) {
+		return domain.User{}, ErrLocked
+	}
+	switch {
+	case errors.Is(err, ErrBadCredentials):
+		if lerr := a.recordFailure(ctx, u); lerr != nil {
+			return domain.User{}, errors.Join(err, lerr)
 		}
 		return domain.User{}, err
+	case err != nil && !errors.Is(err, ErrMustChangePassword):
+		return domain.User{}, err
+	}
+	if cerr := a.Store.Update(ctx, func(tx *store.Tx) error {
+		_, err := tx.ExecContext(ctx, `DELETE FROM login_failures WHERE username = ?`, u.Username)
+		return err
+	}); cerr != nil {
+		return domain.User{}, cerr
+	}
+	if err != nil {
+		return u, err
 	}
 	return u, nil
+}
+
+// recordFailure counts a failed login on this device and locks the
+// account at MaxFailedLogins.
+func (a *App) recordFailure(ctx context.Context, u domain.User) error {
+	return a.Store.Update(ctx, func(tx *store.Tx) error {
+		var n int
+		err := tx.QueryRowContext(ctx, `INSERT INTO login_failures (username, failures, last_failure_at) VALUES (?, 1, ?)
+			ON CONFLICT (username) DO UPDATE SET failures = failures + 1, last_failure_at = excluded.last_failure_at
+			RETURNING failures`, u.Username, a.now().UTC().Format(time.RFC3339)).Scan(&n)
+		if err != nil || n < MaxFailedLogins {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM login_failures WHERE username = ?`, u.Username); err != nil {
+			return err
+		}
+		return a.emit(ctx, tx, auth, domain.TypeUserLocked, domain.EntityUser, u.ID, 0, "",
+			domain.UserLocked{FailedAttempts: n, Reason: "too many failed logins"})
+	})
 }
 
 func (a *App) checkPassword(u domain.User, pw string) error {
@@ -325,6 +370,8 @@ type NewWorkOrder struct {
 	Title    string
 	Problem  string
 	DueAt    string
+
+	scheduleID string // set by the scheduler
 }
 
 // NodeShortCode is a short code for a node used in human-facing numbers
@@ -353,7 +400,7 @@ func (a *App) OpenWorkOrder(ctx context.Context, actor Actor, w NewWorkOrder) (i
 		number = fmt.Sprintf("%s%05d", prefix, n+1)
 		return a.emit(ctx, tx, actor, domain.TypeWorkOrderOpened, domain.EntityWorkOrder, id, 0, "", domain.WorkOrderOpened{
 			Number: number, Type: w.Type, AssetID: w.AssetID, Priority: w.Priority,
-			Title: w.Title, Problem: w.Problem, DueAt: w.DueAt,
+			Title: w.Title, Problem: w.Problem, DueAt: w.DueAt, ScheduleID: w.scheduleID,
 		})
 	})
 	return id, number, err

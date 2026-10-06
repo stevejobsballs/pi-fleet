@@ -26,6 +26,7 @@ type env struct {
 	t     *testing.T
 	ctx   context.Context
 	now   time.Time
+	path  string
 	st    *store.Store
 	app   *App
 	super Actor
@@ -53,7 +54,8 @@ func newEnv(t *testing.T) *env {
 	e := &env{t: t, ctx: context.Background(), now: time.Date(2026, 10, 6, 9, 0, 0, 0, time.UTC)}
 	clock := func() time.Time { return e.now }
 	author, pub := newAuthor(t, clock)
-	st, err := store.Open(filepath.Join(t.TempDir(), "central.db"), store.WithApplier(&domain.Projector{LocalNodeID: author.NodeID}))
+	e.path = filepath.Join(t.TempDir(), "central.db")
+	st, err := store.Open(e.path, store.WithApplier(&domain.Projector{LocalNodeID: author.NodeID}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,6 +77,15 @@ func newEnv(t *testing.T) *env {
 	e.site = e.must2(e.app.CreateSite(e.ctx, e.super, "NYC", "New York", "America/New_York"))
 	e.loc = e.must2(e.app.CreateLocation(e.ctx, e.super, e.site, "", "Biomed shop", "room"))
 	return e
+}
+
+// reopen reopens the database with a different projector configuration.
+func (e *env) reopen(p *domain.Projector) {
+	e.t.Helper()
+	st, err := store.Open(e.path, store.WithApplier(p))
+	e.must(err)
+	e.t.Cleanup(func() { st.Close() })
+	e.st, e.app.Store = st, st
 }
 
 func (e *env) must(err error) {
@@ -354,7 +365,7 @@ func TestWorkOrderLifecycle(t *testing.T) {
 	mid := e.activeUser("mona", domain.RoleMidTier)
 	tech := e.activeUser("tess", domain.RoleUser)
 	other := e.activeUser("otto", domain.RoleUser)
-	woID, _, err := e.app.OpenWorkOrder(e.ctx, mid, NewWorkOrder{Type: "calibration", AssetID: e.asset("A1"), Priority: "normal", Title: "Annual cal", DueAt: "2026-11-01"})
+	woID, _, err := e.app.OpenWorkOrder(e.ctx, mid, NewWorkOrder{Type: "pm", AssetID: e.asset("A1"), Priority: "normal", Title: "Annual PM", DueAt: "2026-11-01"})
 	e.must(err)
 	_, _, err = e.app.OpenWorkOrder(e.ctx, tech, NewWorkOrder{Type: "pm", AssetID: e.asset("A2"), Priority: "normal", Title: "PM"})
 	wantRejection(t, err, domain.FlagNotAuthorized)
@@ -437,7 +448,9 @@ func TestSystemActorOnlyFromLocalNode(t *testing.T) {
 func snapshot(t *testing.T, db *sql.DB) map[string][]string {
 	t.Helper()
 	out := map[string][]string{}
-	for _, table := range []string{"users", "user_password_history", "sites", "locations", "assets", "work_orders", "wo_leases", "event_flags"} {
+	for _, table := range []string{"users", "user_password_history", "user_lockouts", "sites", "locations", "assets",
+		"work_orders", "wo_leases", "pm_schedules", "calibration_records", "cal_points", "cal_standards",
+		"parts", "stock_locations", "stock_txns", "stock_levels", "event_flags"} {
 		rows, err := db.Query(`SELECT * FROM ` + table + ` ORDER BY 1, 2`)
 		if err != nil {
 			t.Fatal(err)
@@ -464,7 +477,8 @@ func TestRebuildMatchesLiveProjections(t *testing.T) {
 	// Exercise a bit of everything, including flagged ingests.
 	e.TestScenario()
 	before := snapshot(t, e.st.DB())
-	for _, table := range []string{"users", "assets", "work_orders", "wo_leases", "event_flags"} {
+	for _, table := range []string{"users", "assets", "work_orders", "wo_leases", "event_flags", "pm_schedules",
+		"calibration_records", "cal_points", "cal_standards", "stock_txns", "stock_levels", "user_lockouts"} {
 		if len(before[table]) == 0 {
 			t.Fatalf("scenario left %s empty; the comparison would prove nothing", table)
 		}
@@ -500,6 +514,32 @@ func (e *env) TestScenario() {
 	e.must(err)
 	e.must(e.st.Ingest(e.ctx, claim)) // flagged duplicate_work
 	e.must(e.app.ChangeWorkOrderStatus(e.ctx, tech, woID, domain.WOInProgress, ""))
+
+	// Calibration against a scheduled standard, completed.
+	std := e.must2(e.app.RegisterAsset(e.ctx, e.super, domain.AssetRegistered{Tag: "STD", LocationID: e.loc, Manufacturer: "F", Model: "S", IsReferenceStandard: true}))
+	e.must2(e.app.CreateSchedule(e.ctx, mid, domain.PMScheduleCreated{AssetID: std, WOType: "calibration", Title: "Cal", IntervalDays: 365, FirstDue: "2026-10-10"}))
+	numbers, err := e.app.GenerateDueWorkOrders(e.ctx, WorkingSetWindow)
+	e.must(err)
+	if len(numbers) != 1 {
+		e.t.Fatalf("generated %v", numbers)
+	}
+	calWO := e.openHeld(mid, tech, "calibration", id)
+	_, err = e.app.RecordCalibration(e.ctx, tech, calibration(calWO, []string{std}, true, voltage("125", "120.2"), withAsLeft(leakage("10"), "8")))
+	e.must(err)
+	e.must(e.app.ChangeWorkOrderStatus(e.ctx, tech, calWO, domain.WOCompleted, ""))
+
+	// Stock, including a count and a reversal.
+	part := e.must2(e.app.CreatePart(e.ctx, mid, domain.PartCreated{PartNo: "P1", Description: "Part", Unit: "each"}))
+	shop := e.must2(e.app.CreateStockLocation(e.ctx, mid, domain.StockLocationCreated{SiteID: e.site, Name: "Shop"}))
+	e.must2(e.app.RecordStock(e.ctx, tech, domain.StockTxnRecorded{Kind: domain.StockReceive, PartID: part, StockLocationID: shop, Quantity: 5}))
+	txn := e.must2(e.app.RecordStock(e.ctx, tech, domain.StockTxnRecorded{Kind: domain.StockIssue, PartID: part, StockLocationID: shop, Quantity: 2, WorkOrderID: woID}))
+	e.must2(e.app.RecordStock(e.ctx, tech, domain.StockTxnRecorded{Kind: domain.StockCount, PartID: part, StockLocationID: shop, ObservedQty: ptr[int64](2)}))
+	e.must(e.app.ReverseStock(e.ctx, mid, txn, "wrong part"))
+
+	// A lockout.
+	for i := 0; i < MaxFailedLogins; i++ {
+		e.app.Authenticate(e.ctx, "tom", "wrong-password")
+	}
 }
 
 func TestRedactionKeepsProjectionsRebuildable(t *testing.T) {
@@ -536,4 +576,9 @@ func TestRedactionKeepsProjectionsRebuildable(t *testing.T) {
 	if !rep.OK() || rep.Redacted != 1 {
 		t.Fatalf("verify after redaction = %+v", rep)
 	}
+}
+
+func withAsLeft(p domain.CalPoint, asLeft string) domain.CalPoint {
+	p.AsLeft = asLeft
+	return p
 }

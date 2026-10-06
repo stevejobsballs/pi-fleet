@@ -30,6 +30,21 @@ const (
 	TypeWorkOrderAssigned      = "workorder.assigned"
 	TypeWorkOrderClaimed       = "workorder.claimed"
 	TypeWorkOrderStatusChanged = "workorder.status_changed"
+
+	TypeUserLocked   = "user.locked"
+	TypeUserUnlocked = "user.unlocked"
+
+	TypeCalibrationRecorded = "calibration.recorded"
+	TypeCalibrationVoided   = "calibration.voided"
+
+	TypePMScheduleCreated = "pm_schedule.created"
+	TypePMScheduleChanged = "pm_schedule.changed"
+	TypePMScheduleEnded   = "pm_schedule.ended"
+
+	TypePartCreated          = "part.created"
+	TypeStockLocationCreated = "stock_location.created"
+	TypeStockTxnRecorded     = "stock.txn_recorded"
+	TypeStockTxnReversed     = "stock.txn_reversed"
 )
 
 // Entity types.
@@ -39,6 +54,11 @@ const (
 	EntityUser      = "user"
 	EntityAsset     = "asset"
 	EntityWorkOrder = "work_order"
+	EntityCalRecord = "calibration_record"
+	EntitySchedule  = "pm_schedule"
+	EntityPart      = "part"
+	EntityStockLoc  = "stock_location"
+	EntityStockTxn  = "stock_txn"
 )
 
 // Roles (decision D10). Each includes the permissions of those below it.
@@ -79,9 +99,21 @@ const (
 	WOCancelled  = "cancelled"
 )
 
-// SystemConsole is the actor for bootstrap commands run on the device's
-// own console (DESIGN.md §6.5: the first super user).
-const SystemConsole = "system:console"
+// System actors, and the only event types each may author.
+const (
+	// SystemConsole bootstraps the first super user at a console.
+	SystemConsole = "system:console"
+	// SystemScheduler opens work orders from PM schedules (on central).
+	SystemScheduler = "system:scheduler"
+	// SystemAuth locks accounts after repeated failed logins, on any node.
+	SystemAuth = "system:auth"
+)
+
+var systemActorTypes = map[string]string{
+	SystemConsole:   TypeUserCreated,
+	SystemScheduler: TypeWorkOrderOpened,
+	SystemAuth:      TypeUserLocked,
+}
 
 type SiteCreated struct {
 	Code     string `json:"code"`
@@ -185,6 +217,8 @@ type WorkOrderOpened struct {
 	Title    string `json:"title"`
 	Problem  string `json:"problem"`
 	DueAt    string `json:"due_at,omitempty"` // RFC 3339 date or time
+	// ScheduleID links a work order generated from a PM schedule.
+	ScheduleID string `json:"schedule_id,omitempty"`
 }
 
 // WorkOrderAssigned grants a new lease to the assignee and ends any
@@ -204,6 +238,118 @@ type WorkOrderStatusChanged struct {
 	From   string `json:"from"`
 	To     string `json:"to"`
 	Reason string `json:"reason,omitempty"`
+}
+
+// UserLocked locks an account after repeated failed logins (DESIGN.md
+// §6.5). The lock lasts 15 minutes, or until a super user unlocks it
+// after three lockouts in 24 hours.
+type UserLocked struct {
+	FailedAttempts int    `json:"failed_attempts"`
+	Reason         string `json:"reason"`
+}
+
+type UserUnlocked struct {
+	Reason string `json:"reason"`
+}
+
+// CalPoint is one measured calibration point. Readings are decimal
+// strings. AsLeft is empty when the instrument was not adjusted. The
+// pass flags are the authoring node's computation; central recomputes.
+type CalPoint struct {
+	Parameter   string    `json:"parameter"`
+	Unit        string    `json:"unit"`
+	Nominal     string    `json:"nominal"`
+	Tolerance   Tolerance `json:"tolerance"`
+	AsFound     string    `json:"as_found"`
+	AsLeft      string    `json:"as_left,omitempty"`
+	AsFoundPass bool      `json:"as_found_pass"`
+	AsLeftPass  bool      `json:"as_left_pass"`
+}
+
+// CalibrationRecorded is a calibration performed under a calibration
+// work order's lease.
+type CalibrationRecorded struct {
+	WorkOrderID       string     `json:"work_order_id"`
+	Procedure         string     `json:"procedure"`
+	Temperature       string     `json:"temperature,omitempty"` // °C, decimal
+	Humidity          string     `json:"humidity,omitempty"`    // %RH, decimal
+	Adjusted          bool       `json:"adjusted"`
+	Points            []CalPoint `json:"points"`
+	StandardsUsed     []string   `json:"standards_used"` // reference standard asset ids
+	AsFoundResult     string     `json:"as_found_result"`
+	AsLeftResult      string     `json:"as_left_result"`
+	CertificateSHA256 string     `json:"certificate_sha256,omitempty"`
+}
+
+type CalibrationVoided struct {
+	Reason string `json:"reason"`
+}
+
+type PMScheduleCreated struct {
+	AssetID      string `json:"asset_id"`
+	WOType       string `json:"wo_type"` // pm, calibration or inspection
+	Title        string `json:"title"`
+	Procedure    string `json:"procedure"`
+	IntervalDays int    `json:"interval_days"`
+	GraceDays    int    `json:"grace_days"`
+	FirstDue     string `json:"first_due"` // YYYY-MM-DD
+}
+
+type PMScheduleChanged struct {
+	Title        *string `json:"title,omitempty"`
+	Procedure    *string `json:"procedure,omitempty"`
+	IntervalDays *int    `json:"interval_days,omitempty"`
+	GraceDays    *int    `json:"grace_days,omitempty"`
+	NextDue      *string `json:"next_due,omitempty"`
+	Reason       string  `json:"reason"`
+}
+
+type PMScheduleEnded struct {
+	Reason string `json:"reason"`
+}
+
+type PartCreated struct {
+	PartNo      string `json:"part_no"`
+	Description string `json:"description"`
+	Unit        string `json:"unit"`
+}
+
+// StockLocationCreated makes a shared stockroom, or a personal kit or van
+// when OwnerUserID is set.
+type StockLocationCreated struct {
+	SiteID      string `json:"site_id"`
+	Name        string `json:"name"`
+	OwnerUserID string `json:"owner_user_id,omitempty"`
+}
+
+// Stock transaction kinds.
+const (
+	StockReceive  = "receive"
+	StockIssue    = "issue"
+	StockReturn   = "return"
+	StockAdjust   = "adjust"
+	StockTransfer = "transfer"
+	StockCount    = "count"
+)
+
+// StockTxnRecorded is one ledger entry (DESIGN.md §4.1: ledgers, not
+// balances). Quantity is a positive amount, except for adjust where it is
+// the signed change. A count carries ObservedQty instead, and the delta
+// is computed against the ledger when the count is applied.
+type StockTxnRecorded struct {
+	Kind            string `json:"kind"`
+	PartID          string `json:"part_id"`
+	StockLocationID string `json:"stock_location_id"`
+	ToLocationID    string `json:"to_location_id,omitempty"` // transfer
+	Quantity        int64  `json:"quantity,omitempty"`
+	ObservedQty     *int64 `json:"observed_qty,omitempty"` // count
+	WorkOrderID     string `json:"work_order_id,omitempty"`
+	Reason          string `json:"reason,omitempty"`
+}
+
+// StockTxnReversed cancels a ledger entry by adding its negation.
+type StockTxnReversed struct {
+	Reason string `json:"reason"`
 }
 
 // payloadTypes maps each event type to its entity type and a constructor
@@ -227,6 +373,17 @@ var payloadTypes = map[string]struct {
 	TypeWorkOrderAssigned:      {EntityWorkOrder, func() any { return &WorkOrderAssigned{} }},
 	TypeWorkOrderClaimed:       {EntityWorkOrder, func() any { return &WorkOrderClaimed{} }},
 	TypeWorkOrderStatusChanged: {EntityWorkOrder, func() any { return &WorkOrderStatusChanged{} }},
+	TypeUserLocked:             {EntityUser, func() any { return &UserLocked{} }},
+	TypeUserUnlocked:           {EntityUser, func() any { return &UserUnlocked{} }},
+	TypeCalibrationRecorded:    {EntityCalRecord, func() any { return &CalibrationRecorded{} }},
+	TypeCalibrationVoided:      {EntityCalRecord, func() any { return &CalibrationVoided{} }},
+	TypePMScheduleCreated:      {EntitySchedule, func() any { return &PMScheduleCreated{} }},
+	TypePMScheduleChanged:      {EntitySchedule, func() any { return &PMScheduleChanged{} }},
+	TypePMScheduleEnded:        {EntitySchedule, func() any { return &PMScheduleEnded{} }},
+	TypePartCreated:            {EntityPart, func() any { return &PartCreated{} }},
+	TypeStockLocationCreated:   {EntityStockLoc, func() any { return &StockLocationCreated{} }},
+	TypeStockTxnRecorded:       {EntityStockTxn, func() any { return &StockTxnRecorded{} }},
+	TypeStockTxnReversed:       {EntityStockTxn, func() any { return &StockTxnReversed{} }},
 }
 
 // decode strictly parses a payload: unknown fields and trailing data are

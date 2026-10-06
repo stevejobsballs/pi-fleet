@@ -374,7 +374,7 @@ erDiagram
 | `manufacturer`, `model` | C | | Shared catalog |
 | `asset` | C | id, tag (the physical asset tag, unique fleet-wide; a duplicate is a conflict), manufacturer and model (text in v1; a shared `model` catalog comes later), serial, location_id (implies site), status (`in_service`, `out_of_service`, `retired`, `missing`), risk_class, is_reference_standard, custom fields (schema-checked JSON) | Field edits from nodes are merged by central (§5.4). Moving an asset to another site is a relocation. No two-phase transfer is needed because central holds authority. |
 | `procedure_version` | C | title, steps[] (check / numeric-with-limits / text / photo), published_at | Immutable once published |
-| `pm_schedule` | C | asset_id, procedure_version_id, trigger (calendar interval and/or meter threshold), grace window, next_due (projection) | Central generates WOs. |
+| `pm_schedule` | C | asset_id, wo_type (pm / calibration / inspection), procedure, interval_days, grace_days, next_due (projection), open_wo_id | Central's `system:scheduler` opens a WO for each schedule due within 31 days that has none outstanding. Completing it sets next_due = completion date (site time zone) + interval; cancelling it lets the scheduler regenerate. Meter-based triggers come later. |
 | `work_order` | C to create/assign, **L** to perform | id, number, type (`pm`, `corrective`, `calibration`, `inspection`, `install`, `retire`), asset_id, priority, status, problem, findings, resolution, due_at, assigned_to | §4.5 |
 | `wo_lease` | C | wo_id, node_id, user_id, granted_at, ended_at, end_reason | One active lease per WO (§5.4) |
 | `checklist_result` | A (under lease) | wo_id, step_id, value, pass/fail, recorded_by | |
@@ -400,16 +400,17 @@ history.
   `workorder.lease_granted`,
   `workorder.lease_ended`, `workorder.status_changed`,
   `workorder.step_recorded`, `workorder.amended`, `workorder.voided`
-- `calibration.recorded`, `calibration.amended`, `calibration.voided`
+- `calibration.recorded`, `calibration.voided` (a correction is a void with a reason plus a new record; at most one valid record per WO)
 - `signature.applied`, `signature.withdrawn` (withdrawal is a new event, and
   the original stays visible)
 - `pm_schedule.created`, `pm_schedule.changed`, `pm_schedule.ended`
 - `procedure.published`, `procedure.retired`
-- `stock.txn_recorded`, `stock.txn_reversed`, `meter.read`, `labor.logged`,
+- `part.created`, `stock_location.created`, `stock.txn_recorded`, `stock.txn_reversed`, `meter.read`, `labor.logged`,
   `labor.reversed`
 - `attachment.added`, `attachment.detached`
 - `user.created`, `user.role_changed`,
   `user.password_changed` (new salt-bound verifier only, never plaintext),
+  `user.locked` (authored by `system:auth` on any node), `user.unlocked`,
   `user.password_reset` (by super user), `user.password_expired`,
   `user.locked`, `user.unlocked`, `user.disabled`
 - `kiosk_group.created`, `kiosk_group.member_added`,

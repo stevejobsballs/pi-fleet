@@ -32,20 +32,24 @@ type User struct {
 	MustChangePassword bool
 	PasswordChangedAt  time.Time
 	PasswordExpiresAt  time.Time
+	LockedUntil        time.Time // zero when not locked
 	Version            int64
 }
+
+// Locked reports whether the account is locked at now.
+func (u User) Locked(now time.Time) bool { return now.Before(u.LockedUntil) }
 
 // PasswordExpired reports whether the password has expired at now.
 func (u User) PasswordExpired(now time.Time) bool { return !now.Before(u.PasswordExpiresAt) }
 
 const userColumns = `id, username, legal_name, email, role, status, home_sites, verifier,
-	must_change_password, password_changed_at, password_expires_at, version`
+	must_change_password, password_changed_at, password_expires_at, locked_until, version`
 
 func scanUser(row interface{ Scan(...any) error }) (User, error) {
 	var u User
-	var sites, changed, expires string
+	var sites, changed, expires, locked string
 	err := row.Scan(&u.ID, &u.Username, &u.LegalName, &u.Email, &u.Role, &u.Status, &sites, &u.Verifier,
-		&u.MustChangePassword, &changed, &expires, &u.Version)
+		&u.MustChangePassword, &changed, &expires, &locked, &u.Version)
 	if errors.Is(err, sql.ErrNoRows) {
 		return User{}, ErrNotFound
 	}
@@ -60,6 +64,11 @@ func scanUser(row interface{ Scan(...any) error }) (User, error) {
 	}
 	if u.PasswordExpiresAt, err = time.Parse(time.RFC3339, expires); err != nil {
 		return User{}, err
+	}
+	if locked != "" {
+		if u.LockedUntil, err = time.Parse(time.RFC3339, locked); err != nil {
+			return User{}, err
+		}
 	}
 	return u, nil
 }
@@ -172,6 +181,7 @@ type WorkOrder struct {
 	OpenedBy   string
 	AssignedTo string
 	LeaseID    string
+	ScheduleID string
 	Version    int64
 }
 
@@ -179,9 +189,9 @@ type WorkOrder struct {
 func GetWorkOrder(ctx context.Context, q Querier, id string) (WorkOrder, error) {
 	var w WorkOrder
 	err := q.QueryRowContext(ctx, `SELECT id, number, type, asset_id, priority, status, title, problem, due_at,
-		opened_by, assigned_to, lease_id, version FROM work_orders WHERE id = ?`, id).
+		opened_by, assigned_to, lease_id, schedule_id, version FROM work_orders WHERE id = ?`, id).
 		Scan(&w.ID, &w.Number, &w.Type, &w.AssetID, &w.Priority, &w.Status, &w.Title, &w.Problem, &w.DueAt,
-			&w.OpenedBy, &w.AssignedTo, &w.LeaseID, &w.Version)
+			&w.OpenedBy, &w.AssignedTo, &w.LeaseID, &w.ScheduleID, &w.Version)
 	if errors.Is(err, sql.ErrNoRows) {
 		return WorkOrder{}, ErrNotFound
 	}
