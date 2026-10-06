@@ -1,0 +1,11 @@
+{{define "content"}}
+<p class="hint">Live from the master Pi. Nothing here is stored on this Pi.</p>
+<form method="get" action="/fleet/assets" class="inline"><label>Search all sites <input name="q" value="{{.Data.Search}}" type="search"></label><button>Search</button></form>
+{{with .Data.Error}}<p class="error" role="alert">{{.}}</p>{{end}}
+{{if .Data.Assets}}
+<table><thead><tr><th>Tag</th><th>Equipment</th><th>Serial</th><th>Site</th><th>Location</th><th>Status</th><th>Next due</th></tr></thead><tbody>
+{{range .Data.Assets}}<tr><td><a href="/fleet/assets/{{.ID}}">{{.Tag}}</a></td><td>{{.Manufacturer}} {{.Model}}</td><td>{{.Serial}}</td>
+  <td>{{.Site}}</td><td>{{.Location}}</td><td class="s-{{.Status}}">{{label .Status}}</td><td>{{.NextDue}}</td></tr>{{end}}
+</tbody></table>
+{{else if not .Data.Error}}<p>No matches.</p>{{end}}
+{{end}}

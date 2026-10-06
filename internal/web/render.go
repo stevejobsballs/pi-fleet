@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -47,6 +48,7 @@ var funcs = template.FuncMap{
 		return t.In(loc).Format("2006-01-02 15:04 MST")
 	},
 	"label":       func(s string) string { return strings.ReplaceAll(s, "_", " ") },
+	"urlquery":    urlQuery,
 	"meaningText": func(m string) string { return domain.MeaningText[m] },
 	"add":         func(a, b int) int { return a + b },
 	"dict2":       func(a, b any) struct{ A, B any } { return struct{ A, B any }{a, b} },
@@ -117,6 +119,8 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, sess *session, n
 	_, err := buf.WriteTo(w)
 	return err
 }
+
+func urlQuery(s string) string { return url.QueryEscape(s) }
 
 // NodeSyncInfo builds SyncInfo for an employee Pi from its store.
 func NodeSyncInfo(q domain.Querier, chainID string, lastSync, acked func(context.Context) string) func(context.Context) SyncInfo {

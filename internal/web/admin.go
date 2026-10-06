@@ -40,6 +40,14 @@ func (s *Server) stockTxn(w http.ResponseWriter, r *http.Request, sess *session)
 	if err := s.phiCheck(r, t.Reason); err != nil {
 		return s.failed(w, r, sess, "/inventory", err)
 	}
+	if t.Kind == domain.StockCount && s.Fleet != nil {
+		var owner string
+		s.App.Store.DB().QueryRowContext(r.Context(), `SELECT owner_user_id FROM stock_locations WHERE id = ?`, t.StockLocationID).Scan(&owner)
+		if owner == "" { // a shared stockroom: count where the full ledger is
+			msg, _ := s.countShared(r, t.PartID, t.StockLocationID, n)
+			return s.done(w, r, sess, "/inventory", msg)
+		}
+	}
 	if _, err := s.App.RecordStock(r.Context(), s.actor(sess), t); err != nil {
 		return s.failed(w, r, sess, "/inventory", err)
 	}

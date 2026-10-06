@@ -221,7 +221,7 @@ func cmdRun(ctx context.Context, args []string, c *cli) error {
 		return func(ctx context.Context) string { v, _ := n.store.Config(ctx, key); return v }
 	}
 	ui, err := (&web.Server{
-		App: a, Role: "node", PHIPatterns: web.DefaultPHIPatterns,
+		App: a, Role: "node", PHIPatterns: web.DefaultPHIPatterns, Fleet: cl,
 		Sync: web.NodeSyncInfo(n.store.DB(), n.local.ChainID, cfg(fleetsync.ConfigLastSync), cfg(fleetsync.ConfigAckedSeq)),
 	}).Handler()
 	if err != nil {

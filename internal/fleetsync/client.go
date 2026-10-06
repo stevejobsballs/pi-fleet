@@ -148,6 +148,20 @@ func (c *Client) send(ctx context.Context, method, path string, in, out any, sig
 	return resp, respBody, nil
 }
 
+// --- live fleet reads ---
+
+// FleetGet fetches a /v1/fleet/ resource from central (online only).
+func (c *Client) FleetGet(ctx context.Context, path string, out any) error {
+	_, _, err := c.do(ctx, http.MethodGet, path, nil, out, true)
+	return err
+}
+
+// FleetPost sends a /v1/fleet/ request to central (online only).
+func (c *Client) FleetPost(ctx context.Context, path string, in, out any) error {
+	_, _, err := c.do(ctx, http.MethodPost, path, in, out, true)
+	return err
+}
+
 // --- activation ---
 
 // Activation is the outcome of activating this Pi.

@@ -1,0 +1,19 @@
+{{define "content"}}
+<p class="hint">Read-only, live from the master Pi. <a href="/fleet/assets">Back to fleet search</a></p>
+{{with .Data.Error}}<p class="error" role="alert">{{.}}</p>{{end}}
+{{with .Data.Asset}}{{if .Asset.ID}}{{$a := .Asset}}
+<dl class="facts">
+  <dt>Equipment</dt><dd>{{$a.Manufacturer}} {{$a.Model}}{{if $a.IsReferenceStandard}} <span class="tag">reference standard</span>{{end}}</dd>
+  <dt>Serial</dt><dd>{{$a.Serial}}</dd><dt>Site</dt><dd>{{.Site.Code}} · {{.Site.Name}}</dd>
+  <dt>Location</dt><dd>{{.Location}}</dd><dt>Status</dt><dd class="s-{{$a.Status}}"><strong>{{label $a.Status}}</strong></dd>
+</dl>
+<h2>Schedules</h2>
+{{if .Schedules}}<table><thead><tr><th>Schedule</th><th>Type</th><th>Every</th><th>Next due</th></tr></thead><tbody>
+{{range .Schedules}}<tr><td>{{.Title}}</td><td>{{.Type}}</td><td>{{.Interval}} days</td><td>{{.NextDue}}</td></tr>{{end}}</tbody></table>{{else}}<p>None.</p>{{end}}
+<h2>Work orders</h2>{{template "worows" .WorkOrders}}
+<h2>Calibration history</h2>
+{{if .Calibrations}}<table><thead><tr><th>Date</th><th>Work order</th><th>By</th><th>As found</th><th>As left</th><th>Status</th></tr></thead><tbody>
+{{range .Calibrations}}<tr><td>{{when .PerformedAt}}</td><td>{{.WorkOrder}}</td><td>{{.PerformedBy}}</td><td class="r-{{.AsFound}}">{{.AsFound}}</td><td class="r-{{.AsLeft}}">{{.AsLeft}}</td><td>{{.Status}}</td></tr>{{end}}
+</tbody></table>{{else}}<p>None.</p>{{end}}
+{{end}}{{end}}
+{{end}}

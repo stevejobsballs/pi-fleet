@@ -33,6 +33,7 @@ type env struct {
 	super app.Actor
 	site  string
 	loc   string
+	key   ed25519.PrivateKey // central's event key
 }
 
 func newEnv(t *testing.T) *env {
@@ -40,6 +41,7 @@ func newEnv(t *testing.T) *env {
 	e := &env{t: t, ctx: context.Background(), now: time.Date(2026, 10, 6, 9, 0, 0, 0, time.UTC)}
 	clock := func() time.Time { return e.now }
 	pub, priv, _ := ed25519.GenerateKey(nil)
+	e.key = priv
 	nodeID := uuid.Must(uuid.NewV7()).String()
 	st, err := store.Open(filepath.Join(t.TempDir(), "c.db"), store.WithApplier(&domain.Projector{LocalNodeID: nodeID}))
 	if err != nil {

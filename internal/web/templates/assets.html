@@ -1,6 +1,7 @@
 {{define "content"}}
 <form method="get" action="/assets" class="inline"><label>Search <input name="q" value="{{.Data.Search}}" type="search"></label><button>Search</button></form>
-<p><a class="button" href="/assets/new">Register equipment</a></p>
+<p><a class="button" href="/assets/new">Register equipment</a>
+{{if eq .Role "node"}} <a href="/fleet/assets?q={{urlquery .Data.Search}}">Search the whole fleet instead (needs a connection)</a>{{end}}</p>
 {{if .Data.Assets}}
 <table><thead><tr><th>Tag</th><th>Equipment</th><th>Serial</th><th>Site</th><th>Location</th><th>Status</th><th>Next due</th></tr></thead><tbody>
 {{range .Data.Assets}}<tr><td><a href="/assets/{{.ID}}">{{.Tag}}</a>{{if .Reference}} <span class="tag">standard</span>{{end}}</td><td>{{.Manufacturer}} {{.Model}}</td><td>{{.Serial}}</td>

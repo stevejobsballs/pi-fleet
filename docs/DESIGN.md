@@ -489,8 +489,8 @@ This works through TLS-intercepting proxies.
 | `POST /v1/sync/events` | Upload ≤ 500 events / ≤ 1 MiB (zstd), contiguous. Response: `accepted_through_seq` and per-event flags. |
 | `GET /v1/sync/snapshot?chain=` | The node's working set (§5.6) as JSON, with central's Ed25519 signature over the exact bytes in `X-PiFleet-Snapshot-Signature`. Pulled after any push, or when `hello` reports a new `state_version`. *v1 sends full snapshots; deltas are a later optimisation.* |
 | *Later:* `HEAD/PUT/GET /v1/blobs/{sha256}` | Attachment upload/download, resumable. |
-| *Later:* `GET /v1/fleet/...` | Read-only queries across all sites and history (§5.9). Requires an active user session token as well as the node signature. |
-| *Later:* `POST /v1/fleet/stock/count` | Online-only shared-location stock count (§5.4). |
+| `GET /v1/fleet/assets?q=`, `GET /v1/fleet/assets/{id}` | Live, read-only search and full history across all sites (§5.9). Signed by an active Pi's transport key, 120 requests/minute per Pi. |
+| `POST /v1/fleet/stock/count` | Shared stockroom count made on a Pi, recorded on central at once and attributed to the Pi's bound user (§5.4). |
 | *Later:* `GET /v1/releases/manifest` | Signed release manifest mirror (§9). |
 
 **Clock fallback.** A Pi whose clock is outside the 5-minute signature
@@ -581,18 +581,19 @@ of data has an explicit write rule:
 
 ### 5.5 Conflict queue
 
-- Each flagged event creates a `conflict` row showing the event, the competing
-  state, who/when/where, and the node's clock state.
-- **Mid-tier users** (or super users) resolve it with
-  `conflict.resolved`:
-  - **accept**: central re-emits the content as a new central event linking the
-    original;
-  - **reject**: with a reason;
-  - **merge**: the mid-tier user composes the outcome, which is recorded as a new
-    event.
-- Resolutions are signed and audited. The original flagged event stays in the
-  log forever.
-- The affected node learns the outcome through its working set.
+- Each flagged event appears in the **review queue** (web interface), showing
+  the event, the flag and its detail, who/when, and whether it was applied with
+  a warning or left out.
+- **Mid-tier users** (or super users) record a decision with
+  `conflict.resolved`: *acknowledged*, *accepted* or *rejected*, with a
+  mandatory note. The decision records a human judgement. It does **not**
+  re-apply, merge or remove anything automatically. Any fix (for example
+  re-recording work that was rejected) is an ordinary correction with its own
+  audit trail. Automatic re-emission and merging were considered and left out:
+  they would act on someone else's behalf without their signature.
+- Decisions are signed and audited, and appear in the record's audit trail and
+  exports. The original flagged event stays in the log forever.
+- The affected node receives the decision in its working set.
 
 ### 5.6 Working set (31-day window)
 
@@ -864,7 +865,7 @@ organisation's validation, SOPs, and training (marked **Org** below).
 | Part 11 | Requirement (summary) | How pi-fleet addresses it |
 |---|---|---|
 | 11.10(a) | Validation | **Org.** We ship a validation pack: requirements trace, automated test suite, IQ/OQ scripts runnable on target hardware, and release test evidence. |
-| 11.10(b) | Accurate, complete copies in human-readable and electronic form | Per-record and per-asset export to PDF (with full audit trail and signature manifestations) and to JSON (events + verification data). `pi-fleet verify` proves completeness. |
+| 11.10(b) | Accurate, complete copies in human-readable and electronic form | For every work order and asset: an audit-trail page; a printable record with signature manifestations and the full audit trail (saved as PDF from the browser); and a JSON bundle of the signed events with the public keys, which `pi-fleet verify-export` checks with nothing but the file. Copies from an employee Pi are marked partial. |
 | 11.10(c) | Protect records for the retention period | Indefinite retention on central's SSD, hash chains, nightly verification, verified backups + off-site copy, archival exports (§8). |
 | 11.10(d) | Limit system access to authorised individuals | Only super users create accounts. Nodes activate only with super-user-issued credentials. Site-scoped roles, lockout, session timeouts. |
 | 11.10(e) | Secure, computer-generated, time-stamped audit trail that doesn't obscure prior values, retained as long as the records | Append-only signed event log. Corrections are new events that keep the original values. Timestamps are system-generated (wall + HLC + central `received_at`), and users can't enter them. **Caveat:** node clock accuracy depends on NTP/RTC, so unverified-clock records are flagged (D5, §3.4). |

@@ -13,7 +13,7 @@
   <label>Work order id (issues) <input name="work_order"></label>
   <label>Reason <input name="reason"></label>
   {{template "nophi"}}
-  <p class="hint">Shared stockrooms can only be counted on the master Pi.</p>
+  <p class="hint">{{if eq .Role "node"}}Counts of shared stockrooms are sent straight to the master Pi, so this Pi must be online.{{else}}Counts are computed against the full ledger.{{end}}</p>
   <button>Record</button>
 </form></section>
 <section><h2>Add a stock location</h2>

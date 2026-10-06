@@ -67,6 +67,9 @@ type Server struct {
 	// (DESIGN.md §3.6). BlockPHI refuses it instead of asking to confirm.
 	PHIPatterns []*regexp.Regexp
 	BlockPHI    bool
+	// Fleet reaches central's live fleet API from an employee Pi; nil on
+	// central.
+	Fleet FleetClient
 	// Notices returns warnings shown to mid-tier and super users, such
 	// as overdue off-site backups.
 	Notices func(ctx context.Context) []string
@@ -125,6 +128,10 @@ func (s *Server) Handler() (http.Handler, error) {
 	mux.Handle("GET /work-orders/{id}/audit", user(s.auditPage("work_order")))
 	mux.Handle("GET /work-orders/{id}/print", user(s.printPage("work_order")))
 	mux.Handle("GET /work-orders/{id}/export.json", user(s.exportJSON("work_order")))
+	if s.Fleet != nil {
+		mux.Handle("GET /fleet/assets", user(s.fleetAssets))
+		mux.Handle("GET /fleet/assets/{id}", user(s.fleetAsset))
+	}
 	mux.Handle("GET /work-orders", user(s.workOrderList))
 	mux.Handle("GET /work-orders/new", user(s.workOrderNew))
 	mux.Handle("POST /work-orders", user(s.workOrderCreate))

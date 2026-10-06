@@ -1,6 +1,7 @@
 package fleetsync
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/hmac"
@@ -43,6 +44,10 @@ type Server struct {
 	Now func() time.Time
 	// Logf defaults to log.Printf.
 	Logf func(format string, args ...any)
+	// Fleet serves live fleet-wide reads (and shared stockroom counts)
+	// under /v1/fleet/ for confirmed Pis (DESIGN.md §5.9). The requesting
+	// node is in the request context (NodeFromContext).
+	Fleet http.Handler
 
 	mu      sync.Mutex
 	secret  []byte
@@ -78,6 +83,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST "+PathHello, s.signed(s.handleHello, anyStatus))
 	mux.HandleFunc("POST "+PathEvents, s.signed(s.handleEvents, canPush))
 	mux.HandleFunc("GET "+PathSnapshot, s.signed(s.handleSnapshot, activeOnly))
+	if s.Fleet != nil {
+		mux.HandleFunc(PathFleet, s.signed(s.handleFleet, activeOnly))
+	}
 	return mux
 }
 
@@ -129,7 +137,7 @@ func readBody(r *http.Request) ([]byte, error) {
 func (s *Server) limited(h func(http.ResponseWriter, *http.Request, []byte) error) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ip, _, _ := net.SplitHostPort(r.RemoteAddr)
-		if !s.allow(ip) {
+		if !s.allow("ip:"+ip, activationLimit) {
 			http.Error(w, "too many requests", http.StatusTooManyRequests)
 			return
 		}
@@ -143,20 +151,20 @@ func (s *Server) limited(h func(http.ResponseWriter, *http.Request, []byte) erro
 	}
 }
 
-func (s *Server) allow(ip string) bool {
+func (s *Server) allow(key string, limit int) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.buckets == nil {
 		s.buckets = map[string]*bucket{}
 	}
 	now := s.now()
-	b := s.buckets[ip]
+	b := s.buckets[key]
 	if b == nil || now.Sub(b.start) > time.Minute {
 		b = &bucket{start: now}
-		s.buckets[ip] = b
+		s.buckets[key] = b
 	}
 	b.n++
-	return b.n <= activationLimit
+	return b.n <= limit
 }
 
 // --- signed endpoints ---
@@ -491,6 +499,27 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request, n domain.N
 		}
 	}
 	writeJSON(w, resp)
+	return nil
+}
+
+type nodeKey struct{}
+
+// NodeFromContext returns the authenticated Pi of a /v1/fleet/ request.
+func NodeFromContext(ctx context.Context) (domain.Node, bool) {
+	n, ok := ctx.Value(nodeKey{}).(domain.Node)
+	return n, ok
+}
+
+// fleetLimit caps live fleet requests per Pi per minute.
+const fleetLimit = 120
+
+func (s *Server) handleFleet(w http.ResponseWriter, r *http.Request, n domain.Node, body []byte) error {
+	if !s.allow("fleet:"+n.ID, fleetLimit) {
+		return fail(http.StatusTooManyRequests, "too many fleet requests; slow down")
+	}
+	r2 := r.WithContext(context.WithValue(r.Context(), nodeKey{}, n))
+	r2.Body = io.NopCloser(bytes.NewReader(body))
+	s.Fleet.ServeHTTP(w, r2)
 	return nil
 }
 
