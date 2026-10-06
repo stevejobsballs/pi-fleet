@@ -297,7 +297,7 @@ Trust boundaries: (1) browser ↔ node UI, (2) browser ↔ central UI,
 | `node_id` | UUIDv7 | Author node (central has its own node id) |
 | `chain_id` | UUIDv7 | Node's current chain. A new chain is started after any node restore (§8.4). |
 | `seq` | int64 | 1-based and gap-free within the chain |
-| `prev_hash` | 32 B | Hash of the previous event in the chain (or of the `chain.started` parent reference) |
+| `prev_hash` | 32 B | Hash of the previous event in the chain. All zeroes for seq 1. A new chain's `chain.started` payload names its parent chain's last `(chain_id, seq, hash)`, which the genesis hash covers through `payload_hash`. |
 | `hlc` | int64 | Hybrid logical clock |
 | `wall_time` | RFC 3339 UTC | Device clock |
 | `clock_state` | enum | `verified` / `unverified` at creation |
@@ -308,9 +308,9 @@ Trust boundaries: (1) browser ↔ node UI, (2) browser ↔ central UI,
 | `base_version` | int64 | Entity version the author saw (§5.4) |
 | `lease_id` | UUIDv7? | Work-order lease under which the write was made (§5.4) |
 | `schema_version` | int | Payload schema version |
-| `payload` | canonical JSON (RFC 8785) | NULL after redaction |
+| `payload` | canonical JSON (RFC 8785, **integers only**) | NULL after redaction. Numbers must be integers within ±(2^53−1). Measurements and other decimals are carried as **strings** (`"10.020"`), so no floating-point rounding ever touches a result and significant figures are preserved. |
 | `payload_hash` | 32 B | SHA-256 of the canonical payload |
-| `hash` | 32 B | SHA-256 of the canonical encoding of all fields above except `payload` |
+| `hash` | 32 B | SHA-256 of the domain tag `pi-fleet/event/v1\0` followed by the canonical JSON of all fields above except `payload`, plus `key_id`. Byte fields are hex. `hlc` is a decimal string because it exceeds 2^53. |
 | `sig` | 64 B | Ed25519 signature over `hash` by the node's event key |
 | `key_id` | text | Which node key (rotation) |
 
