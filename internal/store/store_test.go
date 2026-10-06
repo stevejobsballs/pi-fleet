@@ -170,10 +170,10 @@ func TestRedaction(t *testing.T) {
 	evs := appendN(t, s, n, 2)
 	actor, session := uuid.NewString(), uuid.NewString()
 
-	if _, err := s.Redact(ctx, n.author, actor, session, evs[0].EventID, ""); err == nil {
+	if _, err := s.Redact(ctx, n.author, actor, session, evs[0].EventID, "", nil); err == nil {
 		t.Error("redaction without reason accepted")
 	}
-	r, err := s.Redact(ctx, n.author, actor, session, evs[0].EventID, "free text contained a patient name")
+	r, err := s.Redact(ctx, n.author, actor, session, evs[0].EventID, "free text contained a patient name", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,7 +187,7 @@ func TestRedaction(t *testing.T) {
 	if !got.Redacted() || got.PayloadHash != evs[0].PayloadHash {
 		t.Errorf("target not redacted correctly: payload=%s", got.Payload)
 	}
-	if _, err := s.Redact(ctx, n.author, actor, session, evs[0].EventID, "again"); !errors.Is(err, ErrRedacted) {
+	if _, err := s.Redact(ctx, n.author, actor, session, evs[0].EventID, "again", nil); !errors.Is(err, ErrRedacted) {
 		t.Errorf("second redaction: %v", err)
 	}
 	// Other events stay protected even though a redaction event exists.
@@ -265,7 +265,7 @@ func TestIngestAppliesRedaction(t *testing.T) {
 	node := openStore(t, n)
 	central := openStore(t, n)
 	evs := appendN(t, node, n, 1)
-	r, err := node.Redact(ctx, n.author, uuid.NewString(), uuid.NewString(), evs[0].EventID, "PHI")
+	r, err := node.Redact(ctx, n.author, uuid.NewString(), uuid.NewString(), evs[0].EventID, "PHI", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

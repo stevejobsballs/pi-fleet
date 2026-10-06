@@ -22,6 +22,9 @@ CREATE TABLE events (
     hash             BLOB    NOT NULL UNIQUE CHECK (length(hash) = 32),
     sig              BLOB    NOT NULL CHECK (length(sig) = 64),
     key_id           TEXT    NOT NULL,
+    -- Order in which this database stored the event. Local only (not part
+    -- of the hash); projections replay in this order (DESIGN.md §4.1).
+    local_order      INTEGER NOT NULL UNIQUE,
     PRIMARY KEY (chain_id, seq)
 ) WITHOUT ROWID;
 
@@ -49,6 +52,7 @@ WHEN NOT (
     AND NEW.lease_id IS OLD.lease_id AND NEW.schema_version IS OLD.schema_version
     AND NEW.payload_hash IS OLD.payload_hash AND NEW.hash IS OLD.hash
     AND NEW.sig IS OLD.sig AND NEW.key_id IS OLD.key_id
+    AND NEW.local_order IS OLD.local_order
     AND EXISTS (
         SELECT 1 FROM events r
         WHERE r.type = 'payload.redacted'
@@ -75,3 +79,13 @@ CREATE TABLE local_node (
     node_id   TEXT NOT NULL,
     chain_id  TEXT NOT NULL
 );
+
+-- Receive-side flags (DESIGN.md §5.3). An event can be flagged and still
+-- projected (e.g. clock_skew), or flagged and excluded (a rejection).
+CREATE TABLE event_flags (
+    event_id  TEXT NOT NULL,
+    flag      TEXT NOT NULL,
+    detail    TEXT NOT NULL,
+    projected INTEGER NOT NULL CHECK (projected IN (0, 1)),
+    PRIMARY KEY (event_id, flag)
+) WITHOUT ROWID;

@@ -367,12 +367,12 @@ erDiagram
 |---|---|---|---|
 | `site` | C | id, code, name, timezone | |
 | `user` | C | id (permanent), username (unique, never reused), legal_name (for signature manifestation), email, home site(s), status (`pending_activation`/`active`/`locked`/`disabled`), created_by, identity_verified_by, identity_verified_at, password_salt, password_verifier, password_changed_at, password_expires_at, verifier history (last 5) | Created **only by a super user**. The verifier is Argon2id(password, per-user salt). Central never receives plaintext passwords from nodes (§6.5). Verifiers are cached only on the node(s) the user may log in to (their bound node, or kiosks they belong to). |
-| `user_role` | C | user_id, scope (site id or `*`), role | Three roles (D10). **`user`** performs assigned work, records results, opens corrective WOs, and signs `performed`. **`mid_tier`** is designated by a super user and always applies **fleet-wide** (scope `*`, D14). It does everything a `user` can, plus **assign/reassign WOs, resolve conflicts, review signatures, and bulk export**. **`super_user`** creates and disables accounts, designates mid-tier users, activates kiosks, revokes nodes, manages catalog, procedures, schedules, config, and releases. **Every active user can read all sites (D3).** |
+| `user.role` | C | one role per user, fleet-wide (a column on `user`, changed by `user.role_changed`) | Three roles (D10). **`user`** performs assigned work, records results, opens corrective WOs, and signs `performed`. **`mid_tier`** is designated by a super user and always applies **fleet-wide** (scope `*`, D14). It does everything a `user` can, plus **assign/reassign WOs, resolve conflicts, review signatures, and bulk export**. **`super_user`** creates and disables accounts, designates mid-tier users, activates kiosks, revokes nodes, manages catalog, procedures, schedules, config, and releases. **Every active user can read all sites (D3).** |
 | `node` | C | id, mode (`personal`/`kiosk`), bound_user_id (personal) or kiosk_group_id (kiosk), site_id (kiosk), short_code, public keys, status (`pending_confirmation`/`active`/`rejected`/`revoked`), activated_at, confirmed_by, confirmed_at, board/OS/version, encryption self-report, last_seen | **At most one active personal node per user.** |
 | `kiosk_group` | C | id, site_id, name, member user ids | Managed by super users. Membership changes reach the kiosk through its working set (§6.3). |
 | `location` | C | id, site_id, parent_id, name, kind | Tree |
 | `manufacturer`, `model` | C | | Shared catalog |
-| `asset` | C | id, tag, model_id, serial, location_id (implies site), status (`in_service`, `out_of_service`, `retired`, `missing`), risk_class, is_reference_standard, custom fields (schema-checked JSON) | Field edits from nodes are merged by central (§5.4). Moving an asset to another site is a relocation. No two-phase transfer is needed because central holds authority. |
+| `asset` | C | id, tag (the physical asset tag, unique fleet-wide; a duplicate is a conflict), manufacturer and model (text in v1; a shared `model` catalog comes later), serial, location_id (implies site), status (`in_service`, `out_of_service`, `retired`, `missing`), risk_class, is_reference_standard, custom fields (schema-checked JSON) | Field edits from nodes are merged by central (§5.4). Moving an asset to another site is a relocation. No two-phase transfer is needed because central holds authority. |
 | `procedure_version` | C | title, steps[] (check / numeric-with-limits / text / photo), published_at | Immutable once published |
 | `pm_schedule` | C | asset_id, procedure_version_id, trigger (calendar interval and/or meter threshold), grace window, next_due (projection) | Central generates WOs. |
 | `work_order` | C to create/assign, **L** to perform | id, number, type (`pm`, `corrective`, `calibration`, `inspection`, `install`, `retire`), asset_id, priority, status, problem, findings, resolution, due_at, assigned_to | §4.5 |
@@ -408,7 +408,7 @@ history.
 - `stock.txn_recorded`, `stock.txn_reversed`, `meter.read`, `labor.logged`,
   `labor.reversed`
 - `attachment.added`, `attachment.detached`
-- `user.created`, `user.role_granted`, `user.role_revoked`,
+- `user.created`, `user.role_changed`,
   `user.password_changed` (new salt-bound verifier only, never plaintext),
   `user.password_reset` (by super user), `user.password_expired`,
   `user.locked`, `user.unlocked`, `user.disabled`

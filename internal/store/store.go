@@ -38,14 +38,45 @@ var (
 	ErrRedacted   = errors.New("store: payload already redacted")
 )
 
-// Store is an open event database.
-type Store struct {
-	w *sql.DB // single writer connection
-	r *sql.DB // query-only readers
+// Applier validates each stored event against current state and updates
+// the projections derived from it, inside the storing transaction.
+type Applier interface {
+	Apply(ctx context.Context, tx *sql.Tx, e *event.Event) error
+	// Reset empties every projection before a rebuild.
+	Reset(ctx context.Context, tx *sql.Tx) error
 }
 
+// Rejection is returned by an Applier for an event that is authentic but
+// not acceptable against current state (DESIGN.md §5.3). Ingest stores
+// such an event, flags it, and leaves it out of the projections; a local
+// Append fails instead.
+type Rejection struct {
+	Flag   string
+	Detail string
+}
+
+func (r *Rejection) Error() string { return "rejected (" + r.Flag + "): " + r.Detail }
+
+// Reject builds a Rejection.
+func Reject(flag, format string, args ...any) error {
+	return &Rejection{Flag: flag, Detail: fmt.Sprintf(format, args...)}
+}
+
+// Store is an open event database.
+type Store struct {
+	w       *sql.DB // single writer connection
+	r       *sql.DB // query-only readers
+	applier Applier
+}
+
+// Option configures Open.
+type Option func(*Store)
+
+// WithApplier installs the projection applier.
+func WithApplier(a Applier) Option { return func(s *Store) { s.applier = a } }
+
 // Open opens or creates the database at path and applies migrations.
-func Open(path string) (*Store, error) {
+func Open(path string, opts ...Option) (*Store, error) {
 	w, err := sql.Open("sqlite", dsn(path, "_txlock=immediate"))
 	if err != nil {
 		return nil, err
@@ -60,7 +91,161 @@ func Open(path string) (*Store, error) {
 		w.Close()
 		return nil, err
 	}
-	return &Store{w: w, r: r}, nil
+	s := &Store{w: w, r: r}
+	for _, o := range opts {
+		o(s)
+	}
+	return s, nil
+}
+
+// DB returns the query-only connection pool for reading projections.
+func (s *Store) DB() *sql.DB { return s.r }
+
+// Tx is a write transaction in which commands read current state and
+// append events atomically.
+type Tx struct {
+	*sql.Tx
+	s *Store
+}
+
+// Append seals d as the next event in the author's chain, stores it, and
+// applies it. Any error, including a Rejection, aborts the transaction.
+func (t *Tx) Append(ctx context.Context, a *Author, d event.Draft) (event.Event, error) {
+	seq, prev, err := head(ctx, t.Tx, a.ChainID)
+	if err != nil {
+		return event.Event{}, err
+	}
+	e, err := event.Seal(d, a.position(seq+1, prev), a.Signer)
+	if err != nil {
+		return event.Event{}, err
+	}
+	if err := insert(ctx, t.Tx, &e); err != nil {
+		return event.Event{}, err
+	}
+	if t.s.applier != nil {
+		if err := t.s.applier.Apply(ctx, t.Tx, &e); err != nil {
+			return event.Event{}, err
+		}
+	}
+	return e, nil
+}
+
+// Update runs fn in a write transaction, committing if it returns nil.
+func (s *Store) Update(ctx context.Context, fn func(*Tx) error) error {
+	tx, err := s.w.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := fn(&Tx{Tx: tx, s: s}); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// Flag records a receive-side flag on an event.
+func Flag(ctx context.Context, tx *sql.Tx, eventID, flag, detail string, projected bool) error {
+	_, err := tx.ExecContext(ctx, `INSERT INTO event_flags (event_id, flag, detail, projected)
+		VALUES (?, ?, ?, ?) ON CONFLICT DO UPDATE SET detail = excluded.detail, projected = excluded.projected`,
+		eventID, flag, detail, projected)
+	return err
+}
+
+// EventFlag is one flag on an event.
+type EventFlag struct {
+	EventID   string
+	Flag      string
+	Detail    string
+	Projected bool
+}
+
+// Flags returns the flags on an event.
+func (s *Store) Flags(ctx context.Context, eventID string) ([]EventFlag, error) {
+	rows, err := s.r.QueryContext(ctx, `SELECT event_id, flag, detail, projected FROM event_flags WHERE event_id = ? ORDER BY flag`, eventID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []EventFlag
+	for rows.Next() {
+		var f EventFlag
+		if err := rows.Scan(&f.EventID, &f.Flag, &f.Detail, &f.Projected); err != nil {
+			return nil, err
+		}
+		out = append(out, f)
+	}
+	return out, rows.Err()
+}
+
+// apply runs the applier for an ingested or replayed event. A Rejection
+// is recorded as a flag inside a savepoint so the event's partial
+// projection changes are undone but the event itself stays stored.
+func (s *Store) apply(ctx context.Context, tx *sql.Tx, e *event.Event) error {
+	if s.applier == nil {
+		return nil
+	}
+	if _, err := tx.ExecContext(ctx, `SAVEPOINT apply`); err != nil {
+		return err
+	}
+	err := s.applier.Apply(ctx, tx, e)
+	var rej *Rejection
+	switch {
+	case err == nil:
+		_, err = tx.ExecContext(ctx, `RELEASE apply`)
+		return err
+	case errors.As(err, &rej):
+		if _, err := tx.ExecContext(ctx, `ROLLBACK TO apply`); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `RELEASE apply`); err != nil {
+			return err
+		}
+		return Flag(ctx, tx, e.EventID, rej.Flag, rej.Detail, false)
+	default:
+		return err
+	}
+}
+
+// Rebuild empties every projection and replays all events in local order
+// (DESIGN.md §4.1). Receive-side flags are recomputed.
+func (s *Store) Rebuild(ctx context.Context) error {
+	if s.applier == nil {
+		return errors.New("store: no applier configured")
+	}
+	tx, err := s.w.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := s.applier.Reset(ctx, tx); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM event_flags`); err != nil {
+		return err
+	}
+	rows, err := tx.QueryContext(ctx, `SELECT `+eventColumns+` FROM events ORDER BY local_order`)
+	if err != nil {
+		return err
+	}
+	var evs []event.Event
+	for rows.Next() {
+		e, err := scanEvent(rows)
+		if err != nil {
+			rows.Close()
+			return err
+		}
+		evs = append(evs, e)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for i := range evs {
+		if err := s.apply(ctx, tx, &evs[i]); err != nil {
+			return fmt.Errorf("store: rebuild at event %s: %w", evs[i].EventID, err)
+		}
+	}
+	return tx.Commit()
 }
 
 func dsn(path, extra string) string {
@@ -228,32 +413,18 @@ func (a *Author) position(seq int64, prev event.Hash) event.Position {
 
 // Append seals d as the next event in the author's chain and stores it.
 func (s *Store) Append(ctx context.Context, a *Author, d event.Draft) (event.Event, error) {
-	tx, err := s.w.BeginTx(ctx, nil)
-	if err != nil {
-		return event.Event{}, err
-	}
-	defer tx.Rollback()
-	e, err := appendTx(ctx, tx, a, d)
-	if err != nil {
-		return event.Event{}, err
-	}
-	return e, tx.Commit()
-}
-
-func appendTx(ctx context.Context, tx *sql.Tx, a *Author, d event.Draft) (event.Event, error) {
-	seq, prev, err := head(ctx, tx, a.ChainID)
-	if err != nil {
-		return event.Event{}, err
-	}
-	e, err := event.Seal(d, a.position(seq+1, prev), a.Signer)
-	if err != nil {
-		return event.Event{}, err
-	}
-	return e, insert(ctx, tx, &e)
+	var e event.Event
+	err := s.Update(ctx, func(tx *Tx) error {
+		var err error
+		e, err = tx.Append(ctx, a, d)
+		return err
+	})
+	return e, err
 }
 
 // Ingest verifies an event received from another node and appends it to
-// that node's chain. A validly signed event that already occupies its
+// that node's chain. After ingesting a payload.redacted event, Rebuild so
+// projections use the replacement. A validly signed event that already occupies its
 // position returns ErrDuplicate; a different one there returns ErrFork.
 func (s *Store) Ingest(ctx context.Context, e event.Event) error {
 	tx, err := s.w.BeginTx(ctx, nil)
@@ -289,6 +460,9 @@ func (s *Store) Ingest(ctx context.Context, e event.Event) error {
 	if err := insert(ctx, tx, &e); err != nil {
 		return err
 	}
+	if err := s.apply(ctx, tx, &e); err != nil {
+		return err
+	}
 	if e.Type == event.TypePayloadRedacted && e.EntityType == event.EntityEvent {
 		if _, err := tx.ExecContext(ctx, `UPDATE events SET payload = NULL WHERE event_id = ? AND payload IS NOT NULL`, e.EntityID); err != nil {
 			return err
@@ -299,19 +473,25 @@ func (s *Store) Ingest(ctx context.Context, e event.Event) error {
 
 // Redact records a payload.redacted event for targetEventID and removes
 // that event's payload. The target's payload_hash, and so every chain
-// hash, is unchanged (DESIGN.md §3.6). Authorisation is the caller's job.
-func (s *Store) Redact(ctx context.Context, a *Author, actorUserID, actorSessionID, targetEventID, reason string) (event.Event, error) {
+// hash, is unchanged (DESIGN.md §3.6). replacement is a sanitised payload
+// of the target's type that projections use in its place; after a
+// redaction, Rebuild so they reflect it. The applier authorises it.
+func (s *Store) Redact(ctx context.Context, a *Author, actorUserID, actorSessionID, targetEventID, reason string, replacement json.RawMessage) (event.Event, error) {
 	if strings.TrimSpace(reason) == "" {
 		return event.Event{}, errors.New("store: redaction requires a reason")
 	}
-	tx, err := s.w.BeginTx(ctx, nil)
-	if err != nil {
-		return event.Event{}, err
-	}
-	defer tx.Rollback()
+	var e event.Event
+	err := s.Update(ctx, func(tx *Tx) error {
+		var err error
+		e, err = redactTx(ctx, tx, a, actorUserID, actorSessionID, targetEventID, reason, replacement)
+		return err
+	})
+	return e, err
+}
 
+func redactTx(ctx context.Context, tx *Tx, a *Author, actorUserID, actorSessionID, targetEventID, reason string, replacement json.RawMessage) (event.Event, error) {
 	var payload, payloadHash []byte
-	err = tx.QueryRowContext(ctx, `SELECT payload, payload_hash FROM events WHERE event_id = ?`, targetEventID).Scan(&payload, &payloadHash)
+	err := tx.QueryRowContext(ctx, `SELECT payload, payload_hash FROM events WHERE event_id = ?`, targetEventID).Scan(&payload, &payloadHash)
 	if errors.Is(err, sql.ErrNoRows) {
 		return event.Event{}, ErrNotFound
 	}
@@ -321,14 +501,18 @@ func (s *Store) Redact(ctx context.Context, a *Author, actorUserID, actorSession
 	if payload == nil {
 		return event.Event{}, ErrRedacted
 	}
-	body, err := json.Marshal(map[string]string{
+	if replacement == nil {
+		replacement = json.RawMessage("null")
+	}
+	body, err := json.Marshal(map[string]any{
 		"reason":              reason,
 		"target_payload_hash": event.Hash(payloadHash).String(),
+		"replacement":         replacement,
 	})
 	if err != nil {
 		return event.Event{}, err
 	}
-	e, err := appendTx(ctx, tx, a, event.Draft{
+	e, err := tx.Append(ctx, a, event.Draft{
 		ActorUserID:    actorUserID,
 		ActorSessionID: actorSessionID,
 		Type:           event.TypePayloadRedacted,
@@ -343,7 +527,7 @@ func (s *Store) Redact(ctx context.Context, a *Author, actorUserID, actorSession
 	if _, err := tx.ExecContext(ctx, `UPDATE events SET payload = NULL WHERE event_id = ?`, targetEventID); err != nil {
 		return event.Event{}, err
 	}
-	return e, tx.Commit()
+	return e, nil
 }
 
 const eventColumns = `chain_id, seq, event_id, node_id, prev_hash, hlc, wall_time, clock_state,
@@ -351,8 +535,9 @@ const eventColumns = `chain_id, seq, event_id, node_id, prev_hash, hlc, wall_tim
 	schema_version, payload, payload_hash, hash, sig, key_id`
 
 func insert(ctx context.Context, tx *sql.Tx, e *event.Event) error {
-	_, err := tx.ExecContext(ctx, `INSERT INTO events (`+eventColumns+`)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+	_, err := tx.ExecContext(ctx, `INSERT INTO events (`+eventColumns+`, local_order)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+			(SELECT coalesce(max(local_order), 0) + 1 FROM events))`,
 		e.ChainID, e.Seq, e.EventID, e.NodeID, e.PrevHash[:], e.HLC,
 		e.WallTime.UTC().Format(event.WallTimeLayout), string(e.ClockState),
 		e.ActorUserID, e.ActorSessionID, e.Type, e.EntityType, e.EntityID,
