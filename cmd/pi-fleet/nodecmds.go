@@ -198,7 +198,7 @@ func cmdRun(ctx context.Context, args []string, c *cli) error {
 	var listen *string
 	var every *time.Duration
 	_, data, err := parse("run", args, func(fs *flag.FlagSet) {
-		listen = fs.String("listen", "127.0.0.1:8080", "address for the web interface (localhost by default; see DESIGN.md §10)")
+		listen = fs.String("listen", "127.0.0.1:8080", "address for the web interface (localhost by default; see DESIGN.md §11)")
 		every = fs.Duration("every", 5*time.Minute, "sync interval")
 	})
 	if err != nil {

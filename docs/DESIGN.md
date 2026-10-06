@@ -380,7 +380,7 @@ erDiagram
 | `checklist_result` | A (under lease) | wo_id, step_id, value, pass/fail, recorded_by | |
 | `calibration_record` | A (under lease) | wo_id, asset_id, procedure_version_id, environmental conditions, as_found / as_left result, adjusted, overall pass/fail, standards_used[] (asset id, its cal record id, due date at time of use), certificate attachment | Using an out-of-date standard → warning/block per policy. **Central recomputes pass/fail.** |
 | `cal_point` | A | parameter, unit, nominal, tolerance (abs / % / limits), as_found, as_left, uncertainty?, pass/fail (computed and stored) | |
-| `signature` | A | §7.2 | |
+| `signature` | A | §7.3 | |
 | `labor_entry`, `meter_reading` | Ledger | | |
 | `part` | C | part_no, description, unit, compatible models | |
 | `stock_location` | C (shared stockrooms) / A (an employee's personal van or kit, owned by their node) | | |
