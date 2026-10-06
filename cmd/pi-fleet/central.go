@@ -227,8 +227,19 @@ func cmdServe(ctx context.Context, args []string, c *cli) error {
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	go runScheduler(ctx, a)
+	go runBackups(ctx, n, a)
 
-	ui, err := (&web.Server{App: a, Role: "central", Secure: true, PHIPatterns: web.DefaultPHIPatterns}).Handler()
+	ui, err := (&web.Server{App: a, Role: "central", Secure: true, PHIPatterns: web.DefaultPHIPatterns,
+		Notices: func(ctx context.Context) []string {
+			if _, err := n.store.Config(ctx, configBackupDir); err != nil {
+				return []string{"Backups are not configured. Run pi-fleet backup-config on the master Pi."}
+			}
+			last, err := domain.LastOffsiteConfirmed(ctx, n.store.DB())
+			if msg := offsiteWarning(last, time.Now()); err == nil && msg != "" {
+				return []string{"Backups: " + msg + "."}
+			}
+			return nil
+		}}).Handler()
 	if err != nil {
 		return err
 	}

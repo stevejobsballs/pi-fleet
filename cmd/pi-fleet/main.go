@@ -47,6 +47,14 @@ master Pi (central):
   node-confirm       confirm a pending Pi after checking its pairing words
   node-reject        reject a pending Pi
   node-revoke        revoke a Pi (it wipes itself when it next connects)
+  backup-keygen      generate a backup decryption identity (keep it offline)
+  backup-config      set the backup disk and the age recipients
+  backup-now         take a verified snapshot and export events now
+  backups            list backups and warn if off-site rotation is overdue
+  offsite-register   register a USB disk for off-site rotation
+  offsite-write      write a verified snapshot to a plugged-in off-site disk
+  offsite-confirm    confirm an off-site disk has reached the other building
+  restore            restore the master Pi's database from a backup
 
 employee Pi (node):
   activate           activate this Pi with the one-time password from a super user
@@ -73,7 +81,9 @@ func run(ctx context.Context, args []string, stdin io.Reader, out io.Writer) err
 	cmds := map[string]func(context.Context, []string, *cli) error{
 		"init": cmdInit, "bootstrap": cmdBootstrap, "verify": cmdVerify, "rebuild": cmdRebuild,
 		"serve": cmdServe, "nodes": cmdNodes, "node-confirm": cmdNodeConfirm, "node-reject": cmdNodeReject,
-		"node-revoke": cmdNodeRevoke, "user-create": cmdUserCreate, "run": cmdRun, "activate": cmdActivate, "activation-status": cmdActivationStatus, "sync": cmdSync,
+		"node-revoke": cmdNodeRevoke, "user-create": cmdUserCreate, "run": cmdRun,
+		"backup-keygen": cmdBackupKeygen, "backup-config": cmdBackupConfig, "backup-now": cmdBackupNow, "backups": cmdBackups,
+		"offsite-register": cmdOffsiteRegister, "offsite-write": cmdOffsiteWrite, "offsite-confirm": cmdOffsiteConfirm, "restore": cmdRestore, "activate": cmdActivate, "activation-status": cmdActivationStatus, "sync": cmdSync,
 	}
 	c := &cli{stdin: stdin, out: out}
 	switch cmd := args[0]; cmd {

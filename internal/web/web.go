@@ -67,6 +67,9 @@ type Server struct {
 	// (DESIGN.md §3.6). BlockPHI refuses it instead of asking to confirm.
 	PHIPatterns []*regexp.Regexp
 	BlockPHI    bool
+	// Notices returns warnings shown to mid-tier and super users, such
+	// as overdue off-site backups.
+	Notices func(ctx context.Context) []string
 	// Now defaults to time.Now.
 	Now func() time.Time
 

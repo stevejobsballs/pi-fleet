@@ -939,28 +939,36 @@ design therefore **requires** a second disk on central and an off-site copy.
 
 ### 8.2 Central backups
 
-1. **Continuous:** WAL shipping (Litestream-style, built in or as a sidecar)
-   from the SSD to a **second disk** attached to central (`/srv/pi-fleet-backup`,
-   ≥ 1 TB, a different make/model if possible). Recovery point is seconds.
-2. **Nightly snapshot:** SQLite online backup to `backup-staging`, then
-   `integrity_check` + `pi-fleet verify --full` on the copy, then encryption with
-   age, then copy to the backup disk. Blobs are copied incrementally (they're
-   content-addressed and immutable).
+1. **Continuous (every 5 minutes):** events stored since the last export are
+   written to the **second disk** (`/srv/pi-fleet-backup/events/`, ≥ 1 TB, a
+   different make/model if possible) as age-encrypted JSON-lines segments.
+   Events are append-only and individually signed, so a restore is the latest
+   snapshot plus the segments after it, replayed through normal ingest. The
+   recovery point is about 5 minutes, with no WAL-shipping tool needed.
+2. **Nightly snapshot (after 02:00):** `VACUUM INTO` a staging file, then
+   SQLite `integrity_check` **and** a full re-verification of every signature
+   and chain on the copy. A copy that fails is discarded and the failure is
+   logged loudly. A passing copy is age-encrypted to the backup disk, read back
+   to compare hashes, and described by an unencrypted manifest (time, event
+   count, per-chain heads, plaintext and ciphertext hashes). Central holds only
+   age **recipients**. The decryption identities stay offline. Blobs come with
+   attachments (later).
 3. **Off-site: USB disks rotated to another building (D9).**
    - **Disks:** at least **two** (three recommended) USB disks of ≥ 1 TB,
      labelled `OFFSITE-A`, `OFFSITE-B`, …. Each is registered with central by
      filesystem UUID, so central writes only to known disks.
    - **Weekly rotation** (a super user, or someone they designate):
      1. Plug in the disk that's on-site.
-     2. Central detects it (udev → systemd unit) and writes the latest verified
-        snapshot, the new blobs, and any archival exports, all age-encrypted.
+     2. Central detects it (udev → systemd unit running `pi-fleet offsite-write`)
+        and writes a fresh verified snapshot, age-encrypted. Each disk keeps its
+        newest 4 snapshots.
      3. Central reads the data back to verify the hashes, records
         `system.offsite_written {disk, snapshot_seq}`, and shows "safe to
         unplug".
      4. Carry that disk to the other building **before** bringing the other
         disk back, so one disk is always off-site.
-     5. On return, confirm in the central UI that the disk is off-site
-        (`system.offsite_confirmed`, recording who did it).
+     5. On return, a mid-tier or super user confirms the disk is off-site
+        (`pi-fleet offsite-confirm`, recorded as `backup.offsite_confirmed`).
    - **Overdue alert:** if no off-site confirmation arrives within 10 days,
      super users are alerted on central and by a banner. Nodes simply keep
      their data longer (see 4), so nothing is lost.
@@ -972,9 +980,9 @@ design therefore **requires** a second disk on central and an off-site copy.
      read-back verification runs yearly. Disks are replaced at the first
      warning or every 5 years.
 4. **Durable watermark:** a chain's durable watermark advances to a seq only
-   once a snapshot containing it is **verified, on the backup disk, and on an
-   off-site disk whose off-site move has been confirmed**
-   (`system.offsite_confirmed`). Nodes may purge only below it (§5.7). With
+   once a **verified** snapshot containing it is on an off-site disk **whose
+   move off-site has been confirmed** (`backup.offsite_confirmed`, which
+   advances `durable_heads` from that snapshot's per-chain heads). Nodes may purge only below it (§5.7). With
    weekly rotation, a node holds roughly 31 days of data plus 1–2 weeks of
    overlap.
 5. Retention of backups: daily ×14, weekly ×8, monthly ×24, yearly forever.

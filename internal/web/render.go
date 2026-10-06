@@ -22,6 +22,7 @@ type page struct {
 	Sync       *SyncInfo
 	Clock      string // verified or unverified
 	PHIWarning bool
+	Notices    []string
 	Data       any
 }
 
@@ -98,6 +99,9 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, sess *session, n
 		if s.Sync != nil {
 			info := s.Sync(r.Context())
 			p.Sync = &info
+		}
+		if s.Notices != nil && p.IsMid() {
+			p.Notices = s.Notices(r.Context())
 		}
 	}
 	t, ok := s.pages[name]

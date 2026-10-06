@@ -402,8 +402,8 @@ func (s *Server) handleHello(w http.ResponseWriter, r *http.Request, n domain.No
 	if seq > 0 {
 		resp.CentralHash = h.String()
 	}
-	if v, err := s.App.Store.Config(ctx, "durable:"+req.ChainID); err == nil {
-		fmt.Sscan(v, &resp.DurableSeq)
+	if resp.DurableSeq, err = domain.DurableSeq(ctx, s.App.Store.DB(), req.ChainID); err != nil {
+		return err
 	}
 	if err := s.App.Store.DB().QueryRowContext(ctx, `SELECT coalesce(max(local_order), 0) FROM events`).Scan(&resp.StateVersion); err != nil {
 		return err

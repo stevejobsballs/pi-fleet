@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/mail"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 	_ "time/tzdata" // site time zones must resolve on minimal OS images
@@ -65,7 +66,7 @@ func (p *Projector) Reset(ctx context.Context, tx *sql.Tx) error {
 	for _, t := range []string{
 		"signatures", "cal_standards", "cal_points", "calibration_records", "stock_txns", "stock_levels", "stock_locations", "parts",
 		"wo_leases", "work_orders", "pm_schedules", "assets", "locations", "sites",
-		"nodes", "user_lockouts", "user_password_history", "users",
+		"nodes", "user_lockouts", "user_password_history", "users", "backups", "durable_heads",
 	} {
 		if _, err := tx.ExecContext(ctx, `DELETE FROM `+t); err != nil {
 			return err
@@ -163,6 +164,12 @@ func (p *Projector) Apply(ctx context.Context, tx *sql.Tx, e *event.Event) error
 		return ap.signatureApplied(pl)
 	case *SignatureWithdrawn:
 		return ap.signatureWithdrawn(pl)
+	case *BackupWritten:
+		return ap.backupWritten(pl)
+	case *BackupOffsiteConfirmed:
+		return ap.backupOffsiteConfirmed(pl)
+	case *BackupRestored:
+		return ap.backupRestored(pl)
 	}
 	return fmt.Errorf("domain: no handler for %T", v)
 }
@@ -250,7 +257,7 @@ func (p *Projector) actor(ctx context.Context, tx *sql.Tx, e *event.Event) (acto
 		// lockouts may come from any node, since logins fail offline.
 		trusted := e.NodeID == p.LocalNodeID || (p.CentralNodeID != "" && e.NodeID == p.CentralNodeID)
 		allowed, known := systemActorTypes[e.ActorUserID]
-		if !known || allowed != e.Type || (e.ActorUserID != SystemAuth && !trusted) {
+		if !known || !slices.Contains(allowed, e.Type) || (e.ActorUserID != SystemAuth && !trusted) {
 			return actorInfo{}, store.Reject(FlagNotAuthorized, "system actor %s may not author %s from node %s", e.ActorUserID, e.Type, e.NodeID)
 		}
 		if err := checkNodeBinding(ctx, tx, e); err != nil {

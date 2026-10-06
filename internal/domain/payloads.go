@@ -117,11 +117,11 @@ const (
 	SystemActivation = "system:activation"
 )
 
-var systemActorTypes = map[string]string{
-	SystemConsole:    TypeUserCreated,
-	SystemScheduler:  TypeWorkOrderOpened,
-	SystemAuth:       TypeUserLocked,
-	SystemActivation: TypeNodeActivated,
+var systemActorTypes = map[string][]string{
+	SystemConsole:    {TypeUserCreated},
+	SystemScheduler:  {TypeWorkOrderOpened},
+	SystemAuth:       {TypeUserLocked},
+	SystemActivation: {TypeNodeActivated},
 }
 
 type SiteCreated struct {

@@ -510,7 +510,11 @@ func TestPurgeOnlyBelowDurableWatermark(t *testing.T) {
 	if r := tess.sync(); r.Purged != 0 {
 		t.Fatalf("purged %d with no durable backup", r.Purged)
 	}
-	f.must(f.app.Store.SetConfig(f.ctx, "durable:"+tess.client.ChainID, "2"))
+	// Stand-in for a confirmed off-site backup holding seq 1-2.
+	f.must(f.app.Store.Update(f.ctx, func(tx *store.Tx) error {
+		_, err := tx.ExecContext(f.ctx, `INSERT INTO durable_heads (chain_id, seq) VALUES (?, 2)`, tess.client.ChainID)
+		return err
+	}))
 	if r := tess.sync(); r.Purged != 2 {
 		t.Fatalf("purged %d, want 2 (seq 1-2)", r.Purged)
 	}

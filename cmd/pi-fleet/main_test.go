@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -136,5 +138,51 @@ func TestEmployeePiEndToEnd(t *testing.T) {
 func TestUnknownCommand(t *testing.T) {
 	if _, err := runCmd(t, "", "frobnicate"); err == nil {
 		t.Error("unknown command accepted")
+	}
+}
+
+func TestBackupCommands(t *testing.T) {
+	dir, backupDisk, offsite, restored := t.TempDir(), t.TempDir(), t.TempDir(), t.TempDir()
+	runOK(t, "", "init", "-data", dir, "-role", "central")
+	runOK(t, "tumbleweed-gasket-42\ntumbleweed-gasket-42\n", "bootstrap", "-data", dir, "-username", "admin", "-name", "Ada", "-email", "ada@example.org")
+
+	if _, err := runCmd(t, "", "backup-now", "-data", dir); err == nil {
+		t.Error("backup without configuration succeeded")
+	}
+	out := runOK(t, "", "backup-keygen")
+	secret := regexp.MustCompile(`AGE-SECRET-KEY-[0-9A-Z]+`).FindString(out)
+	recipient := regexp.MustCompile(`age1[0-9a-z]+`).FindString(out)
+	if secret == "" || recipient == "" {
+		t.Fatalf("keygen output:\n%s", out)
+	}
+	runOK(t, "", "backup-config", "-data", dir, "-dir", backupDisk, "-recipient", recipient)
+	if out := runOK(t, "", "backup-now", "-data", dir); !strings.Contains(out, "verified snapshot") {
+		t.Errorf("backup-now: %s", out)
+	}
+	if out := runOK(t, "", "backups", "-data", dir); !strings.Contains(out, "no off-site backup has been confirmed yet") {
+		t.Errorf("backups should warn: %s", out)
+	}
+
+	runOK(t, "", "offsite-register", "-data", dir, "-disk", offsite, "-label", "OFFSITE-A")
+	if out := runOK(t, "", "offsite-write", "-data", dir, "-disk", offsite); !strings.Contains(out, "Safe to unplug") {
+		t.Errorf("offsite-write: %s", out)
+	}
+	runOK(t, "tumbleweed-gasket-42\n", "offsite-confirm", "-data", dir, "-label", "OFFSITE-A", "-as", "admin")
+	if out := runOK(t, "", "backups", "-data", dir); strings.Contains(out, "WARNING") || !strings.Contains(out, "off-site since") {
+		t.Errorf("backups after rotation: %s", out)
+	}
+
+	// Restore the off-site copy elsewhere with the offline identity.
+	identity := filepath.Join(t.TempDir(), "identity.txt")
+	if err := os.WriteFile(identity, []byte(secret+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	manifests, _ := filepath.Glob(filepath.Join(offsite, "pifleet-*.json"))
+	if len(manifests) != 1 {
+		t.Fatalf("off-site disk holds %v", manifests)
+	}
+	out = runOK(t, "", "restore", "-data", restored, "-manifest", manifests[0], "-identity", identity, "-events", filepath.Join(backupDisk, "events"))
+	if !strings.Contains(out, "chains verified") || !strings.Contains(out, "restore the master Pi's keys") {
+		t.Errorf("restore: %s", out)
 	}
 }

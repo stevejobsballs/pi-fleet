@@ -300,6 +300,39 @@ func checkpoint(ctx context.Context, q querier, chainID string) (int64, event.Ha
 	return seq, event.Hash(h), err
 }
 
+// SnapshotTo writes a consistent copy of the database to path with
+// VACUUM INTO, without blocking readers (DESIGN.md §8.2).
+func (s *Store) SnapshotTo(ctx context.Context, path string) error {
+	_, err := s.w.ExecContext(ctx, `VACUUM INTO ?`, path)
+	return err
+}
+
+// IntegrityCheck runs SQLite's full integrity check.
+func (s *Store) IntegrityCheck(ctx context.Context) error {
+	rows, err := s.r.QueryContext(ctx, `PRAGMA integrity_check`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	var problems []string
+	for rows.Next() {
+		var line string
+		if err := rows.Scan(&line); err != nil {
+			return err
+		}
+		if line != "ok" {
+			problems = append(problems, line)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if len(problems) > 0 {
+		return fmt.Errorf("store: integrity check failed: %s", strings.Join(problems, "; "))
+	}
+	return nil
+}
+
 // Config returns a local setting, or ErrNotFound.
 func (s *Store) Config(ctx context.Context, key string) (string, error) {
 	var v string
@@ -659,15 +692,19 @@ func insert(ctx context.Context, tx *sql.Tx, e *event.Event) error {
 
 type rowScanner interface{ Scan(dest ...any) error }
 
-func scanEvent(row rowScanner) (event.Event, error) {
+func scanEvent(row rowScanner) (event.Event, error) { return scanEventWith(row) }
+
+// scanEventWith scans eventColumns followed by any extra columns.
+func scanEventWith(row rowScanner, extra ...any) (event.Event, error) {
 	var (
 		e                       event.Event
 		prev, payloadHash, hash []byte
 		wall, clockState        string
 	)
-	err := row.Scan(&e.ChainID, &e.Seq, &e.EventID, &e.NodeID, &prev, &e.HLC, &wall, &clockState,
+	dest := []any{&e.ChainID, &e.Seq, &e.EventID, &e.NodeID, &prev, &e.HLC, &wall, &clockState,
 		&e.ActorUserID, &e.ActorSessionID, &e.Type, &e.EntityType, &e.EntityID, &e.BaseVersion,
-		&e.LeaseID, &e.SchemaVersion, &e.Payload, &payloadHash, &hash, &e.Sig, &e.KeyID)
+		&e.LeaseID, &e.SchemaVersion, &e.Payload, &payloadHash, &hash, &e.Sig, &e.KeyID}
+	err := row.Scan(append(dest, extra...)...)
 	if err != nil {
 		return event.Event{}, err
 	}
@@ -706,6 +743,29 @@ func (s *Store) Chain(ctx context.Context, chainID string, fromSeq int64, limit 
 		out = append(out, e)
 	}
 	return out, rows.Err()
+}
+
+// EventsAfter returns up to limit events stored after a local order,
+// with their local orders, for backup export.
+func (s *Store) EventsAfter(ctx context.Context, after int64, limit int) ([]event.Event, []int64, error) {
+	rows, err := s.r.QueryContext(ctx, `SELECT `+eventColumns+`, local_order FROM events
+		WHERE local_order > ? ORDER BY local_order LIMIT ?`, after, limit)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rows.Close()
+	var evs []event.Event
+	var orders []int64
+	for rows.Next() {
+		var order int64
+		e, err := scanEventWith(rows, &order)
+		if err != nil {
+			return nil, nil, err
+		}
+		evs = append(evs, e)
+		orders = append(orders, order)
+	}
+	return evs, orders, rows.Err()
 }
 
 // Problem is one verification failure.

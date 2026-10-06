@@ -35,6 +35,7 @@
 {{end}}
 <main>
   {{if .Flash}}<p class="flash" role="status">{{.Flash}}</p>{{end}}
+  {{range .Notices}}<p class="flash warn" role="alert">{{.}}</p>{{end}}
   <h1>{{.Title}}</h1>
   {{template "content" .}}
 </main>
