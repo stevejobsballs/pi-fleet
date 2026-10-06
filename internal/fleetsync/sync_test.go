@@ -245,14 +245,14 @@ func TestOfflineWorkReachesCentral(t *testing.T) {
 	// Offline on the Pi: do the work.
 	f.now = f.now.Add(2 * time.Hour)
 	f.must(tess.app.ChangeWorkOrderStatus(f.ctx, tess.user, s.OpenWorkOrderID, domain.WOInProgress, ""))
-	f.must(tess.app.ChangeWorkOrderStatus(f.ctx, tess.user, s.OpenWorkOrderID, domain.WOCompleted, ""))
+	f.must(tess.app.Sign(f.ctx, tess.user, s.OpenWorkOrderID, domain.MeaningPerformed, "copper-ladder-sunrise", false))
 	w, err := domain.GetWorkOrder(f.ctx, tess.app.Store.DB(), s.OpenWorkOrderID)
 	f.must(err)
 	if w.Status != domain.WOCompleted {
 		t.Fatalf("on the Pi: %s", w.Status)
 	}
 
-	if r := tess.sync(); r.Pushed != 2 || r.Flagged != 0 {
+	if r := tess.sync(); r.Pushed != 3 || r.Flagged != 0 {
 		t.Fatalf("sync = %+v", r)
 	}
 	w, err = domain.GetWorkOrder(f.ctx, f.app.Store.DB(), s.OpenWorkOrderID)

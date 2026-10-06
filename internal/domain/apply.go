@@ -63,7 +63,7 @@ var _ store.Applier = (*Projector)(nil)
 // Reset empties every projection table.
 func (p *Projector) Reset(ctx context.Context, tx *sql.Tx) error {
 	for _, t := range []string{
-		"cal_standards", "cal_points", "calibration_records", "stock_txns", "stock_levels", "stock_locations", "parts",
+		"signatures", "cal_standards", "cal_points", "calibration_records", "stock_txns", "stock_levels", "stock_locations", "parts",
 		"wo_leases", "work_orders", "pm_schedules", "assets", "locations", "sites",
 		"nodes", "user_lockouts", "user_password_history", "users",
 	} {
@@ -159,6 +159,10 @@ func (p *Projector) Apply(ctx context.Context, tx *sql.Tx, e *event.Event) error
 		return ap.nodeRejected(pl)
 	case *NodeRevoked:
 		return ap.nodeRevoked(pl)
+	case *SignatureApplied:
+		return ap.signatureApplied(pl)
+	case *SignatureWithdrawn:
+		return ap.signatureWithdrawn(pl)
 	}
 	return fmt.Errorf("domain: no handler for %T", v)
 }
@@ -917,6 +921,9 @@ func (ap *applier) workOrderStatusChanged(p *WorkOrderStatusChanged) error {
 			return err
 		}
 	}
+	if err := ap.checkSigned(w, p.To); err != nil {
+		return err
+	}
 	if err := ap.scheduleFollowsWorkOrder(w, p.To); err != nil {
 		return err
 	}
@@ -925,6 +932,10 @@ func (ap *applier) workOrderStatusChanged(p *WorkOrderStatusChanged) error {
 			return err
 		}
 		return ap.bumpWorkOrder(`status = ?, lease_id = ''`, p.To)
+	}
+	if p.To == WOInProgress && (p.From == WOCompleted || p.From == WOReviewed) {
+		// Reopened: earlier signatures no longer count (DESIGN.md §4.5).
+		return ap.bumpWorkOrder(`status = ?, sign_round = sign_round + 1`, p.To)
 	}
 	return ap.bumpWorkOrder(`status = ?`, p.To)
 }

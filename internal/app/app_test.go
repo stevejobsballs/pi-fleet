@@ -79,6 +79,16 @@ func newEnv(t *testing.T) *env {
 	return e
 }
 
+// sign signs a work order as actor (acknowledging the clock warning:
+// test authors have no verified clock).
+func (e *env) sign(actor Actor, woID, meaning string) error {
+	pw := "brass-kettle-orchard-7"
+	if actor == e.super {
+		pw = "tumbleweed-gasket-42"
+	}
+	return e.app.Sign(e.ctx, actor, woID, meaning, pw, true)
+}
+
 // reopen reopens the database with a different projector configuration.
 func (e *env) reopen(p *domain.Projector) {
 	e.t.Helper()
@@ -379,12 +389,12 @@ func TestWorkOrderLifecycle(t *testing.T) {
 	e.must(err)
 	wantRejection(t, step(other, domain.WOInProgress, ""), domain.FlagNotAuthorized) // not the holder
 	e.must(step(tech, domain.WOInProgress, ""))
-	e.must(step(tech, domain.WOCompleted, ""))
-	wantRejection(t, step(tech, domain.WOReviewed, ""), domain.FlagNotAuthorized) // tech can't review
+	e.must(e.sign(tech, woID, domain.MeaningPerformed))
+	wantRejection(t, e.sign(tech, woID, domain.MeaningReviewed), domain.FlagNotAuthorized) // tech can't review
 	e.must(step(mid, domain.WOInProgress, "as-left reading missing"))             // reopen
-	e.must(step(tech, domain.WOCompleted, ""))
-	e.must(step(mid, domain.WOReviewed, ""))
-	e.must(step(mid, domain.WOClosed, ""))
+	e.must(e.sign(tech, woID, domain.MeaningPerformed))
+	e.must(e.sign(mid, woID, domain.MeaningReviewed))
+	e.must(e.sign(mid, woID, domain.MeaningApproved))
 	wantRejection(t, step(mid, domain.WOCancelled, "too late"), domain.FlagInvalid)
 
 	w, err := domain.GetWorkOrder(e.ctx, e.st.DB(), woID)
@@ -399,9 +409,9 @@ func TestWorkOrderLifecycle(t *testing.T) {
 	_, err = e.app.AssignWorkOrder(e.ctx, mid, wo2, mid.UserID)
 	e.must(err)
 	e.must(e.app.ChangeWorkOrderStatus(e.ctx, mid, wo2, domain.WOInProgress, ""))
-	e.must(e.app.ChangeWorkOrderStatus(e.ctx, mid, wo2, domain.WOCompleted, ""))
-	wantRejection(t, e.app.ChangeWorkOrderStatus(e.ctx, mid, wo2, domain.WOReviewed, ""), domain.FlagNotAuthorized)
-	e.must(e.app.ChangeWorkOrderStatus(e.ctx, e.super, wo2, domain.WOReviewed, ""))
+	e.must(e.sign(mid, wo2, domain.MeaningPerformed))
+	wantRejection(t, e.sign(mid, wo2, domain.MeaningReviewed), domain.FlagNotAuthorized)
+	e.must(e.sign(e.super, wo2, domain.MeaningReviewed))
 
 	wantRejection(t, e.app.ChangeWorkOrderStatus(e.ctx, mid, wo2, domain.WOCancelled, ""), domain.FlagInvalid) // needs reason
 }
@@ -526,7 +536,7 @@ func (e *env) TestScenario() {
 	calWO := e.openHeld(mid, tech, "calibration", id)
 	_, err = e.app.RecordCalibration(e.ctx, tech, calibration(calWO, []string{std}, true, voltage("125", "120.2"), withAsLeft(leakage("10"), "8")))
 	e.must(err)
-	e.must(e.app.ChangeWorkOrderStatus(e.ctx, tech, calWO, domain.WOCompleted, ""))
+	e.must(e.sign(tech, calWO, domain.MeaningPerformed))
 
 	// Stock, including a count and a reversal.
 	part := e.must2(e.app.CreatePart(e.ctx, mid, domain.PartCreated{PartNo: "P1", Description: "Part", Unit: "each"}))

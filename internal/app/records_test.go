@@ -72,7 +72,7 @@ func TestCalibrationRecordAndComplete(t *testing.T) {
 	c := e.calSetup()
 
 	// Can't complete a calibration work order without a record.
-	wantRejection(t, e.app.ChangeWorkOrderStatus(e.ctx, c.tech, c.wo, domain.WOCompleted, ""), domain.FlagInvalid)
+	wantRejection(t, e.sign(c.tech, c.wo, domain.MeaningPerformed), domain.FlagInvalid)
 	// The instrument can't be its own standard; ordinary assets aren't standards.
 	_, err := e.app.RecordCalibration(e.ctx, c.tech, calibration(c.wo, []string{c.asset}, false, voltage("120.5", "")))
 	wantRejection(t, err, domain.FlagInvalid)
@@ -110,7 +110,7 @@ func TestCalibrationRecordAndComplete(t *testing.T) {
 	e.must(e.app.VoidCalibration(e.ctx, c.tech, id, "wrong standard serial noted"))
 	_, err = e.app.RecordCalibration(e.ctx, c.tech, calibration(c.wo, []string{c.standard}, false, voltage("120.1", "")))
 	e.must(err)
-	e.must(e.app.ChangeWorkOrderStatus(e.ctx, c.tech, c.wo, domain.WOCompleted, ""))
+	e.must(e.sign(c.tech, c.wo, domain.MeaningPerformed))
 }
 
 func TestFailedAsLeftRequiresOutOfService(t *testing.T) {
@@ -119,11 +119,11 @@ func TestFailedAsLeftRequiresOutOfService(t *testing.T) {
 	// Adjusted, but still out of tolerance afterwards.
 	_, err := e.app.RecordCalibration(e.ctx, c.tech, calibration(c.wo, []string{c.standard}, true, voltage("125.0", "123.0")))
 	e.must(err)
-	wantRejection(t, e.app.ChangeWorkOrderStatus(e.ctx, c.tech, c.wo, domain.WOCompleted, ""), domain.FlagInvalid)
+	wantRejection(t, e.sign(c.tech, c.wo, domain.MeaningPerformed), domain.FlagInvalid)
 	a, err := domain.GetAsset(e.ctx, e.st.DB(), c.asset)
 	e.must(err)
 	e.must(e.app.SetAssetStatus(e.ctx, c.tech, c.asset, a.Version, domain.AssetOutOfService, "failed calibration"))
-	e.must(e.app.ChangeWorkOrderStatus(e.ctx, c.tech, c.wo, domain.WOCompleted, ""))
+	e.must(e.sign(c.tech, c.wo, domain.MeaningPerformed))
 }
 
 func TestCentralRecomputesPassFail(t *testing.T) {
@@ -149,7 +149,7 @@ func TestCentralRecomputesPassFail(t *testing.T) {
 		t.Fatalf("results = %s/%s (node said %s)", found, left, nodeFound)
 	}
 	// Central's result, not the node's, gates completion.
-	wantRejection(t, e.app.ChangeWorkOrderStatus(e.ctx, c.tech, c.wo, domain.WOCompleted, ""), domain.FlagInvalid)
+	wantRejection(t, e.sign(c.tech, c.wo, domain.MeaningPerformed), domain.FlagInvalid)
 }
 
 func TestReferenceStandardChecks(t *testing.T) {
@@ -217,7 +217,7 @@ func TestSchedulesGenerateWork(t *testing.T) {
 	e.must(err)
 	e.now = time.Date(2026, 10, 18, 15, 0, 0, 0, time.UTC)
 	e.must(e.app.ChangeWorkOrderStatus(e.ctx, tech, w.ID, domain.WOInProgress, ""))
-	e.must(e.app.ChangeWorkOrderStatus(e.ctx, tech, w.ID, domain.WOCompleted, ""))
+	e.must(e.sign(tech, w.ID, domain.MeaningPerformed))
 	s, err = domain.GetSchedule(e.ctx, e.st.DB(), s1)
 	e.must(err)
 	if s.NextDue != "2027-04-16" || s.OpenWorkOrderID != "" {

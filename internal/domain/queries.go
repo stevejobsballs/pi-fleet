@@ -182,6 +182,7 @@ type WorkOrder struct {
 	AssignedTo string
 	LeaseID    string
 	ScheduleID string
+	SignRound  int64
 	Version    int64
 }
 
@@ -189,9 +190,9 @@ type WorkOrder struct {
 func GetWorkOrder(ctx context.Context, q Querier, id string) (WorkOrder, error) {
 	var w WorkOrder
 	err := q.QueryRowContext(ctx, `SELECT id, number, type, asset_id, priority, status, title, problem, due_at,
-		opened_by, assigned_to, lease_id, schedule_id, version FROM work_orders WHERE id = ?`, id).
+		opened_by, assigned_to, lease_id, schedule_id, sign_round, version FROM work_orders WHERE id = ?`, id).
 		Scan(&w.ID, &w.Number, &w.Type, &w.AssetID, &w.Priority, &w.Status, &w.Title, &w.Problem, &w.DueAt,
-			&w.OpenedBy, &w.AssignedTo, &w.LeaseID, &w.ScheduleID, &w.Version)
+			&w.OpenedBy, &w.AssignedTo, &w.LeaseID, &w.ScheduleID, &w.SignRound, &w.Version)
 	if errors.Is(err, sql.ErrNoRows) {
 		return WorkOrder{}, ErrNotFound
 	}
