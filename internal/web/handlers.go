@@ -112,7 +112,7 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request, sess *session
 		return err
 	}
 	q.QueryRowContext(ctx, `SELECT count(*) FROM work_orders WHERE status = 'open'`).Scan(&d.Unassigned)
-	q.QueryRowContext(ctx, `SELECT count(*) FROM event_flags`).Scan(&d.Flags)
+	q.QueryRowContext(ctx, `SELECT count(*) FROM event_flags f WHERE NOT EXISTS (SELECT 1 FROM flag_resolutions r WHERE r.event_id = f.event_id)`).Scan(&d.Flags)
 	return s.render(w, r, sess, "dashboard", "Today", d)
 }
 
@@ -165,16 +165,24 @@ type assetData struct {
 }
 
 func (s *Server) assetView(w http.ResponseWriter, r *http.Request, sess *session) error {
-	ctx, q := r.Context(), s.App.Store.DB()
-	a, err := domain.GetAsset(ctx, q, r.PathValue("id"))
+	d, err := s.loadAsset(r, r.PathValue("id"))
 	if err != nil {
 		return err
+	}
+	return s.render(w, r, sess, "asset", d.Asset.Tag, d)
+}
+
+func (s *Server) loadAsset(r *http.Request, id string) (assetData, error) {
+	ctx, q := r.Context(), s.App.Store.DB()
+	a, err := domain.GetAsset(ctx, q, id)
+	if err != nil {
+		return assetData{}, err
 	}
 	d := assetData{Asset: a, Statuses: []string{domain.AssetInService, domain.AssetOutOfService, domain.AssetMissing, domain.AssetRetired}}
 	q.QueryRowContext(ctx, `SELECT id, code, name, timezone FROM sites WHERE id = ?`, a.SiteID).Scan(&d.Site.ID, &d.Site.Code, &d.Site.Name, &d.Site.Timezone)
 	q.QueryRowContext(ctx, `SELECT name FROM locations WHERE id = ?`, a.LocationID).Scan(&d.Location)
 	if d.Schedules, err = listSchedules(ctx, q, a.ID); err != nil {
-		return err
+		return d, err
 	}
 	rows, err := q.QueryContext(ctx, `SELECT w.id, w.number, w.type, w.title, w.status, w.priority, w.due_at, '',
 			coalesce((SELECT legal_name FROM users u WHERE u.id = w.assigned_to), '')
@@ -183,15 +191,13 @@ func (s *Server) assetView(w http.ResponseWriter, r *http.Request, sess *session
 		var x woRow
 		return x, r.Scan(&x.ID, &x.Number, &x.Type, &x.Title, &x.Status, &x.Priority, &x.DueAt, &x.Asset, &x.AssignedTo)
 	}); err != nil {
-		return err
+		return d, err
 	}
 	if d.Calibrations, err = calibrations(ctx, q, "c.asset_id = ?", a.ID); err != nil {
-		return err
+		return d, err
 	}
-	if d.Locations, err = locationOptions(ctx, q); err != nil {
-		return err
-	}
-	return s.render(w, r, sess, "asset", a.Tag, d)
+	d.Locations, err = locationOptions(ctx, q)
+	return d, err
 }
 
 func formInt(r *http.Request, name string) int64 {
@@ -292,14 +298,22 @@ type woData struct {
 }
 
 func (s *Server) workOrderView(w http.ResponseWriter, r *http.Request, sess *session) error {
-	ctx, q := r.Context(), s.App.Store.DB()
-	wo, err := domain.GetWorkOrder(ctx, q, r.PathValue("id"))
+	d, err := s.loadWorkOrder(r, sess, r.PathValue("id"))
 	if err != nil {
 		return err
 	}
+	return s.render(w, r, sess, "work_order", d.WO.Number, d)
+}
+
+func (s *Server) loadWorkOrder(r *http.Request, sess *session, id string) (woData, error) {
+	ctx, q := r.Context(), s.App.Store.DB()
+	wo, err := domain.GetWorkOrder(ctx, q, id)
+	if err != nil {
+		return woData{}, err
+	}
 	d := woData{WO: wo, Holder: wo.AssignedTo == sess.User.ID && wo.LeaseID != "", Performer: wo.AssignedTo == sess.User.ID}
 	if d.Asset, err = domain.GetAsset(ctx, q, wo.AssetID); err != nil {
-		return err
+		return d, err
 	}
 	d.SiteTZ = siteTimezone(ctx, q, d.Asset.SiteID)
 	if wo.AssignedTo != "" {
@@ -308,21 +322,21 @@ func (s *Server) workOrderView(w http.ResponseWriter, r *http.Request, sess *ses
 		}
 	}
 	if d.ContentHash, err = domain.WorkOrderContentHash(ctx, q, wo.ID); err != nil {
-		return err
+		return d, err
 	}
 	if d.Signatures, err = domain.WorkOrderSignatures(ctx, q, wo.ID); err != nil {
-		return err
+		return d, err
 	}
 	if d.Calibrations, err = calibrations(ctx, q, "c.wo_id = ?", wo.ID); err != nil {
-		return err
+		return d, err
 	}
 	if d.Standards, err = standardOptions(ctx, q, wo.AssetID); err != nil {
-		return err
+		return d, err
 	}
 	isMid := roleRank[sess.User.Role] >= roleRank[domain.RoleMidTier]
 	if isMid {
 		if d.Users, err = userOptions(ctx, q); err != nil {
-			return err
+			return d, err
 		}
 	}
 	switch {
@@ -335,7 +349,7 @@ func (s *Server) workOrderView(w http.ResponseWriter, r *http.Request, sess *ses
 	}
 	d.Rows, _ = strconv.Atoi(r.URL.Query().Get("rows"))
 	d.Rows = min(max(d.Rows, 4), 50)
-	return s.render(w, r, sess, "work_order", wo.Number, d)
+	return d, nil
 }
 
 func (s *Server) workOrderClaim(w http.ResponseWriter, r *http.Request, sess *session) error {

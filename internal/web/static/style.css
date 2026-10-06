@@ -47,3 +47,5 @@ ul.sigs li { padding: .5rem 0; border-bottom: 1px solid var(--line); }
 article.cal { border: 1px solid var(--line); padding: .5rem .8rem; margin-bottom: .8rem; border-radius: 6px; background: var(--panel); }
 .otp { font: 600 1.6rem ui-monospace, monospace; letter-spacing: .1em; }
 :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+table.audit pre { white-space: pre-wrap; margin: 0; font-size: 12px; max-width: 40rem; }
+.records { font-size: 14px; }

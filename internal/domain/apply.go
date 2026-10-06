@@ -66,7 +66,7 @@ func (p *Projector) Reset(ctx context.Context, tx *sql.Tx) error {
 	for _, t := range []string{
 		"signatures", "cal_standards", "cal_points", "calibration_records", "stock_txns", "stock_levels", "stock_locations", "parts",
 		"wo_leases", "work_orders", "pm_schedules", "assets", "locations", "sites",
-		"nodes", "user_lockouts", "user_password_history", "users", "backups", "durable_heads",
+		"nodes", "user_lockouts", "user_password_history", "users", "backups", "durable_heads", "flag_resolutions",
 	} {
 		if _, err := tx.ExecContext(ctx, `DELETE FROM `+t); err != nil {
 			return err
@@ -170,6 +170,10 @@ func (p *Projector) Apply(ctx context.Context, tx *sql.Tx, e *event.Event) error
 		return ap.backupOffsiteConfirmed(pl)
 	case *BackupRestored:
 		return ap.backupRestored(pl)
+	case *ConflictResolved:
+		return ap.conflictResolved(pl)
+	case *NodeQuarantineCleared:
+		return ap.nodeQuarantineCleared(pl)
 	}
 	return fmt.Errorf("domain: no handler for %T", v)
 }

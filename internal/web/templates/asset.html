@@ -8,11 +8,24 @@
   <dt>Status</dt><dd class="s-{{$a.Status}}"><strong>{{label $a.Status}}</strong></dd>
   <dt>Risk class</dt><dd>{{$a.RiskClass}}</dd>
 </dl>
+<p class="records"><a href="/assets/{{$a.ID}}/audit">Audit trail</a> · <a href="/assets/{{$a.ID}}/print">Printable record</a> · <a href="/assets/{{$a.ID}}/export.json">Download signed JSON</a></p>
 <section class="actions">
   <a class="button" href="/work-orders/new?asset={{$a.ID}}">New work order</a>
   <form method="post" action="/assets/{{$a.ID}}/status" class="inline">{{template "csrf" .CSRF}}<input type="hidden" name="version" value="{{$a.Version}}">
     <label>Status <select name="status">{{range .Data.Statuses}}<option {{if eq . $a.Status}}selected{{end}}>{{.}}</option>{{end}}</select></label>
     <label>Reason <input name="reason"></label>{{template "nophi"}}<button>Change status</button></form>
+  <details><summary>Edit details</summary>
+  <form method="post" action="/assets/{{$a.ID}}/edit" class="narrow">{{template "csrf" .CSRF}}<input type="hidden" name="version" value="{{$a.Version}}">
+    <input type="hidden" name="orig_manufacturer" value="{{$a.Manufacturer}}"><input type="hidden" name="orig_model" value="{{$a.Model}}">
+    <input type="hidden" name="orig_serial" value="{{$a.Serial}}"><input type="hidden" name="orig_risk_class" value="{{$a.RiskClass}}">
+    <input type="hidden" name="orig_reference" value="{{if $a.IsReferenceStandard}}yes{{end}}">
+    <label>Manufacturer <input name="manufacturer" value="{{$a.Manufacturer}}" required></label>
+    <label>Model <input name="model" value="{{$a.Model}}" required></label>
+    <label>Serial number <input name="serial" value="{{$a.Serial}}"></label>
+    <label>Risk class <select name="risk_class">{{range $c := slice3 "" "low" "medium" "high"}}<option value="{{$c}}" {{if eq $c $a.RiskClass}}selected{{end}}>{{if $c}}{{$c}}{{else}}not set{{end}}</option>{{end}}</select></label>
+    <label class="check"><input type="checkbox" name="reference" value="yes" {{if $a.IsReferenceStandard}}checked{{end}}> Reference standard</label>
+    <button>Save details</button>
+  </form></details>
   <form method="post" action="/assets/{{$a.ID}}/relocate" class="inline">{{template "csrf" .CSRF}}<input type="hidden" name="version" value="{{$a.Version}}">
     <label>Move to <select name="location">{{range .Data.Locations}}<option value="{{.ID}}" {{if eq .ID $a.LocationID}}selected{{end}}>{{.Label}}</option>{{end}}</select></label><button>Move</button></form>
 </section>

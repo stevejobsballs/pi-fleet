@@ -118,6 +118,13 @@ func (s *Server) Handler() (http.Handler, error) {
 	mux.Handle("GET /assets/{id}", user(s.assetView))
 	mux.Handle("POST /assets/{id}/status", user(s.assetStatus))
 	mux.Handle("POST /assets/{id}/relocate", user(s.assetRelocate))
+	mux.Handle("POST /assets/{id}/edit", user(s.assetEdit))
+	mux.Handle("GET /assets/{id}/audit", user(s.auditPage("asset")))
+	mux.Handle("GET /assets/{id}/print", user(s.printPage("asset")))
+	mux.Handle("GET /assets/{id}/export.json", user(s.exportJSON("asset")))
+	mux.Handle("GET /work-orders/{id}/audit", user(s.auditPage("work_order")))
+	mux.Handle("GET /work-orders/{id}/print", user(s.printPage("work_order")))
+	mux.Handle("GET /work-orders/{id}/export.json", user(s.exportJSON("work_order")))
 	mux.Handle("GET /work-orders", user(s.workOrderList))
 	mux.Handle("GET /work-orders/new", user(s.workOrderNew))
 	mux.Handle("POST /work-orders", user(s.workOrderCreate))
@@ -135,7 +142,10 @@ func (s *Server) Handler() (http.Handler, error) {
 	mux.Handle("POST /inventory/locations", user(s.stockLocationCreate))
 	mux.Handle("GET /schedules", user(s.scheduleList))
 	mux.Handle("POST /schedules", mid(s.scheduleCreate))
+	mux.Handle("POST /schedules/{id}/change", mid(s.scheduleChange))
+	mux.Handle("POST /schedules/{id}/end", mid(s.scheduleEnd))
 	mux.Handle("GET /review", mid(s.review))
+	mux.Handle("POST /review/{id}/resolve", mid(s.flagResolve))
 	mux.Handle("GET /admin/users", super(s.userList))
 	mux.Handle("POST /admin/users", super(s.userCreate))
 	mux.Handle("POST /admin/users/{id}/role", super(s.userRole))
@@ -150,6 +160,7 @@ func (s *Server) Handler() (http.Handler, error) {
 		mux.Handle("POST /admin/nodes/{id}/confirm", super(s.nodeConfirm))
 		mux.Handle("POST /admin/nodes/{id}/reject", super(s.nodeReject))
 		mux.Handle("POST /admin/nodes/{id}/revoke", super(s.nodeRevoke))
+		mux.Handle("POST /admin/nodes/{id}/unquarantine", super(s.nodeUnquarantine))
 	}
 	return securityHeaders(mux), nil
 }

@@ -102,12 +102,18 @@ func (s *Server) scheduleCreate(w http.ResponseWriter, r *http.Request, sess *se
 
 // --- review queue ---
 
+type reviewData struct {
+	All  bool
+	Rows []flagRow
+}
+
 func (s *Server) review(w http.ResponseWriter, r *http.Request, sess *session) error {
-	rows, err := listFlags(r.Context(), s.App.Store.DB())
+	all := r.URL.Query().Get("all") == "1"
+	rows, err := listFlags(r.Context(), s.App.Store.DB(), all)
 	if err != nil {
 		return err
 	}
-	return s.render(w, r, sess, "review", "Review queue", rows)
+	return s.render(w, r, sess, "review", "Review queue", reviewData{All: all, Rows: rows})
 }
 
 // --- users ---
@@ -211,7 +217,8 @@ func (s *Server) locationCreate(w http.ResponseWriter, r *http.Request, sess *se
 
 type nodeRow struct {
 	domain.Node
-	Username string
+	Username    string
+	Quarantined bool
 }
 
 func (s *Server) nodeList(w http.ResponseWriter, r *http.Request, sess *session) error {
@@ -226,6 +233,7 @@ func (s *Server) nodeList(w http.ResponseWriter, r *http.Request, sess *session)
 		if u, err := domain.GetUser(ctx, q, n.BoundUserID); err == nil {
 			rows[i].Username = u.LegalName + " (" + u.Username + ")"
 		}
+		rows[i].Quarantined = s.App.Quarantined(ctx, n.ID)
 	}
 	return s.render(w, r, sess, "nodes", "Pis", rows)
 }

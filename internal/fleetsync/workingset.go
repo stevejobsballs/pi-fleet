@@ -54,7 +54,7 @@ var snapshotTables = []string{
 	"sites", "locations", "users", "user_password_history", "user_lockouts", "nodes",
 	"assets", "pm_schedules", "work_orders", "wo_leases",
 	"calibration_records", "cal_points", "cal_standards", "signatures",
-	"parts", "stock_locations", "stock_levels",
+	"parts", "stock_locations", "stock_levels", "flag_resolutions",
 }
 
 // BuildSnapshot assembles a node's working set (DESIGN.md §5.6, decision
@@ -132,6 +132,7 @@ func BuildSnapshot(ctx context.Context, db *sql.DB, centralNodeID string, node d
 		{"parts", "1", nil},
 		{"stock_locations", "1", nil},
 		{"stock_levels", "1", nil},
+		{"flag_resolutions", "event_id IN (SELECT event_id FROM events WHERE node_id = ?)", []any{node.ID}},
 	}
 	for _, sp := range specs {
 		t, err := dumpTable(ctx, tx, sp.name, sp.where, sp.args...)

@@ -38,6 +38,7 @@ any Pi:
   init               create keys, database and chain: -role central (master Pi) or -role node
   verify             re-check every event chain in the database
   rebuild            rebuild projections (central: from events; node: from the last snapshot)
+  verify-export      check a downloaded record (signed JSON) independently
   selfcheck          apply migrations and verify integrity and every chain (used by update)
   update             install a signed release with automatic rollback
 
@@ -49,6 +50,7 @@ master Pi (central):
   node-confirm       confirm a pending Pi after checking its pairing words
   node-reject        reject a pending Pi
   node-revoke        revoke a Pi (it wipes itself when it next connects)
+  node-unquarantine  release a Pi quarantined after a chain fork
   backup-keygen      generate a backup decryption identity (keep it offline)
   backup-config      set the backup disk and the age recipients
   backup-now         take a verified snapshot and export events now
@@ -90,7 +92,7 @@ func run(ctx context.Context, args []string, stdin io.Reader, out io.Writer) err
 		"node-revoke": cmdNodeRevoke, "user-create": cmdUserCreate, "run": cmdRun,
 		"backup-keygen": cmdBackupKeygen, "backup-config": cmdBackupConfig, "backup-now": cmdBackupNow, "backups": cmdBackups,
 		"offsite-register": cmdOffsiteRegister, "offsite-write": cmdOffsiteWrite, "offsite-confirm": cmdOffsiteConfirm, "restore": cmdRestore,
-		"selfcheck": cmdSelfcheck, "update": cmdUpdate, "release-keygen": cmdReleaseKeygen, "release-sign": cmdReleaseSign, "activate": cmdActivate, "activation-status": cmdActivationStatus, "sync": cmdSync,
+		"selfcheck": cmdSelfcheck, "verify-export": cmdVerifyExport, "node-unquarantine": cmdNodeUnquarantine, "update": cmdUpdate, "release-keygen": cmdReleaseKeygen, "release-sign": cmdReleaseSign, "activate": cmdActivate, "activation-status": cmdActivationStatus, "sync": cmdSync,
 	}
 	c := &cli{stdin: stdin, out: out}
 	switch cmd := args[0]; cmd {

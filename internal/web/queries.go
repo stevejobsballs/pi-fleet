@@ -271,17 +271,24 @@ func listUsers(ctx context.Context, q domain.Querier) ([]userRow, error) {
 }
 
 type flagRow struct {
-	EventID, Type, Actor, Flag, Detail, Node string
-	WallTime                                 string
+	EventID, Type, Actor, Flag, Detail, Node, EntityType, EntityID string
+	WallTime, Resolution, ResolutionNote, ResolvedBy               string
+	Projected                                                      bool
 }
 
-func listFlags(ctx context.Context, q domain.Querier) ([]flagRow, error) {
-	rows, err := q.QueryContext(ctx, `SELECT e.event_id, e.type, coalesce(u.legal_name, e.actor_user_id), f.flag, f.detail, e.node_id, e.wall_time
+// listFlags returns flagged records, unresolved first.
+func listFlags(ctx context.Context, q domain.Querier, all bool) ([]flagRow, error) {
+	rows, err := q.QueryContext(ctx, `SELECT e.event_id, e.type, coalesce(u.legal_name, e.actor_user_id), f.flag, f.detail, e.node_id,
+			e.entity_type, e.entity_id, e.wall_time, coalesce(r.resolution, ''), coalesce(r.note, ''),
+			coalesce((SELECT legal_name FROM users WHERE id = r.resolved_by), ''), f.projected
 		FROM event_flags f JOIN events e USING (event_id) LEFT JOIN users u ON u.id = e.actor_user_id
-		ORDER BY e.local_order DESC LIMIT 500`)
+		LEFT JOIN flag_resolutions r ON r.event_id = f.event_id
+		WHERE ? OR r.event_id IS NULL
+		ORDER BY r.event_id IS NOT NULL, e.local_order DESC LIMIT 500`, all)
 	return scanAll(rows, err, func(r *sql.Rows) (flagRow, error) {
 		var f flagRow
-		return f, r.Scan(&f.EventID, &f.Type, &f.Actor, &f.Flag, &f.Detail, &f.Node, &f.WallTime)
+		return f, r.Scan(&f.EventID, &f.Type, &f.Actor, &f.Flag, &f.Detail, &f.Node, &f.EntityType, &f.EntityID,
+			&f.WallTime, &f.Resolution, &f.ResolutionNote, &f.ResolvedBy, &f.Projected)
 	})
 }
 

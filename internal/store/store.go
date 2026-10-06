@@ -768,6 +768,25 @@ func (s *Store) EventsAfter(ctx context.Context, after int64, limit int) ([]even
 	return evs, orders, rows.Err()
 }
 
+// EventsMatching returns the events satisfying an SQL condition on the
+// events table, in local order. The condition is code, never user input.
+func (s *Store) EventsMatching(ctx context.Context, cond string, args ...any) ([]event.Event, error) {
+	rows, err := s.r.QueryContext(ctx, `SELECT `+eventColumns+` FROM events WHERE `+cond+` ORDER BY local_order`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []event.Event
+	for rows.Next() {
+		e, err := scanEvent(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
 // Problem is one verification failure.
 type Problem struct {
 	ChainID string

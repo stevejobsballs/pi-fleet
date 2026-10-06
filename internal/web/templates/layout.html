@@ -54,3 +54,11 @@
 </tbody></table>
 {{else}}<p>None.</p>{{end}}
 {{end}}
+
+{{define "auditTable"}}
+{{if .}}<div class="scroll"><table class="audit"><thead><tr><th>When (UTC)</th><th>Who</th><th>What</th><th>Details</th><th>Integrity</th></tr></thead><tbody>
+{{range .}}<tr><td>{{.When}}{{if eq .Clock "unverified"}}<br><span class="warn">clock unverified</span>{{end}}</td><td>{{.Actor}}</td><td>{{label .Type}}</td>
+  <td>{{if .Redacted}}<em>[payload redacted; see the redaction entry]</em>{{else}}<pre>{{.Summary}}</pre>{{end}}{{range .Flags}}<p class="warn">{{.}}</p>{{end}}</td>
+  <td><small>Pi {{printf "%.8s" .Node}} #{{.Seq}}<br>{{printf "%.16s" .Hash}}</small></td></tr>{{end}}
+</tbody></table></div>{{else}}<p>No entries.</p>{{end}}
+{{end}}

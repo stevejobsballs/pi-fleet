@@ -51,6 +51,7 @@ var funcs = template.FuncMap{
 	"add":         func(a, b int) int { return a + b },
 	"dict2":       func(a, b any) struct{ A, B any } { return struct{ A, B any }{a, b} },
 	"dict3":       func(a, b, c, d any) struct{ A, B, C, D any } { return struct{ A, B, C, D any }{a, b, c, d} },
+	"slice3":      func(a ...string) []string { return a },
 	"seq": func(n int) []int {
 		out := make([]int, n)
 		for i := range out {

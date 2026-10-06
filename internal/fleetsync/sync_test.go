@@ -453,6 +453,13 @@ func TestForkQuarantinesPi(t *testing.T) {
 	if _, err := tess.client.Sync(f.ctx); !errors.Is(err, ErrQuarantined) {
 		t.Fatalf("sync after fork: %v", err)
 	}
+	// After investigating, a super user lifts the quarantine.
+	var rej *store.Rejection
+	if err := f.app.ClearQuarantine(f.ctx, f.super, tess.client.NodeID, ""); !errors.As(err, &rej) {
+		t.Fatalf("clearing without a reason: %v", err)
+	}
+	f.must(f.app.ClearQuarantine(f.ctx, f.super, tess.client.NodeID, "forged event came from a test harness; chain intact"))
+	tess.sync()
 }
 
 func TestRevocationWipesAfterDeliveringWork(t *testing.T) {

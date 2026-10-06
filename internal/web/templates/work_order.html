@@ -11,6 +11,7 @@
   <dt>Problem</dt><dd class="pre">{{$w.Problem}}</dd>
 </dl>
 
+<p class="records"><a href="/work-orders/{{$w.ID}}/audit">Audit trail</a> · <a href="/work-orders/{{$w.ID}}/print">Printable record</a> · <a href="/work-orders/{{$w.ID}}/export.json">Download signed JSON</a></p>
 <section class="actions">
   {{if and (eq $w.Status "open") (not $d.Holder)}}
   <form method="post" action="/work-orders/{{$w.ID}}/claim">{{template "csrf" .CSRF}}<button>Claim this work</button></form>

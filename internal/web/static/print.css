@@ -1,0 +1,9 @@
+body { font: 11pt/1.4 system-ui, sans-serif; color: #000; background: #fff; margin: 1.5cm; }
+h1 { font-size: 16pt; margin: 0 0 .3em; } h2 { font-size: 13pt; margin: 1.2em 0 .4em; border-bottom: 1px solid #999; }
+table { border-collapse: collapse; width: 100%; margin-bottom: .8em; }
+th, td { border: 1px solid #bbb; padding: 3px 6px; text-align: left; vertical-align: top; font-size: 10pt; }
+table.facts th { width: 9em; background: #f2f2f2; }
+pre { white-space: pre-wrap; margin: 0; font-size: 8.5pt; }
+.pre { white-space: pre-wrap; } .warn { font-weight: 600; } .scroll { overflow: visible; }
+.sig { border: 1px solid #999; padding: 4px 8px; margin-bottom: 6px; page-break-inside: avoid; }
+tr { page-break-inside: avoid; } footer { margin-top: 2em; font-size: 9pt; color: #333; }

@@ -1,0 +1,6 @@
+{{define "content"}}
+<p><a href="{{.Data.Back}}">Back to {{.Data.Subject.Label}}</a> · <a href="{{.Data.Back}}/print">Printable record</a> · <a href="{{.Data.Back}}/export.json">Download signed JSON</a></p>
+{{if not .Data.Complete}}<p class="warn">This Pi holds only its own records. The master Pi has the complete audit trail.</p>{{end}}
+<p class="hint">Every change, in the order stored. Entries are never edited: corrections appear as later entries. Times are UTC from the recording Pi's clock.</p>
+{{template "auditTable" .Data.Rows}}
+{{end}}

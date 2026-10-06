@@ -1,0 +1,53 @@
+{{define "content"}}{{end}}
+{{define "print"}}<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>{{.Title}} · record</title><link rel="stylesheet" href="/static/print.css"></head>
+<body>
+<header><h1>{{if .WO}}Work order {{.WO.WO.Number}}{{else}}Equipment {{.Asset.Asset.Tag}}{{end}}</h1>
+<p>Electronic record copy produced by pi-fleet. {{if not .Complete}}<strong>Partial: produced on an employee Pi, which holds only its own records.</strong>{{end}}</p></header>
+
+{{with .WO}}{{$w := .WO}}
+<table class="facts"><tbody>
+<tr><th>Equipment</th><td>{{.Asset.Tag}} · {{.Asset.Manufacturer}} {{.Asset.Model}} · serial {{.Asset.Serial}}</td></tr>
+<tr><th>Type</th><td>{{$w.Type}}</td></tr><tr><th>Status</th><td>{{label $w.Status}}</td></tr>
+<tr><th>Priority</th><td>{{$w.Priority}}</td></tr><tr><th>Assigned to</th><td>{{.Assignee}}</td></tr>
+<tr><th>Due</th><td>{{$w.DueAt}}</td></tr><tr><th>Title</th><td>{{$w.Title}}</td></tr>
+<tr><th>Problem</th><td class="pre">{{$w.Problem}}</td></tr>
+<tr><th>Content hash</th><td><code>{{.ContentHash}}</code></td></tr>
+</tbody></table>
+{{range .Calibrations}}
+<h2>Calibration{{if eq .Status "voided"}} (voided: {{.VoidReason}}){{end}}</h2>
+<p>{{.Procedure}} · performed by {{.PerformedBy}} · {{when .PerformedAt}}{{if .Adjusted}} · adjusted{{end}}{{if .Temperature}} · {{.Temperature}} °C{{end}}{{if .Humidity}} · {{.Humidity}} %RH{{end}}<br>
+As found: <strong>{{.AsFound}}</strong> · As left: <strong>{{.AsLeft}}</strong>{{if .Standards}} · Standards: {{range $i, $s := .Standards}}{{if $i}}, {{end}}{{$s}}{{end}}{{end}}</p>
+{{range .Flags}}<p><em>{{.}}</em></p>{{end}}
+<table><thead><tr><th>Parameter</th><th>Nominal</th><th>Limits</th><th>As found</th><th>As left</th></tr></thead><tbody>
+{{range .Points}}<tr><td>{{.Parameter}} ({{.Unit}})</td><td>{{.Nominal}}</td><td>{{.Lower}} – {{.Upper}}</td><td>{{.AsFound}} {{if .FoundPass}}pass{{else}}FAIL{{end}}</td><td>{{.AsLeft}} {{if .LeftPass}}pass{{else}}FAIL{{end}}</td></tr>{{end}}
+</tbody></table>
+{{end}}
+<h2>Electronic signatures</h2>
+{{range .Signatures}}<div class="sig"><p><strong>{{.SignerLegalName}}</strong> ({{.SignerUsername}})<br>Meaning: <strong>{{.Meaning}}</strong> — “{{meaningText .Meaning}}”<br>
+Signed: {{when .SignedAt}} ({{whenLocal .SignedAt $.WO.SiteTZ}}){{if eq .ClockState "unverified"}} · signing Pi's clock was unverified{{end}}<br>
+{{if eq .Status "withdrawn"}}WITHDRAWN: {{.WithdrawReason}}{{else if .Stale}}STALE: the record changed or was reopened after this signature{{else}}Valid for the record content above{{end}}</p></div>
+{{else}}<p>None.</p>{{end}}
+{{end}}
+
+{{with .Asset}}{{$a := .Asset}}
+<table class="facts"><tbody>
+<tr><th>Equipment</th><td>{{$a.Manufacturer}} {{$a.Model}}{{if $a.IsReferenceStandard}} (reference standard){{end}}</td></tr>
+<tr><th>Serial</th><td>{{$a.Serial}}</td></tr><tr><th>Site</th><td>{{.Site.Code}} · {{.Site.Name}}</td></tr>
+<tr><th>Location</th><td>{{.Location}}</td></tr><tr><th>Status</th><td>{{label $a.Status}}</td></tr><tr><th>Risk class</th><td>{{$a.RiskClass}}</td></tr>
+</tbody></table>
+<h2>Work orders</h2>
+<table><thead><tr><th>Number</th><th>Type</th><th>Title</th><th>Status</th><th>Assigned</th></tr></thead><tbody>
+{{range .WorkOrders}}<tr><td>{{.Number}}</td><td>{{.Type}}</td><td>{{.Title}}</td><td>{{label .Status}}</td><td>{{.AssignedTo}}</td></tr>{{end}}</tbody></table>
+<h2>Calibrations</h2>
+<table><thead><tr><th>Date</th><th>Work order</th><th>By</th><th>As found</th><th>As left</th><th>Status</th></tr></thead><tbody>
+{{range .Calibrations}}<tr><td>{{when .PerformedAt}}</td><td>{{.WorkOrder}}</td><td>{{.PerformedBy}}</td><td>{{.AsFound}}</td><td>{{.AsLeft}}</td><td>{{.Status}}</td></tr>{{end}}</tbody></table>
+{{end}}
+
+<h2>Audit trail</h2>
+{{template "auditTable" .Audit}}
+
+<footer><p>Produced {{when .GeneratedAt}} by {{.GeneratedBy}} from {{.Source}}.
+Each entry above is a signed, hash-chained event; the signed JSON export of this record can be checked independently with
+<code>pi-fleet verify-export</code>.</p></footer>
+</body></html>{{end}}
