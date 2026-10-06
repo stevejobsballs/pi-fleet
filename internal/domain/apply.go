@@ -65,7 +65,7 @@ func (p *Projector) Reset(ctx context.Context, tx *sql.Tx) error {
 	for _, t := range []string{
 		"cal_standards", "cal_points", "calibration_records", "stock_txns", "stock_levels", "stock_locations", "parts",
 		"wo_leases", "work_orders", "pm_schedules", "assets", "locations", "sites",
-		"user_lockouts", "user_password_history", "users",
+		"nodes", "user_lockouts", "user_password_history", "users",
 	} {
 		if _, err := tx.ExecContext(ctx, `DELETE FROM `+t); err != nil {
 			return err
@@ -151,6 +151,14 @@ func (p *Projector) Apply(ctx context.Context, tx *sql.Tx, e *event.Event) error
 		return ap.stockTxnRecorded(pl)
 	case *StockTxnReversed:
 		return ap.stockTxnReversed(pl)
+	case *NodeActivated:
+		return ap.nodeActivated(pl)
+	case *NodeConfirmed:
+		return ap.nodeConfirmed(pl)
+	case *NodeRejected:
+		return ap.nodeRejected(pl)
+	case *NodeRevoked:
+		return ap.nodeRevoked(pl)
 	}
 	return fmt.Errorf("domain: no handler for %T", v)
 }
@@ -241,7 +249,13 @@ func (p *Projector) actor(ctx context.Context, tx *sql.Tx, e *event.Event) (acto
 		if !known || allowed != e.Type || (e.ActorUserID != SystemAuth && !trusted) {
 			return actorInfo{}, store.Reject(FlagNotAuthorized, "system actor %s may not author %s from node %s", e.ActorUserID, e.Type, e.NodeID)
 		}
+		if err := checkNodeBinding(ctx, tx, e); err != nil {
+			return actorInfo{}, err
+		}
 		return actorInfo{id: e.ActorUserID, system: true}, nil
+	}
+	if err := checkNodeBinding(ctx, tx, e); err != nil {
+		return actorInfo{}, err
 	}
 	u, err := GetUser(ctx, tx, e.ActorUserID)
 	if errors.Is(err, ErrNotFound) {
@@ -507,13 +521,19 @@ func (ap *applier) userPasswordReset(p *UserPasswordReset) error {
 // pushHistory records a chosen (not temporary) verifier, keeping the
 // newest password.HistoryDepth.
 func (ap *applier) pushHistory(verifier string) error {
+	return ap.pushHistoryFor(ap.e.EntityID, verifier)
+}
+
+func (ap *applier) pushHistoryFor(userID, verifier string) error {
 	if err := ap.exec(`INSERT INTO user_password_history (user_id, event_id, verifier, changed_at) VALUES (?, ?, ?, ?)`,
-		ap.e.EntityID, ap.e.EventID, verifier, ap.wall()); err != nil {
+		userID, ap.e.EventID, verifier, ap.wall()); err != nil {
 		return err
 	}
+	// Keep the newest entries. Order by changed_at, then event id: history
+	// rows can arrive in a node's snapshot without their events.
 	return ap.exec(`DELETE FROM user_password_history WHERE user_id = ? AND event_id NOT IN (
-		SELECT event_id FROM user_password_history h JOIN events e USING (event_id)
-		WHERE h.user_id = ? ORDER BY e.local_order DESC LIMIT ?)`, ap.e.EntityID, ap.e.EntityID, password.HistoryDepth)
+		SELECT event_id FROM user_password_history WHERE user_id = ?
+		ORDER BY changed_at DESC, event_id DESC LIMIT ?)`, userID, userID, password.HistoryDepth)
 }
 
 // --- assets ---

@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"context"
 	"crypto/ed25519"
+	"encoding/hex"
 	"errors"
 	"flag"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"golang.org/x/term"
@@ -19,6 +21,7 @@ import (
 	"pi-fleet/internal/app"
 	"pi-fleet/internal/domain"
 	"pi-fleet/internal/event"
+	"pi-fleet/internal/fleetsync"
 	"pi-fleet/internal/hlc"
 	"pi-fleet/internal/keys"
 	"pi-fleet/internal/password"
@@ -30,12 +33,25 @@ var version = "dev"
 
 const usage = `usage: pi-fleet <command> [flags]
 
-commands:
-  version     print the version
-  init        create node keys, database, and chain (standalone, pre-activation)
-  bootstrap   create the first super user (console only; prompts for a password)
-  verify      re-check every event chain in the database
-  rebuild     rebuild all projections from the event log
+any Pi:
+  version            print the version
+  init               create keys, database and chain: -role central (master Pi) or -role node
+  verify             re-check every event chain in the database
+  rebuild            rebuild projections (central: from events; node: from the last snapshot)
+
+master Pi (central):
+  bootstrap          create the first super user (prompts for a password)
+  user-create        create an account and print its one-time password
+  serve              run the sync API over HTTPS and the PM scheduler
+  nodes              list Pis and their status
+  node-confirm       confirm a pending Pi after checking its pairing words
+  node-reject        reject a pending Pi
+  node-revoke        revoke a Pi (it wipes itself when it next connects)
+
+employee Pi (node):
+  activate           activate this Pi with the one-time password from a super user
+  activation-status  check whether a super user has confirmed this Pi
+  sync               sync with the master Pi once, or repeatedly with -every
 `
 
 // passwordParams is replaced in tests to keep them fast.
@@ -53,115 +69,191 @@ func run(ctx context.Context, args []string, stdin io.Reader, out io.Writer) err
 		fmt.Fprint(out, usage)
 		return errors.New("no command given")
 	}
-	switch cmd, rest := args[0], args[1:]; cmd {
+	cmds := map[string]func(context.Context, []string, *cli) error{
+		"init": cmdInit, "bootstrap": cmdBootstrap, "verify": cmdVerify, "rebuild": cmdRebuild,
+		"serve": cmdServe, "nodes": cmdNodes, "node-confirm": cmdNodeConfirm, "node-reject": cmdNodeReject,
+		"node-revoke": cmdNodeRevoke, "user-create": cmdUserCreate, "activate": cmdActivate, "activation-status": cmdActivationStatus, "sync": cmdSync,
+	}
+	c := &cli{stdin: stdin, out: out}
+	switch cmd := args[0]; cmd {
 	case "version":
 		fmt.Fprintln(out, "pi-fleet", version)
 		return nil
-	case "init":
-		return cmdInit(ctx, rest, out)
-	case "bootstrap":
-		return cmdBootstrap(ctx, rest, stdin, out)
-	case "verify":
-		return cmdVerify(ctx, rest, out)
-	case "rebuild":
-		return cmdRebuild(ctx, rest, out)
 	case "help", "-h", "--help":
 		fmt.Fprint(out, usage)
 		return nil
 	default:
-		fmt.Fprint(out, usage)
-		return fmt.Errorf("unknown command %q", cmd)
+		f, ok := cmds[cmd]
+		if !ok {
+			fmt.Fprint(out, usage)
+			return fmt.Errorf("unknown command %q", cmd)
+		}
+		return f(ctx, args[1:], c)
 	}
+}
+
+// cli carries terminal I/O for commands.
+type cli struct {
+	stdin io.Reader
+	out   io.Writer
+	lines *bufio.Reader // piped input, shared across prompts
+}
+
+func (c *cli) printf(format string, args ...any) { fmt.Fprintf(c.out, format, args...) }
+
+// readSecret reads a line without echo from a terminal, or plainly from
+// piped input (for scripted installs and tests).
+func (c *cli) readSecret(prompt string) (string, error) {
+	fmt.Fprint(c.out, prompt)
+	if f, ok := c.stdin.(*os.File); ok && term.IsTerminal(int(f.Fd())) {
+		b, err := term.ReadPassword(int(f.Fd()))
+		fmt.Fprintln(c.out)
+		return string(b), err
+	}
+	line, err := c.readLine("")
+	fmt.Fprintln(c.out)
+	return line, err
+}
+
+func (c *cli) readLine(prompt string) (string, error) {
+	fmt.Fprint(c.out, prompt)
+	if c.lines == nil {
+		c.lines = bufio.NewReader(c.stdin)
+	}
+	line, err := c.lines.ReadString('\n')
+	if err != nil && (err != io.EOF || line == "") {
+		return "", fmt.Errorf("reading input: %w", err)
+	}
+	return strings.TrimSpace(line), nil
+}
+
+// newPassword prompts for a password twice and checks the policy.
+func (c *cli) newPassword(username, prompt string) (string, error) {
+	pw, err := c.readSecret(prompt)
+	if err != nil {
+		return "", err
+	}
+	if err := password.CheckPolicy(pw, username); err != nil {
+		return "", err
+	}
+	again, err := c.readSecret("Confirm:  ")
+	if err != nil {
+		return "", err
+	}
+	if pw != again {
+		return "", errors.New("passwords do not match")
+	}
+	return pw, nil
 }
 
 func dataFlag(fs *flag.FlagSet) *string {
 	return fs.String("data", "/var/lib/pi-fleet", "data directory")
 }
 
-// openData opens the database with the domain projector installed and
-// pointed at this node's identity, if it has one yet.
-func openData(ctx context.Context, dir string) (*store.Store, *domain.Projector, error) {
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return nil, nil, err
+func parse(name string, args []string, setup func(fs *flag.FlagSet)) (*flag.FlagSet, *string, error) {
+	fs := flag.NewFlagSet(name, flag.ContinueOnError)
+	data := dataFlag(fs)
+	if setup != nil {
+		setup(fs)
 	}
-	p := &domain.Projector{}
-	s, err := store.Open(filepath.Join(dir, "pi-fleet.db"), store.WithApplier(p))
-	if err != nil {
-		return nil, nil, err
-	}
-	ln, err := s.LocalNode(ctx)
-	switch {
-	case err == nil:
-		p.LocalNodeID = ln.NodeID
-	case !errors.Is(err, store.ErrNotFound):
-		s.Close()
-		return nil, nil, err
-	}
-	return s, p, nil
+	return fs, data, fs.Parse(args)
 }
 
-// openExisting opens a data directory that must already be initialised.
-func openExisting(ctx context.Context, dir string) (*store.Store, error) {
+// node is an opened data directory.
+type node struct {
+	dir   string
+	store *store.Store
+	proj  *domain.Projector
+	role  string
+	local store.LocalNode
+	keys  keys.NodeKeys
+}
+
+func (n *node) Close() error { return n.store.Close() }
+
+// open opens an initialised data directory with the projector configured
+// for its role.
+func open(ctx context.Context, dir string) (*node, error) {
 	if _, err := os.Stat(filepath.Join(dir, "pi-fleet.db")); err != nil {
 		return nil, fmt.Errorf("%w (run pi-fleet init first)", err)
 	}
-	s, _, err := openData(ctx, dir)
-	return s, err
+	n := &node{dir: dir, proj: &domain.Projector{}}
+	var err error
+	if n.store, err = store.Open(filepath.Join(dir, "pi-fleet.db"), store.WithApplier(n.proj)); err != nil {
+		return nil, err
+	}
+	if n.local, err = n.store.LocalNode(ctx); err != nil {
+		n.Close()
+		return nil, fmt.Errorf("data directory not initialised: %w", err)
+	}
+	n.proj.LocalNodeID = n.local.NodeID
+	if n.role, err = n.store.Config(ctx, fleetsync.ConfigRole); err != nil {
+		n.Close()
+		return nil, fmt.Errorf("role not set: %w", err)
+	}
+	if id, err := n.store.Config(ctx, fleetsync.ConfigCentralNodeID); err == nil {
+		n.proj.CentralNodeID = id
+	}
+	if n.keys, _, err = keys.LoadOrCreate(filepath.Join(dir, "keys")); err != nil {
+		n.Close()
+		return nil, err
+	}
+	return n, nil
 }
 
-// loadApp opens an initialised node ready to run commands.
-func loadApp(ctx context.Context, dir string) (*app.App, error) {
-	s, err := openExisting(ctx, dir)
-	if err != nil {
-		return nil, err
+func (n *node) require(role string) error {
+	if n.role != role {
+		return fmt.Errorf("this command runs on a %s, but this Pi is a %s", role, n.role)
 	}
-	ln, err := s.LocalNode(ctx)
-	if err != nil {
-		s.Close()
-		return nil, fmt.Errorf("node not initialised: %w", err)
-	}
-	k, _, err := keys.LoadOrCreate(filepath.Join(dir, "keys"))
-	if err != nil {
-		s.Close()
-		return nil, err
-	}
-	last, err := s.MaxHLC(ctx)
-	if err != nil {
-		s.Close()
-		return nil, err
-	}
-	return &app.App{
-		Store:  s,
-		Author: &store.Author{NodeID: ln.NodeID, ChainID: ln.ChainID, Signer: k.EventSigner(), Clock: hlc.New(nil, last)},
-		Params: passwordParams,
-	}, nil
+	return nil
 }
 
-func cmdInit(ctx context.Context, args []string, out io.Writer) error {
-	fs := flag.NewFlagSet("init", flag.ContinueOnError)
-	data := dataFlag(fs)
-	if err := fs.Parse(args); err != nil {
+// app returns the command runner for this node.
+func (n *node) app(ctx context.Context) (*app.App, error) {
+	last, err := n.store.MaxHLC(ctx)
+	if err != nil {
+		return nil, err
+	}
+	author := &store.Author{NodeID: n.local.NodeID, ChainID: n.local.ChainID, Signer: n.keys.EventSigner(), Clock: hlc.New(nil, last)}
+	if n.role == "node" {
+		author.ClockState = func() event.ClockState { return fleetsync.ClockState(ctx, n.store, time.Now()) }
+	} else {
+		author.ClockState = func() event.ClockState { return event.ClockVerified } // central runs NTP and an RTC
+	}
+	return &app.App{Store: n.store, Author: author, Params: passwordParams}, nil
+}
+
+func cmdInit(ctx context.Context, args []string, c *cli) error {
+	var role *string
+	_, data, err := parse("init", args, func(fs *flag.FlagSet) {
+		role = fs.String("role", "", "central (the master Pi) or node (an employee Pi)")
+	})
+	if err != nil {
+		return err
+	}
+	if *role != "central" && *role != "node" {
+		return errors.New("init needs -role central or -role node")
+	}
+	if err := os.MkdirAll(*data, 0o700); err != nil {
 		return err
 	}
 	k, _, err := keys.LoadOrCreate(filepath.Join(*data, "keys"))
 	if err != nil {
 		return err
 	}
-	s, p, err := openData(ctx, *data)
+	s, err := store.Open(filepath.Join(*data, "pi-fleet.db"))
 	if err != nil {
 		return err
 	}
 	defer s.Close()
 
-	if p.LocalNodeID != "" {
-		ln, err := s.LocalNode(ctx)
-		if err != nil {
-			return err
-		}
-		fmt.Fprintf(out, "already initialised: node %s chain %s\n", ln.NodeID, ln.ChainID)
+	if ln, err := s.LocalNode(ctx); err == nil {
+		r, _ := s.Config(ctx, fleetsync.ConfigRole)
+		c.printf("already initialised as %s: node %s chain %s\n", r, ln.NodeID, ln.ChainID)
 		return nil
+	} else if !errors.Is(err, store.ErrNotFound) {
+		return err
 	}
-
 	ln := store.LocalNode{NodeID: uuid.Must(uuid.NewV7()).String(), ChainID: uuid.Must(uuid.NewV7()).String()}
 	signer := k.EventSigner()
 	if err := s.TrustKey(ctx, ln.NodeID, signer.Key.Public().(ed25519.PublicKey)); err != nil {
@@ -170,113 +262,39 @@ func cmdInit(ctx context.Context, args []string, out io.Writer) error {
 	if err := s.SetLocalNode(ctx, ln); err != nil {
 		return err
 	}
-	p.LocalNodeID = ln.NodeID
-	last, err := s.MaxHLC(ctx)
-	if err != nil {
+	if err := s.SetConfig(ctx, fleetsync.ConfigRole, *role); err != nil {
 		return err
 	}
-	author := &store.Author{NodeID: ln.NodeID, ChainID: ln.ChainID, Signer: signer, Clock: hlc.New(nil, last)}
+	author := &store.Author{NodeID: ln.NodeID, ChainID: ln.ChainID, Signer: signer, Clock: hlc.New(nil, 0)}
 	e, err := s.Append(ctx, author, event.Draft{
-		ActorUserID:    "system:init",
-		ActorSessionID: "system",
-		Type:           event.TypeChainStarted,
-		EntityType:     "chain",
-		EntityID:       ln.ChainID,
-		SchemaVersion:  1,
-		Payload:        []byte(fmt.Sprintf(`{"software_version":%q}`, version)),
+		ActorUserID: "system:init", ActorSessionID: "system", Type: event.TypeChainStarted,
+		EntityType: "chain", EntityID: ln.ChainID, SchemaVersion: 1,
+		Payload: []byte(fmt.Sprintf(`{"software_version":%q,"role":%q}`, version, *role)),
 	})
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "initialised node %s\nchain %s (genesis %s)\nevent key %s\n", ln.NodeID, ln.ChainID, e.Hash, signer.KeyID)
+	c.printf("initialised %s %s\nchain %s (genesis %s)\nevent key %s\n", *role, ln.NodeID, ln.ChainID, e.Hash, signer.KeyID)
 	return nil
 }
 
-func cmdBootstrap(ctx context.Context, args []string, stdin io.Reader, out io.Writer) error {
-	fs := flag.NewFlagSet("bootstrap", flag.ContinueOnError)
-	data := dataFlag(fs)
-	username := fs.String("username", "", "username for the first super user")
-	legalName := fs.String("name", "", "legal name, shown on e-signatures")
-	email := fs.String("email", "", "work email")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-	if *username == "" || *legalName == "" || *email == "" {
-		return errors.New("bootstrap needs -username, -name and -email")
-	}
-	a, err := loadApp(ctx, *data)
+func cmdVerify(ctx context.Context, args []string, c *cli) error {
+	_, data, err := parse("verify", args, nil)
 	if err != nil {
 		return err
 	}
-	defer a.Store.Close()
-
-	fmt.Fprintf(out, "Choose a password for %s (at least %d characters).\n", *username, password.MinLength)
-	pw, err := readPassword(stdin, out, "Password: ")
+	n, err := open(ctx, *data)
 	if err != nil {
 		return err
 	}
-	if err := password.CheckPolicy(pw, *username); err != nil {
-		return err
-	}
-	again, err := readPassword(stdin, out, "Confirm:  ")
+	defer n.Close()
+	rep, err := n.store.Verify(ctx)
 	if err != nil {
 		return err
 	}
-	if pw != again {
-		return errors.New("passwords do not match")
-	}
-	id, err := a.BootstrapSuperUser(ctx, app.NewUser{
-		Username: *username, LegalName: *legalName, Email: *email,
-		IdentityVerification: "console bootstrap",
-	}, pw)
-	if err != nil {
-		return err
-	}
-	fmt.Fprintf(out, "created super user %s (%s)\n", *username, id)
-	return nil
-}
-
-// stdinLines lets piped input supply several passwords, one per line.
-var stdinLines *bufio.Reader
-
-// readPassword reads a line without echo from a terminal, or plainly
-// from piped input (for scripted installs and tests).
-func readPassword(stdin io.Reader, out io.Writer, prompt string) (string, error) {
-	fmt.Fprint(out, prompt)
-	if f, ok := stdin.(*os.File); ok && term.IsTerminal(int(f.Fd())) {
-		b, err := term.ReadPassword(int(f.Fd()))
-		fmt.Fprintln(out)
-		return string(b), err
-	}
-	if stdinLines == nil {
-		stdinLines = bufio.NewReader(stdin)
-	}
-	line, err := stdinLines.ReadString('\n')
-	if err != nil && (err != io.EOF || line == "") {
-		return "", fmt.Errorf("reading password: %w", err)
-	}
-	fmt.Fprintln(out)
-	return strings.TrimRight(line, "\r\n"), nil
-}
-
-func cmdVerify(ctx context.Context, args []string, out io.Writer) error {
-	fs := flag.NewFlagSet("verify", flag.ContinueOnError)
-	data := dataFlag(fs)
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-	s, err := openExisting(ctx, *data)
-	if err != nil {
-		return err
-	}
-	defer s.Close()
-	rep, err := s.Verify(ctx)
-	if err != nil {
-		return err
-	}
-	fmt.Fprintf(out, "chains %d, events %d, redacted %d, problems %d\n", rep.Chains, rep.Events, rep.Redacted, len(rep.Problems))
+	c.printf("chains %d, events %d, redacted %d, problems %d\n", rep.Chains, rep.Events, rep.Redacted, len(rep.Problems))
 	for _, p := range rep.Problems {
-		fmt.Fprintln(out, "  ", p)
+		c.printf("   %s\n", p)
 	}
 	if !rep.OK() {
 		return errors.New("verification failed")
@@ -284,20 +302,32 @@ func cmdVerify(ctx context.Context, args []string, out io.Writer) error {
 	return nil
 }
 
-func cmdRebuild(ctx context.Context, args []string, out io.Writer) error {
-	fs := flag.NewFlagSet("rebuild", flag.ContinueOnError)
-	data := dataFlag(fs)
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-	s, err := openExisting(ctx, *data)
+func cmdRebuild(ctx context.Context, args []string, c *cli) error {
+	_, data, err := parse("rebuild", args, nil)
 	if err != nil {
 		return err
 	}
-	defer s.Close()
-	if err := s.Rebuild(ctx); err != nil {
+	n, err := open(ctx, *data)
+	if err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "projections rebuilt")
+	defer n.Close()
+	if n.role == "node" {
+		pubHex, err := n.store.Config(ctx, fleetsync.ConfigCentralEventPub)
+		if err != nil {
+			return fmt.Errorf("not activated: %w", err)
+		}
+		pub, err := hex.DecodeString(pubHex)
+		if err != nil {
+			return err
+		}
+		err = fleetsync.ReapplyStoredSnapshot(ctx, n.store, pub, n.local.NodeID)
+		if err != nil {
+			return err
+		}
+	} else if err := n.store.Rebuild(ctx); err != nil {
+		return err
+	}
+	c.printf("projections rebuilt\n")
 	return nil
 }

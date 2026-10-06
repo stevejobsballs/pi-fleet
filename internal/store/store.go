@@ -206,6 +206,117 @@ func (s *Store) apply(ctx context.Context, tx *sql.Tx, e *event.Event) error {
 	}
 }
 
+// Rebase replaces the projections with externally supplied state and
+// re-applies this node's own events after afterSeq on top of it (DESIGN.md
+// §5.6). A node uses it to adopt central's working-set snapshot without
+// losing work central has not received yet; events that no longer fit are
+// flagged, just as central will flag them. load inserts the new state.
+func (s *Store) Rebase(ctx context.Context, load func(*sql.Tx) error, chainID string, afterSeq int64) error {
+	if s.applier == nil {
+		return errors.New("store: no applier configured")
+	}
+	tx, err := s.w.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := s.applier.Reset(ctx, tx); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM event_flags`); err != nil {
+		return err
+	}
+	if err := load(tx); err != nil {
+		return err
+	}
+	rows, err := tx.QueryContext(ctx, `SELECT `+eventColumns+` FROM events WHERE chain_id = ? AND seq > ? ORDER BY seq`, chainID, afterSeq)
+	if err != nil {
+		return err
+	}
+	var evs []event.Event
+	for rows.Next() {
+		e, err := scanEvent(rows)
+		if err != nil {
+			rows.Close()
+			return err
+		}
+		evs = append(evs, e)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for i := range evs {
+		if err := s.apply(ctx, tx, &evs[i]); err != nil {
+			return fmt.Errorf("store: rebase at seq %d: %w", evs[i].Seq, err)
+		}
+	}
+	return tx.Commit()
+}
+
+// Purge deletes a chain's events up to and including uptoSeq, recording
+// a checkpoint so the rest of the chain still verifies (DESIGN.md §5.7).
+// Only nodes purge, and only below central's durable watermark; the
+// chain's newest event is always kept so appends can continue.
+func (s *Store) Purge(ctx context.Context, chainID string, uptoSeq int64) error {
+	tx, err := s.w.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	headSeq, _, err := head(ctx, tx, chainID)
+	if err != nil {
+		return err
+	}
+	if uptoSeq >= headSeq {
+		return fmt.Errorf("store: cannot purge through seq %d: the head (%d) must be kept", uptoSeq, headSeq)
+	}
+	var h []byte
+	err = tx.QueryRowContext(ctx, `SELECT hash FROM events WHERE chain_id = ? AND seq = ?`, chainID, uptoSeq).Scan(&h)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil // already purged
+	}
+	if err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO chain_checkpoints (chain_id, seq, hash) VALUES (?, ?, ?)
+		ON CONFLICT (chain_id) DO UPDATE SET seq = excluded.seq, hash = excluded.hash WHERE excluded.seq > seq`,
+		chainID, uptoSeq, h); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM events WHERE chain_id = ? AND seq <= ?`, chainID, uptoSeq); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func checkpoint(ctx context.Context, q querier, chainID string) (int64, event.Hash, error) {
+	var seq int64
+	var h []byte
+	err := q.QueryRowContext(ctx, `SELECT seq, hash FROM chain_checkpoints WHERE chain_id = ?`, chainID).Scan(&seq, &h)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, event.Hash{}, nil
+	}
+	return seq, event.Hash(h), err
+}
+
+// Config returns a local setting, or ErrNotFound.
+func (s *Store) Config(ctx context.Context, key string) (string, error) {
+	var v string
+	err := s.r.QueryRowContext(ctx, `SELECT value FROM node_config WHERE key = ?`, key).Scan(&v)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	return v, err
+}
+
+// SetConfig stores a local setting.
+func (s *Store) SetConfig(ctx context.Context, key, value string) error {
+	_, err := s.w.ExecContext(ctx, `INSERT INTO node_config (key, value) VALUES (?, ?)
+		ON CONFLICT (key) DO UPDATE SET value = excluded.value`, key, value)
+	return err
+}
+
 // Rebuild empties every projection and replays all events in local order
 // (DESIGN.md §4.1). Receive-side flags are recomputed.
 func (s *Store) Rebuild(ctx context.Context) error {
@@ -642,7 +753,10 @@ func (s *Store) Verify(ctx context.Context) (Report, error) {
 			return rep, err
 		}
 		if e.ChainID != chain {
-			chain, prevSeq, prevHash = e.ChainID, 0, event.Hash{}
+			chain = e.ChainID
+			if prevSeq, prevHash, err = checkpoint(ctx, s.r, chain); err != nil {
+				return rep, err
+			}
 			rep.Chains++
 		}
 		rep.Events++

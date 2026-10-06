@@ -62,6 +62,11 @@ func Hash(password string, p Params) (Verifier, error) {
 	return derive(password, salt, p), nil
 }
 
+// Derive computes the verifier for password with a given salt and
+// parameters, as a client does to prove it knows a password whose salt
+// and parameters the server disclosed (DESIGN.md §6.3).
+func Derive(password string, salt []byte, p Params) Verifier { return derive(password, salt, p) }
+
 func derive(password string, salt []byte, p Params) Verifier {
 	return Verifier{
 		Params: p,

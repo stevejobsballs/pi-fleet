@@ -45,6 +45,11 @@ const (
 	TypeStockLocationCreated = "stock_location.created"
 	TypeStockTxnRecorded     = "stock.txn_recorded"
 	TypeStockTxnReversed     = "stock.txn_reversed"
+
+	TypeNodeActivated = "node.activated"
+	TypeNodeConfirmed = "node.confirmed"
+	TypeNodeRejected  = "node.rejected"
+	TypeNodeRevoked   = "node.revoked"
 )
 
 // Entity types.
@@ -59,6 +64,7 @@ const (
 	EntityPart      = "part"
 	EntityStockLoc  = "stock_location"
 	EntityStockTxn  = "stock_txn"
+	EntityNode      = "node"
 )
 
 // Roles (decision D10). Each includes the permissions of those below it.
@@ -107,12 +113,15 @@ const (
 	SystemScheduler = "system:scheduler"
 	// SystemAuth locks accounts after repeated failed logins, on any node.
 	SystemAuth = "system:auth"
+	// SystemActivation records a Pi's activation request (on central).
+	SystemActivation = "system:activation"
 )
 
 var systemActorTypes = map[string]string{
-	SystemConsole:   TypeUserCreated,
-	SystemScheduler: TypeWorkOrderOpened,
-	SystemAuth:      TypeUserLocked,
+	SystemConsole:    TypeUserCreated,
+	SystemScheduler:  TypeWorkOrderOpened,
+	SystemAuth:       TypeUserLocked,
+	SystemActivation: TypeNodeActivated,
 }
 
 type SiteCreated struct {
@@ -352,6 +361,37 @@ type StockTxnReversed struct {
 	Reason string `json:"reason"`
 }
 
+// NodeActivated records a Pi that proved knowledge of its user's one-time
+// password (DESIGN.md §6.3). It stays pending until a super user confirms
+// the pairing words. PendingVerifier is the password the employee chose
+// during activation; it takes effect on confirmation.
+type NodeActivated struct {
+	UserID             string `json:"user_id"`
+	Mode               string `json:"mode"`
+	EventPublicKey     string `json:"event_public_key"`     // hex
+	TransportPublicKey string `json:"transport_public_key"` // hex
+	PairingWords       string `json:"pairing_words"`
+	PendingVerifier    string `json:"pending_verifier"`
+}
+
+// NodeConfirmed is a super user confirming a pending Pi. PairingWords are
+// the words the employee read out, which must match.
+type NodeConfirmed struct {
+	PairingWords string `json:"pairing_words"`
+}
+
+type NodeRejected struct {
+	Reason string `json:"reason"`
+}
+
+// NodeRevoked stops a Pi syncing. With KeepUnsynced, events it made
+// before the revocation are still accepted when it next connects (e.g.
+// a lost Pi that turns up); otherwise none are.
+type NodeRevoked struct {
+	Reason       string `json:"reason"`
+	KeepUnsynced bool   `json:"keep_unsynced"`
+}
+
 // payloadTypes maps each event type to its entity type and a constructor
 // for its schema-version-1 payload.
 var payloadTypes = map[string]struct {
@@ -384,6 +424,10 @@ var payloadTypes = map[string]struct {
 	TypeStockLocationCreated:   {EntityStockLoc, func() any { return &StockLocationCreated{} }},
 	TypeStockTxnRecorded:       {EntityStockTxn, func() any { return &StockTxnRecorded{} }},
 	TypeStockTxnReversed:       {EntityStockTxn, func() any { return &StockTxnReversed{} }},
+	TypeNodeActivated:          {EntityNode, func() any { return &NodeActivated{} }},
+	TypeNodeConfirmed:          {EntityNode, func() any { return &NodeConfirmed{} }},
+	TypeNodeRejected:           {EntityNode, func() any { return &NodeRejected{} }},
+	TypeNodeRevoked:            {EntityNode, func() any { return &NodeRevoked{} }},
 }
 
 // decode strictly parses a payload: unknown fields and trailing data are

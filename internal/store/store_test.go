@@ -332,3 +332,44 @@ func TestPragmas(t *testing.T) {
 		t.Error("reader pool accepted a write")
 	}
 }
+
+func TestPurgeKeepsChainVerifiable(t *testing.T) {
+	ctx := context.Background()
+	n := newNode(t)
+	s := openStore(t, n)
+	evs := appendN(t, s, n, 5)
+
+	if err := s.Purge(ctx, n.author.ChainID, 5); err == nil {
+		t.Error("purging the head accepted")
+	}
+	if err := s.Purge(ctx, n.author.ChainID, 3); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Event(ctx, evs[2].EventID); !errors.Is(err, ErrNotFound) {
+		t.Errorf("purged event still present: %v", err)
+	}
+	// Events above the checkpoint stay protected.
+	if _, err := s.w.ExecContext(ctx, `DELETE FROM events WHERE seq = 4`); err == nil {
+		t.Error("delete above the checkpoint allowed")
+	}
+	rep, err := s.Verify(ctx)
+	if err != nil || !rep.OK() || rep.Events != 2 {
+		t.Fatalf("Verify after purge = %+v, %v", rep, err)
+	}
+	// Appending continues the chain.
+	e, err := s.Append(ctx, n.author, draft(9))
+	if err != nil || e.Seq != 6 || e.PrevHash != evs[4].Hash {
+		t.Fatalf("append after purge: %+v %v", e, err)
+	}
+	// The checkpoint never moves backwards.
+	if err := s.Purge(ctx, n.author.ChainID, 4); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Purge(ctx, n.author.ChainID, 2); err != nil {
+		t.Fatal(err)
+	}
+	seq, _, _ := checkpoint(ctx, s.r, n.author.ChainID)
+	if seq != 4 {
+		t.Errorf("checkpoint = %d, want 4", seq)
+	}
+}
