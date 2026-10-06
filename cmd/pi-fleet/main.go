@@ -38,6 +38,8 @@ any Pi:
   init               create keys, database and chain: -role central (master Pi) or -role node
   verify             re-check every event chain in the database
   rebuild            rebuild projections (central: from events; node: from the last snapshot)
+  selfcheck          apply migrations and verify integrity and every chain (used by update)
+  update             install a signed release with automatic rollback
 
 master Pi (central):
   bootstrap          create the first super user (prompts for a password)
@@ -61,6 +63,10 @@ employee Pi (node):
   activation-status  check whether a super user has confirmed this Pi
   sync               sync with the master Pi once, or repeatedly with -every
   run                serve the web interface on this Pi and sync in the background
+
+release maintainers (offline machine):
+  release-keygen     create a release signing key, encrypted with a passphrase
+  release-sign       write and sign manifest.json for a directory of binaries
 `
 
 // passwordParams is replaced in tests to keep them fast.
@@ -83,7 +89,8 @@ func run(ctx context.Context, args []string, stdin io.Reader, out io.Writer) err
 		"serve": cmdServe, "nodes": cmdNodes, "node-confirm": cmdNodeConfirm, "node-reject": cmdNodeReject,
 		"node-revoke": cmdNodeRevoke, "user-create": cmdUserCreate, "run": cmdRun,
 		"backup-keygen": cmdBackupKeygen, "backup-config": cmdBackupConfig, "backup-now": cmdBackupNow, "backups": cmdBackups,
-		"offsite-register": cmdOffsiteRegister, "offsite-write": cmdOffsiteWrite, "offsite-confirm": cmdOffsiteConfirm, "restore": cmdRestore, "activate": cmdActivate, "activation-status": cmdActivationStatus, "sync": cmdSync,
+		"offsite-register": cmdOffsiteRegister, "offsite-write": cmdOffsiteWrite, "offsite-confirm": cmdOffsiteConfirm, "restore": cmdRestore,
+		"selfcheck": cmdSelfcheck, "update": cmdUpdate, "release-keygen": cmdReleaseKeygen, "release-sign": cmdReleaseSign, "activate": cmdActivate, "activation-status": cmdActivationStatus, "sync": cmdSync,
 	}
 	c := &cli{stdin: stdin, out: out}
 	switch cmd := args[0]; cmd {

@@ -11,6 +11,7 @@ require (
 )
 
 require (
+	aead.dev/minisign v0.3.0 // indirect
 	filippo.io/hpke v0.4.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect

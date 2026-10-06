@@ -1059,16 +1059,23 @@ employee Pis are wiped on contact (§6.4).
   `SOURCE_DATE_EPOCH`, `CGO_ENABLED=0`). CI builds `linux/arm64` (and `amd64`
   for development). A second maintainer reproduces the build and compares hashes
   before signing.
-- Artifacts: `pi-fleet_<ver>_linux_arm64.tar.gz` (binary, systemd units,
-  LICENSE, NOTICE, SPDX SBOM), `SHA256SUMS`, `SHA256SUMS.minisig`, and an
-  optional SLSA provenance attestation.
+- Artifacts: one static binary per platform, `pi-fleet_<ver>_linux_<arch>`,
+  listed with sizes and SHA-256 hashes in `manifest.json`, signed as
+  `manifest.json.minisig`. *Later:* SPDX SBOM and SLSA provenance. The
+  systemd units are in `docs/OPERATIONS.md`.
 
 ### 9.2 Signing
 
-- **minisign (Ed25519)**, with verification built into the binary.
+- **minisign (Ed25519)**, with verification built into the binary and checked
+  against an independent minisign implementation in tests. pi-fleet signs the
+  prehashed form (`ED`) and also accepts legacy `Ed`. `pi-fleet release-keygen`
+  and `release-sign` produce standard minisign public keys and signatures, so
+  anyone can check them with the `minisign` tool. The secret key is stored
+  age-encrypted under a passphrase.
 - The release key is **offline** and never in CI. The current and next public
-  keys are **compiled into the binary**, and rotation ships in a release signed
-  by the current key.
+  keys are **compiled into the binary** (`make RELEASE_KEYS=...`), and rotation
+  ships in a release signed by the current key. **A build without keys refuses
+  every update.**
 - The signed manifest lists: version, minimum upgradable-from version, minimum
   schema version, artifact hashes, date, and a `security` flag.
 
@@ -1082,10 +1089,11 @@ employee Pis are wiped on contact (§6.4).
    release; canary ring optional). Nodes fetch from central, then verify the
    signature against embedded keys, the artifact hash, and **anti-rollback**
    (a downgrade needs an explicit local flag and is logged as an event).
-3. **A/B install:** `/opt/pi-fleet/releases/<ver>/` + a `current` symlink. A
-   pre-update DB snapshot is taken, then the swap and restart. If the health
-   check (`/healthz`, migrations, `verify --quick`) fails within 120 s, the
-   install **auto-rolls back** the binary and the DB snapshot.
+3. **A/B install:** `/opt/pi-fleet/releases/<ver>/` + a `current` symlink,
+   switched atomically. A pre-update DB copy is taken first (the newest three
+   are kept). The new binary then runs `selfcheck`, which applies migrations,
+   runs SQLite's integrity check and re-verifies every chain, within 120 s. If
+   it fails, the update **rolls back** the symlink and the database copy.
 4. Schema migrations are forward-only and transactional. Old event payloads are
    upgraded at read time (upcasters), never rewritten.
 5. **Enforcement on employee devices:** central can't force-install on

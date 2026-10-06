@@ -204,13 +204,14 @@ func cmdNodeRevoke(ctx context.Context, args []string, c *cli) error {
 }
 
 func cmdServe(ctx context.Context, args []string, c *cli) error {
-	var listen, certFile, keyFile *string
+	var listen, certFile, keyFile, releases *string
 	var plain *bool
 	_, data, err := parse("serve", args, func(fs *flag.FlagSet) {
 		listen = fs.String("listen", ":8443", "address to listen on")
 		certFile = fs.String("tls-cert", "", "TLS certificate (PEM)")
 		keyFile = fs.String("tls-key", "", "TLS private key (PEM)")
 		plain = fs.Bool("insecure-http", false, "serve plain HTTP, e.g. behind a TLS-terminating proxy")
+		releases = fs.String("releases", "", "directory of approved signed releases to mirror for employee Pis")
 	})
 	if err != nil {
 		return err
@@ -245,6 +246,11 @@ func cmdServe(ctx context.Context, args []string, c *cli) error {
 	}
 	mux := http.NewServeMux()
 	mux.Handle("/v1/", (&fleetsync.Server{App: a, CentralKey: n.keys.Event}).Handler())
+	if *releases != "" {
+		// Releases are verified by each Pi against its compiled-in keys,
+		// so the mirror needs no authentication.
+		mux.Handle("GET /v1/releases/", http.StripPrefix("/v1/releases/", http.FileServer(http.Dir(*releases))))
+	}
 	mux.Handle("/", ui)
 	srv := &http.Server{
 		Addr:              *listen,
