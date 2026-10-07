@@ -24,6 +24,7 @@ type page struct {
 	Clock      string // verified or unverified
 	PHIWarning bool
 	Notices    []string
+	Insecure   bool
 	Data       any
 }
 
@@ -104,7 +105,7 @@ func templateNames() ([]string, error) {
 
 // render writes a page. sess may be nil (login page).
 func (s *Server) render(w http.ResponseWriter, r *http.Request, sess *session, name, title string, data any) error {
-	p := page{Title: title, Role: s.Role, Data: data, PHIWarning: true}
+	p := page{Title: title, Role: s.Role, Data: data, PHIWarning: true, Insecure: s.InsecureLAN}
 	if sess != nil {
 		p.User, p.CSRF, p.Flash = sess.User, sess.CSRF, s.takeFlash(sess)
 		p.Clock = string(s.App.ClockState())

@@ -8,10 +8,13 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -201,15 +204,24 @@ func cmdSync(ctx context.Context, args []string, c *cli) error {
 }
 
 // cmdRun serves the web interface on an employee Pi and keeps it synced.
+// The interface listens on localhost unless HTTPS is enabled with a
+// certificate from the master Pi's fleet CA (DESIGN.md §10).
 func cmdRun(ctx context.Context, args []string, c *cli) error {
-	var listen *string
+	var listen, names *string
 	var every *time.Duration
+	var https, insecureLAN *bool
 	_, data, err := parse("run", args, func(fs *flag.FlagSet) {
-		listen = fs.String("listen", "127.0.0.1:8080", "address for the web interface (localhost by default; see DESIGN.md §11)")
+		listen = fs.String("listen", "127.0.0.1:8080", "address for the web interface")
 		every = fs.Duration("every", 5*time.Minute, "sync interval")
+		https = fs.Bool("https", false, "serve HTTPS with a certificate from the master Pi (for use from other devices)")
+		names = fs.String("tls-names", "", "comma-separated host names and IPs for the certificate (default: this Pi's host name)")
+		insecureLAN = fs.Bool("insecure-lan", false, "serve plain HTTP beyond localhost (not recommended; shows a warning)")
 	})
 	if err != nil {
 		return err
+	}
+	if !*https && !*insecureLAN && !loopback(*listen) {
+		return fmt.Errorf("%s is reachable from other devices: use -https (recommended) or -insecure-lan", *listen)
 	}
 	n, err := openNode(ctx, *data)
 	if err != nil {
@@ -224,12 +236,23 @@ func cmdRun(ctx context.Context, args []string, c *cli) error {
 	if err != nil {
 		return err
 	}
+	keysDir := filepath.Join(n.dir, "keys")
+	certNames := tlsNames(*names)
+	if *https {
+		if _, err := cl.EnsureTLSCert(ctx, keysDir, certNames); err != nil {
+			if _, statErr := os.Stat(filepath.Join(keysDir, fleetsync.TLSCertFile)); statErr != nil {
+				return fmt.Errorf("getting a certificate from the master Pi: %w", err)
+			}
+			log.Printf("tls: renewal failed, using the current certificate: %v", err)
+		}
+	}
 	cfg := func(key string) func(context.Context) string {
 		return func(ctx context.Context) string { v, _ := n.store.Config(ctx, key); return v }
 	}
 	ui, err := (&web.Server{
-		App: a, Role: "node", PHIPatterns: web.DefaultPHIPatterns, Fleet: cl,
-		Sync: web.NodeSyncInfo(n.store.DB(), n.local.ChainID, cfg(fleetsync.ConfigLastSync), cfg(fleetsync.ConfigAckedSeq)),
+		App: a, Role: "node", PHIPatterns: web.DefaultPHIPatterns, Fleet: cl, Secure: *https,
+		InsecureLAN: *insecureLAN && !*https,
+		Sync:        web.NodeSyncInfo(n.store.DB(), n.local.ChainID, cfg(fleetsync.ConfigLastSync), cfg(fleetsync.ConfigAckedSeq)),
 	}).Handler()
 	if err != nil {
 		return err
@@ -237,7 +260,7 @@ func cmdRun(ctx context.Context, args []string, c *cli) error {
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	go func() { // background sync with backoff
+	go func() { // background sync with backoff, and certificate renewal
 		backoff := 30 * time.Second
 		for {
 			wait := *every
@@ -255,6 +278,13 @@ func cmdRun(ctx context.Context, args []string, c *cli) error {
 				if r.Pushed > 0 || r.SnapshotLoaded {
 					log.Printf("sync: pushed %d (flagged %d), snapshot %v", r.Pushed, r.Flagged, r.SnapshotLoaded)
 				}
+				if *https {
+					if renewed, err := cl.EnsureTLSCert(ctx, keysDir, certNames); err != nil {
+						log.Printf("tls: renewal: %v", err)
+					} else if renewed {
+						log.Printf("tls: installed a renewed certificate")
+					}
+				}
 			}
 			select {
 			case <-ctx.Done():
@@ -271,9 +301,72 @@ func cmdRun(ctx context.Context, args []string, c *cli) error {
 		defer cancel()
 		srv.Shutdown(shutdown)
 	}()
-	c.printf("pi-fleet %s: open http://%s in a browser on this Pi\n", version, *listen)
-	if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+	if *https {
+		srv.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12, GetCertificate: certLoader(keysDir)}
+		c.printf("pi-fleet %s: serving https://%s for %v\n", version, *listen, certNames)
+		err = srv.ListenAndServeTLS("", "")
+	} else {
+		c.printf("pi-fleet %s: open http://%s in a browser\n", version, *listen)
+		err = srv.ListenAndServe()
+	}
+	if !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}
 	return nil
+}
+
+// loopback reports whether addr only listens on this machine.
+func loopback(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return false
+	}
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+// tlsNames returns the requested certificate names, or this Pi's host
+// name and its .local (mDNS) form.
+func tlsNames(flagValue string) []string {
+	var out []string
+	for _, n := range strings.Split(flagValue, ",") {
+		if n = strings.TrimSpace(n); n != "" {
+			out = append(out, n)
+		}
+	}
+	if len(out) == 0 {
+		if h, err := os.Hostname(); err == nil {
+			h = strings.ToLower(h)
+			out = append(out, h, h+".local")
+		}
+	}
+	return out
+}
+
+// certLoader serves the current certificate, picking up renewals without
+// a restart.
+func certLoader(keysDir string) func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
+	var mu sync.Mutex
+	var cached *tls.Certificate
+	var loadedAt time.Time
+	return func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		certPath := filepath.Join(keysDir, fleetsync.TLSCertFile)
+		info, err := os.Stat(certPath)
+		if err != nil {
+			return nil, err
+		}
+		if cached == nil || info.ModTime().After(loadedAt) {
+			pair, err := tls.LoadX509KeyPair(certPath, filepath.Join(keysDir, fleetsync.TLSKeyFile))
+			if err != nil {
+				return nil, err
+			}
+			cached, loadedAt = &pair, info.ModTime()
+		}
+		return cached, nil
+	}
 }

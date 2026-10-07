@@ -31,7 +31,9 @@ sudo -u pifleet /opt/pi-fleet/current/pi-fleet bootstrap -data /srv/pi-fleet \
     -username admin -name "Your Legal Name" -email you@example.org
 ```
 
-Back up `/srv/pi-fleet/keys` into the encrypted key escrow now (§8.1).
+Back up `/srv/pi-fleet/keys` into the encrypted key escrow now (§8.1). The
+fleet CA (`fleet-ca.key`) is created there the first time `serve` runs, so
+escrow the directory again after that.
 
 ### 3. Backups
 
@@ -130,8 +132,15 @@ sudo -u pifleet /opt/pi-fleet/current/pi-fleet activate -data /var/lib/pi-fleet 
 ```
 
 Confirm the six words on the master Pi's *Pis* page, and run it like any
-other Pi. To serve the kiosk to tablets on the site LAN rather than the Pi's
-own screen, put it behind HTTPS (see DESIGN.md §11).
+other Pi. To use the kiosk from tablets on the site network, serve HTTPS with
+a certificate from the master Pi:
+
+```sh
+pi-fleet run -data /var/lib/pi-fleet -listen 0.0.0.0:8443 -https -tls-names kiosk-nyc.local,192.168.1.20
+```
+
+and install the fleet CA (download it from the master Pi's *Pis* page,
+`/v1/fleet-ca.pem`) on each tablet once. Certificates renew automatically.
 
 ## Updates (both kinds of Pi)
 

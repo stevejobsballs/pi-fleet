@@ -6,10 +6,14 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/hex"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -22,6 +26,7 @@ import (
 	"pi-fleet/internal/blobs"
 	"pi-fleet/internal/domain"
 	"pi-fleet/internal/event"
+	"pi-fleet/internal/fleetca"
 	"pi-fleet/internal/hlc"
 	"pi-fleet/internal/httpsig"
 	"pi-fleet/internal/keys"
@@ -83,7 +88,9 @@ func newFleet(t *testing.T) *fleet {
 	f.mid = f.activeCentralUser("mona", domain.RoleMidTier)
 
 	f.app.Blobs = &blobs.Store{Dir: filepath.Join(dir, "blobs")}
-	srv := &Server{App: f.app, CentralKey: k.Event, Now: f.clock, Logf: t.Logf, Blobs: f.app.Blobs}
+	ca, err := fleetca.LoadOrCreate(filepath.Join(dir, "keys"), "test")
+	f.must(err)
+	srv := &Server{App: f.app, CentralKey: k.Event, Now: f.clock, Logf: t.Logf, Blobs: f.app.Blobs, CA: ca}
 	f.srv = httptest.NewServer(srv.Handler())
 	t.Cleanup(f.srv.Close)
 	return f
@@ -742,4 +749,57 @@ func TestKioskMode(t *testing.T) {
 		t.Fatalf("non-member event = %+v", resp)
 	}
 
+}
+
+func TestPiWebCertificate(t *testing.T) {
+	f := newFleet(t)
+	kiosk := f.enrol("tess", domain.RoleUser)
+	keys := filepath.Join(kiosk.dir, "keys")
+	names := []string{"kiosk-nyc.local", "192.168.1.20"}
+
+	changed, err := kiosk.client.EnsureTLSCert(f.ctx, keys, names)
+	if err != nil || !changed {
+		t.Fatalf("first certificate: %v %v", changed, err)
+	}
+	if changed, err = kiosk.client.EnsureTLSCert(f.ctx, keys, names); err != nil || changed {
+		t.Fatalf("certificate re-issued needlessly: %v %v", changed, err)
+	}
+
+	// Serve HTTPS with it; a tablet trusting the fleet CA connects.
+	pair, err := tls.LoadX509KeyPair(filepath.Join(keys, TLSCertFile), filepath.Join(keys, TLSKeyFile))
+	f.must(err)
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, "kiosk") }))
+	srv.TLS = &tls.Config{Certificates: []tls.Certificate{pair}}
+	srv.StartTLS()
+	defer srv.Close()
+	caPEM, err := os.ReadFile(filepath.Join(keys, TLSCAFile))
+	f.must(err)
+	pool := x509.NewCertPool()
+	pool.AppendCertsFromPEM(caPEM)
+	tablet := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool, ServerName: "kiosk-nyc.local"}}}
+	resp, err := tablet.Get(srv.URL)
+	f.must(err)
+	resp.Body.Close()
+	stranger := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool, ServerName: "bank.example.com"}}}
+	if _, err := stranger.Get(srv.URL); err == nil {
+		t.Fatal("certificate accepted for a name it wasn't issued for")
+	}
+
+	// The fleet CA is downloadable for installing on tablets.
+	resp, err = http.Get(f.srv.URL + PathFleetCA)
+	f.must(err)
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if string(body) != string(caPEM) {
+		t.Fatal("fleet CA download differs")
+	}
+
+	// Pis that aren't confirmed get no certificate.
+	pending := f.newPi()
+	_, temp, _ := f.app.CreateUser(f.ctx, f.super, app.NewUser{Username: "pat", LegalName: "Pat", Email: "pat@example.org", Role: domain.RoleUser, IdentityVerification: "badge"})
+	_, err = pending.client.Activate(f.ctx, "pat", temp, "copper-ladder-sunrise", cheap)
+	f.must(err)
+	if _, err := pending.client.EnsureTLSCert(f.ctx, filepath.Join(pending.dir, "keys"), names); err == nil {
+		t.Fatal("pending Pi got a certificate")
+	}
 }

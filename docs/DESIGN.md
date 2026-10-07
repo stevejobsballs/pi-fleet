@@ -738,8 +738,7 @@ that is lost or replaced is re-activated, not restored (§8.4).
 | Key | Purpose | Where |
 |---|---|---|
 | Central event key | Signs central events, working sets, leases | `/etc/pi-fleet/keys` (boot media) + escrow |
-| Fleet CA intermediate | Issues node LAN TLS certs | Same |
-| Fleet root CA | Signs the intermediate. Pinned by nodes. | **Offline** (USB in a safe). Used only for rotation. |
+| Fleet CA (ECDSA P-256, 10 years) | Issues certificates for Pis' local web interfaces only. Sync trust never depends on it. | `<data>/keys/fleet-ca.key` + escrow |
 | Public HTTPS cert | Central's endpoint | Let's Encrypt or org PKI |
 
 ### 6.3 Accounts and node activation
@@ -1169,6 +1168,28 @@ need a manual update. This is documented and rehearsed.
   warn-and-confirm by default and blocking as an option (§3.6).
 - The master Pi serves the interface next to the sync API. An employee Pi
   serves it on `127.0.0.1` (`pi-fleet run`) and syncs in the background.
+
+### 10.1 HTTPS on employee Pis and kiosks
+
+- By default a Pi's interface listens on `127.0.0.1` only. Serving it to other
+  devices (tablets with a kiosk, a laptop in the shop) requires `pi-fleet run
+  -https`. Plain HTTP beyond localhost is refused unless `-insecure-lan` is
+  given, and then every page shows a red warning.
+- With `-https`, the Pi generates an ECDSA key that never leaves it and sends
+  central a certificate request over the signed sync channel. Only active Pis
+  get one. Central's **fleet CA** issues a one-year certificate for the host
+  names and IP addresses the Pi asks for (at most 10, no wildcards). The Pi
+  renews after a sync once fewer than 30 days remain, picks up the new
+  certificate without a restart, and keeps serving with its current one while
+  offline.
+- Devices on the site network trust the fleet CA once. Its certificate is
+  downloadable from the master Pi at `/v1/fleet-ca.pem`, linked from the Pis
+  page.
+- The fleet CA is online on central (§6.2). A compromise would let an attacker
+  impersonate a Pi's web page on a site network. It cannot forge events or
+  affect sync, which rely on the pinned Ed25519 keys. The design's original
+  offline root and online intermediate were simplified to this single online
+  CA. A name-constrained CA is a possible hardening later.
 
 ## 11. Operational security baseline
 

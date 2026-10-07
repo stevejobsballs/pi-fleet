@@ -1,4 +1,5 @@
 {{define "content"}}
+<p class="hint">Devices that use a Pi's web interface over HTTPS (for example tablets with a kiosk) need the <a href="/v1/fleet-ca.pem">fleet CA certificate</a> installed once.</p>
 {{if .Data}}<table><thead><tr><th>Pi</th><th>Belongs to</th><th>Status</th><th>Activated</th><th>Pairing words</th><th></th></tr></thead><tbody>
 {{range .Data}}<tr><td><code>{{.ID}}</code></td><td>{{if eq .Mode "kiosk"}}kiosk{{else}}{{.Username}}{{end}}</td><td>{{label .Status}}{{if .Quarantined}}<br><span class="warn">quarantined after a chain fork</span>{{end}}</td><td>{{.ActivatedAt}}</td><td>{{.PairingWords}}</td><td>
   {{if eq .Status "pending_confirmation"}}

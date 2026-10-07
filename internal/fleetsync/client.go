@@ -6,18 +6,22 @@ import (
 	"crypto/ed25519"
 	"crypto/hmac"
 	"crypto/rand"
+	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"pi-fleet/internal/blobs"
 	"pi-fleet/internal/domain"
 	"pi-fleet/internal/event"
+	"pi-fleet/internal/fleetca"
 	"pi-fleet/internal/httpsig"
 	"pi-fleet/internal/keys"
 	"pi-fleet/internal/pairing"
@@ -260,6 +264,57 @@ func (c *Client) FetchBlob(ctx context.Context, sha string) ([]byte, error) {
 		return nil, err
 	}
 	return body, nil
+}
+
+// --- web interface certificate ---
+
+// TLS file names in the keys directory.
+const (
+	TLSKeyFile  = "tls.key"
+	TLSCertFile = "tls.crt"
+	TLSCAFile   = "fleet-ca.crt"
+)
+
+// EnsureTLSCert makes sure keysDir holds a certificate from central for
+// this Pi's web interface, valid for names and not close to expiry,
+// requesting a new one if needed (online only). The key never leaves the
+// Pi. It reports whether a new certificate was installed.
+func (c *Client) EnsureTLSCert(ctx context.Context, keysDir string, names []string) (bool, error) {
+	certPath := filepath.Join(keysDir, TLSCertFile)
+	existing, _ := os.ReadFile(certPath)
+	if !fleetca.NeedsRenewal(existing, names, c.now()) {
+		return false, nil
+	}
+	keyPath := filepath.Join(keysDir, TLSKeyFile)
+	keyPEM, err := os.ReadFile(keyPath)
+	var csrPEM []byte
+	switch {
+	case err == nil:
+		csrPEM, err = fleetca.CSRFromKey(keyPEM)
+	case errors.Is(err, os.ErrNotExist):
+		keyPEM, csrPEM, err = fleetca.NewKeyAndCSR()
+		if err == nil {
+			err = os.WriteFile(keyPath, keyPEM, 0o600)
+		}
+	}
+	if err != nil {
+		return false, err
+	}
+	var resp TLSCertResponse
+	if _, _, err := c.do(ctx, http.MethodPost, PathTLSCert, TLSCertRequest{CSR: string(csrPEM), Names: names}, &resp, true); err != nil {
+		return false, err
+	}
+	if _, err := tls.X509KeyPair([]byte(resp.Cert), keyPEM); err != nil {
+		return false, fmt.Errorf("fleetsync: central's certificate doesn't match this Pi's key: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(keysDir, TLSCAFile), []byte(resp.CA), 0o644); err != nil {
+		return false, err
+	}
+	part := certPath + ".part"
+	if err := os.WriteFile(part, []byte(resp.Cert), 0o644); err != nil {
+		return false, err
+	}
+	return true, os.Rename(part, certPath)
 }
 
 // --- activation ---

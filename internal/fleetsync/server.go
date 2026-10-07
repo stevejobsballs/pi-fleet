@@ -24,6 +24,7 @@ import (
 	"pi-fleet/internal/blobs"
 	"pi-fleet/internal/domain"
 	"pi-fleet/internal/event"
+	"pi-fleet/internal/fleetca"
 	"pi-fleet/internal/httpsig"
 	"pi-fleet/internal/pairing"
 	"pi-fleet/internal/password"
@@ -52,6 +53,8 @@ type Server struct {
 	Fleet http.Handler
 	// Blobs holds attachment files.
 	Blobs *blobs.Store
+	// CA issues certificates for Pis' local web interfaces.
+	CA *fleetca.CA
 
 	mu      sync.Mutex
 	secret  []byte
@@ -89,6 +92,14 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET "+PathSnapshot, s.signed(s.handleSnapshot, activeOnly))
 	if s.Fleet != nil {
 		mux.HandleFunc(PathFleet, s.signed(s.handleFleet, activeOnly))
+	}
+	if s.CA != nil {
+		mux.HandleFunc("POST "+PathTLSCert, s.signed(s.handleTLSCert, activeOnly))
+		mux.HandleFunc("GET "+PathFleetCA, func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/x-pem-file")
+			w.Header().Set("Content-Disposition", `attachment; filename="pi-fleet-ca.pem"`)
+			w.Write(s.CA.PEM)
+		})
 	}
 	if s.Blobs != nil {
 		mux.HandleFunc("HEAD "+PathBlobs+"{sha}", s.signed(s.handleBlobHead, canPush))
@@ -593,6 +604,20 @@ func (s *Server) handleBlobGet(w http.ResponseWriter, r *http.Request, _ domain.
 	w.Header().Set("Content-Type", "application/octet-stream")
 	_, err = w.Write(b)
 	return err
+}
+
+func (s *Server) handleTLSCert(w http.ResponseWriter, r *http.Request, n domain.Node, body []byte) error {
+	var req TLSCertRequest
+	if err := readJSON(r, body, &req); err != nil {
+		return err
+	}
+	cert, err := s.CA.Issue([]byte(req.CSR), n.ID, req.Names, s.now())
+	if err != nil {
+		return fail(http.StatusBadRequest, "%v", err)
+	}
+	s.logf("sync: issued a web certificate to Pi %s for %v", n.ID, req.Names)
+	writeJSON(w, TLSCertResponse{Cert: string(cert), CA: string(s.CA.PEM)})
+	return nil
 }
 
 type nodeKey struct{}

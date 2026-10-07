@@ -61,6 +61,9 @@ type Server struct {
 	Role string
 	// Secure marks cookies Secure; set when served over HTTPS.
 	Secure bool
+	// InsecureLAN shows a warning on every page: plain HTTP is being
+	// served beyond localhost.
+	InsecureLAN bool
 	// Sync reports sync state on an employee Pi; nil on central.
 	Sync func(ctx context.Context) SyncInfo
 	// PHIPatterns flag free text that may contain patient information

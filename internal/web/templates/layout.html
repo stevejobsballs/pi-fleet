@@ -33,6 +33,7 @@
   {{if eq .Clock "unverified"}}<span class="warn">Clock not verified: signatures will be flagged</span>{{end}}
 </div>
 {{end}}
+{{if .Insecure}}<p class="insecure" role="alert">This Pi is serving its web interface without HTTPS. Passwords and records can be read by others on this network. Ask a super user to enable HTTPS.</p>{{end}}
 <main>
   {{if .Flash}}<p class="flash" role="status">{{.Flash}}</p>{{end}}
   {{range .Notices}}<p class="flash warn" role="alert">{{.}}</p>{{end}}

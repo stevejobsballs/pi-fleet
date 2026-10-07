@@ -25,7 +25,21 @@ const (
 	PathSnapshot  = "/v1/sync/snapshot"
 	PathFleet     = "/v1/fleet/"
 	PathBlobs     = "/v1/sync/blobs/"
+	PathTLSCert   = "/v1/sync/tls-cert"
+	PathFleetCA   = "/v1/fleet-ca.pem"
 )
+
+// TLSCertRequest asks central to certify this Pi's web interface key.
+type TLSCertRequest struct {
+	CSR   string   `json:"csr"`
+	Names []string `json:"names"`
+}
+
+// TLSCertResponse carries the certificate and the fleet CA.
+type TLSCertResponse struct {
+	Cert string `json:"cert"`
+	CA   string `json:"ca"`
+}
 
 // SnapshotSignatureHeader carries central's signature over a snapshot body.
 const SnapshotSignatureHeader = "X-PiFleet-Snapshot-Signature"

@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 
 	"pi-fleet/internal/app"
 	"pi-fleet/internal/domain"
+	"pi-fleet/internal/fleetca"
 	"pi-fleet/internal/fleetsync"
 	"pi-fleet/internal/web"
 )
@@ -251,7 +253,11 @@ func cmdServe(ctx context.Context, args []string, c *cli) error {
 		return err
 	}
 	mux := http.NewServeMux()
-	mux.Handle("/v1/", (&fleetsync.Server{App: a, CentralKey: n.keys.Event, Fleet: (&web.FleetAPI{App: a}).Handler(), Blobs: n.blobs()}).Handler())
+	ca, err := fleetca.LoadOrCreate(filepath.Join(n.dir, "keys"), n.local.NodeID[:8])
+	if err != nil {
+		return err
+	}
+	mux.Handle("/v1/", (&fleetsync.Server{App: a, CentralKey: n.keys.Event, Fleet: (&web.FleetAPI{App: a}).Handler(), Blobs: n.blobs(), CA: ca}).Handler())
 	if *releases != "" {
 		// Releases are verified by each Pi against its compiled-in keys,
 		// so the mirror needs no authentication.
