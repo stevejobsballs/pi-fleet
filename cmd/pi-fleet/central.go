@@ -110,11 +110,17 @@ func cmdNodes(ctx context.Context, args []string, c *cli) error {
 		c.printf("no Pis\n")
 	}
 	for _, nd := range nodes {
-		u, err := domain.GetUser(ctx, n.store.DB(), nd.BoundUserID)
-		if err != nil {
-			return err
+		owner := ""
+		if nd.Mode == "kiosk" {
+			n.store.DB().QueryRowContext(ctx, `SELECT 'kiosk:' || name FROM kiosks WHERE id = ?`, nd.KioskID).Scan(&owner)
+		} else {
+			u, err := domain.GetUser(ctx, n.store.DB(), nd.BoundUserID)
+			if err != nil {
+				return err
+			}
+			owner = u.Username
 		}
-		c.printf("%s  %-20s  %-12s  %s  words: %s\n", nd.ID, nd.Status, u.Username, nd.ActivatedAt, nd.PairingWords)
+		c.printf("%s  %-20s  %-16s  %s  words: %s\n", nd.ID, nd.Status, owner, nd.ActivatedAt, nd.PairingWords)
 	}
 	return nil
 }

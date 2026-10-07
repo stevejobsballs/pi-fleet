@@ -186,3 +186,42 @@ func TestBackupCommands(t *testing.T) {
 		t.Errorf("restore: %s", out)
 	}
 }
+
+func TestKioskCommands(t *testing.T) {
+	ctx := context.Background()
+	centralDir, kioskDir := t.TempDir(), t.TempDir()
+	runOK(t, "", "init", "-data", centralDir, "-role", "central")
+	runOK(t, "tumbleweed-gasket-42\ntumbleweed-gasket-42\n", "bootstrap", "-data", centralDir, "-username", "admin", "-name", "Ada", "-email", "ada@example.org")
+	n, a, err := openCentral(ctx, centralDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer n.Close()
+	super, _ := a.Authenticate(ctx, "admin", "tumbleweed-gasket-42")
+	if _, err := a.CreateSite(ctx, app.Actor{UserID: super.ID, SessionID: "t"}, "NYC", "New York", "America/New_York"); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := a.CreateUser(ctx, app.Actor{UserID: super.ID, SessionID: "t"}, app.NewUser{Username: "tess", LegalName: "Tess", Email: "tess@example.org", Role: domain.RoleUser, IdentityVerification: "badge"}); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer((&fleetsync.Server{App: a, CentralKey: n.keys.Event, Logf: t.Logf}).Handler())
+	defer srv.Close()
+
+	out := runOK(t, "tumbleweed-gasket-42\n", "kiosk-create", "-data", centralDir, "-as", "admin", "-name", "nyc-shop", "-site", "NYC")
+	otp := regexp.MustCompile(`[0-9A-Z]{4}(-[0-9A-Z]{4}){3}`).FindString(out)
+	runOK(t, "tumbleweed-gasket-42\n", "kiosk-member", "-data", centralDir, "-as", "admin", "-kiosk", "nyc-shop", "-user", "tess")
+	runOK(t, "", "init", "-data", kioskDir, "-role", "node")
+	out = runOK(t, otp+"\n", "activate", "-data", kioskDir, "-central", srv.URL, "-kiosk", "nyc-shop")
+	words := regexp.MustCompile(`\n    ([a-z]+(?: [a-z]+){5})\n`).FindStringSubmatch(out)
+	if words == nil {
+		t.Fatalf("no pairing words:\n%s", out)
+	}
+	if out := runOK(t, "", "nodes", "-data", centralDir); !strings.Contains(out, "kiosk:nyc-shop") {
+		t.Fatalf("nodes listing: %s", out)
+	}
+	nodes, _ := domain.ListNodes(ctx, n.store.DB(), domain.NodeStatusPending)
+	runOK(t, "tumbleweed-gasket-42\n"+words[1]+"\n", "node-confirm", "-data", centralDir, "-node", nodes[0].ID, "-as", "admin")
+	if out := runOK(t, "", "sync", "-data", kioskDir); !strings.Contains(out, "snapshot true") {
+		t.Fatalf("kiosk sync: %s", out)
+	}
+}
