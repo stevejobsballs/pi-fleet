@@ -453,7 +453,7 @@ func TestUpdateAnExistingMasterUsesTheVerifiedUpdate(t *testing.T) {
 	sys := newFake()
 	sys.files[UnitPath] = []byte("ExecStart=/opt/pi-fleet/current/pi-fleet serve -data /srv/pi-fleet -listen :443\n")
 	sys.mounts[DataDir] = true
-	w, out := wizard(sys, "1")
+	w, out := wizard(sys, "2")
 	w.Self = "/home/pi/Downloads/v1.0.0/pi-fleet_v1.0.0_linux_arm64"
 	// Without the signature files next to it: nothing happens.
 	if err := w.Run(); !errors.Is(err, ErrCancelled) || sys.ran("systemctl stop") {
@@ -462,7 +462,7 @@ func TestUpdateAnExistingMasterUsesTheVerifiedUpdate(t *testing.T) {
 	for _, f := range []string{"manifest.json", "manifest.json.minisig"} {
 		sys.files["/home/pi/Downloads/v1.0.0/"+f] = []byte("x")
 	}
-	w, out = wizard(sys, "1")
+	w, out = wizard(sys, "2")
 	w.Self = "/home/pi/Downloads/v1.0.0/pi-fleet_v1.0.0_linux_arm64"
 	w.ReadDir = func(string) ([]os.DirEntry, error) {
 		return []os.DirEntry{entry("manifest.json"), entry("manifest.json.minisig"), entry("pi-fleet_v1.0.0_linux_arm64"), entry("notes.txt")}, nil
@@ -497,10 +497,93 @@ func TestNothingToUpdateWhenTheVersionIsInstalled(t *testing.T) {
 	if strings.Contains(out.String(), "Update to this version") || !strings.Contains(out.String(), "Move the records") {
 		t.Fatalf("output:\n%s", out)
 	}
-	// On the drive already: nothing to do, nothing run.
+	// On a drive already: only a move to another drive, or stop.
 	sys.mounts[DataDir] = true
-	w, out = wizard(sys)
-	if err := w.Run(); err != nil || !strings.Contains(out.String(), "Nothing to do") || sys.ran("systemctl") {
+	w, out = wizard(sys, "2")
+	if err := w.Run(); err != nil || !strings.Contains(out.String(), "1) Move the records to a different drive") || strings.Contains(out.String(), "Update to") || sys.ran("systemctl") {
 		t.Fatalf("err %v\n%s", err, out)
+	}
+}
+
+// The records are on a USB stick (sda1, open at /srv/pi-fleet); an SSD
+// (sdb) has been plugged in to replace it.
+const stickAndSSD = `{"blockdevices": [
+ {"name":"sda","path":"/dev/sda","type":"disk","size":31037849600,"model":"STORE N GO","tran":"usb","rm":true,"fstype":null,"mountpoints":[],
+  "children":[{"name":"sda1","path":"/dev/sda1","type":"part","size":31036801024,"fstype":"ext4","label":"PIFLEET-DATA","uuid":"old-uuid","mountpoints":["/srv/pi-fleet"]}]},
+ {"name":"sdb","path":"/dev/sdb","type":"disk","size":1000204886016,"model":"Samsung SSD T7","tran":"usb","rm":false,"fstype":null,"mountpoints":[],
+  "children":[{"name":"sdb1","path":"/dev/sdb1","type":"part","size":1000203837440,"fstype":"exfat","label":"T7","uuid":"1234-ABCD","mountpoints":[null]}]},
+ {"name":"mmcblk0","path":"/dev/mmcblk0","type":"disk","size":127865454592,"tran":"mmc","fstype":null,"mountpoints":[],
+  "children":[{"name":"mmcblk0p2","path":"/dev/mmcblk0p2","type":"part","size":127328583680,"fstype":"ext4","label":"rootfs","uuid":"y","mountpoints":["/"]}]}
+]}`
+
+func TestMoveToADifferentDrive(t *testing.T) {
+	sys := newFake()
+	sys.files[UnitPath] = []byte("ExecStart=/opt/pi-fleet/current/pi-fleet serve -data /srv/pi-fleet -listen :8443 -tls-cert /srv/pi-fleet/tls/cert.pem\n")
+	sys.files["/etc/fstab"] = []byte("proc /proc proc defaults 0 0\n" + FstabLine("old-uuid", DataDir) + "\n")
+	sys.mounts[DataDir] = true
+	outputs(sys, map[string]string{"lsblk": stickAndSSD, "blkid": "new-uuid\n", "findmnt -n -o SOURCE /srv/pi-fleet": "/dev/sda1\n",
+		"/opt/pi-fleet/current/pi-fleet version": "pi-fleet v1.0.0\n"})
+	// Only the SSD is offered: the stick holding the records is not.
+	w, out := wizard(sys, "1", "", "1", "ERASE")
+	if err := w.Run(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	if strings.Contains(out.String(), "STORE N GO") {
+		t.Fatalf("offered the drive the records are on:\n%s", out)
+	}
+	if sys.ran("wipefs --all --quiet /dev/sda") || sys.ran("mkfs.ext4 -q -F -L PIFLEET-DATA -m 1 /dev/sda1") {
+		t.Fatal("erased the current drive")
+	}
+	order := []string{
+		"mkfs.ext4 -q -F -L PIFLEET-DATA -m 1 /dev/sdb1",
+		"mount /dev/sdb1 /mnt/pi-fleet-move",
+		"systemctl stop pi-fleet",
+		"cp -a /srv/pi-fleet/. /mnt/pi-fleet-move/",
+		"runuser -u pifleet -- /opt/pi-fleet/current/pi-fleet selfcheck -data /mnt/pi-fleet-move",
+		"umount /mnt/pi-fleet-move",
+		"umount /srv/pi-fleet",
+		"mount /srv/pi-fleet",
+		"e2label /dev/sda1 PIFLEET-OLD",
+		"systemctl restart pi-fleet",
+	}
+	i := 0
+	for _, c := range sys.calls {
+		if i < len(order) && strings.HasPrefix(c, order[i]) {
+			i++
+		}
+	}
+	if i != len(order) {
+		t.Fatalf("stopped matching at %q; ran:\n%s", order[i], strings.Join(sys.calls, "\n"))
+	}
+	fstab := string(sys.files["/etc/fstab"])
+	if !strings.Contains(fstab, "# replaced by pi-fleet setup: UUID=old-uuid") || !strings.Contains(fstab, "\n"+FstabLine("new-uuid", DataDir)) {
+		t.Fatalf("fstab:\n%s", fstab)
+	}
+	if sys.ran("mv /srv/pi-fleet") {
+		t.Fatal("renamed the mount point")
+	}
+	if !strings.Contains(out.String(), "PIFLEET-OLD") {
+		t.Fatalf("output:\n%s", out)
+	}
+}
+
+func TestDriveMoveStopsSafelyIfTheCopyFailsItsCheck(t *testing.T) {
+	sys := newFake()
+	sys.files[UnitPath] = []byte("ExecStart=/opt/pi-fleet/current/pi-fleet serve -data /srv/pi-fleet -listen :8443\n")
+	before := "proc /proc proc defaults 0 0\n" + FstabLine("old-uuid", DataDir) + "\n"
+	sys.files["/etc/fstab"] = []byte(before)
+	sys.mounts[DataDir] = true
+	outputs(sys, map[string]string{"lsblk": stickAndSSD, "blkid": "new-uuid\n", "findmnt -n -o SOURCE /srv/pi-fleet": "/dev/sda1\n"})
+	sys.fail = map[string]error{"runuser -u pifleet -- /opt/pi-fleet/current/pi-fleet selfcheck": errors.New("exit status 1")}
+	w, out := wizard(sys, "1", "", "1", "ERASE")
+	err := w.Run()
+	if err == nil || !strings.Contains(err.Error(), "running from the drive they are on now as before") {
+		t.Fatalf("err = %v\n%s", err, out)
+	}
+	if sys.ran("umount /srv/pi-fleet") || sys.ran("e2label") || string(sys.files["/etc/fstab"]) != before {
+		t.Fatalf("switched over after a failed check:\n%s", strings.Join(sys.calls, "\n"))
+	}
+	if !sys.ran("systemctl start pi-fleet") {
+		t.Fatal("pi-fleet left stopped")
 	}
 }

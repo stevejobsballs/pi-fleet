@@ -45,7 +45,10 @@ Setup installs whatever else the Pi needs, names the Pi, and then:
   fails, plug the drive into a new Pi and run setup there: it finds the
   drive and carries on. A master set up before the drive step existed is
   offered a move of its records onto a drive (copied, checked, then
-  switched over; the SD card copy is kept).
+  switched over; the SD card copy is kept). Records already on a drive can
+  be moved the same way to a different one, for example from a temporary
+  USB stick to an SSD; the old drive keeps its copy, relabelled
+  `PIFLEET-OLD`.
 - **Employee or kiosk Pi:** asks for the master Pi's name, shows the
   master's certificate fingerprint to compare with the master's **Pis**
   page, then activates the Pi with the one-time password from the super

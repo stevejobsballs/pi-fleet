@@ -105,6 +105,17 @@ func (d Disk) system() bool {
 	return false
 }
 
+// holds reports whether one of the disk's partitions is open at dir: the
+// drive pi-fleet's records are on now is never offered for erasing.
+func (d Disk) holds(dir string) bool {
+	for _, p := range d.Parts {
+		if slices.Contains(p.Mounts, dir) {
+			return true
+		}
+	}
+	return false
+}
+
 // DataPart returns the partition of an earlier pi-fleet data drive, if
 // this is one.
 func (d Disk) DataPart() (Part, bool) {

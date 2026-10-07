@@ -235,7 +235,7 @@ func (w *Wizard) pickDisk() (*Disk, error) {
 	}
 	var usable []Disk
 	for _, d := range disks {
-		if d.Size >= MinDataDrive {
+		if d.Size >= MinDataDrive && !d.holds(DataDir) {
 			usable = append(usable, d)
 		}
 	}
@@ -423,37 +423,32 @@ func (w *Wizard) existingMaster(unit string) error {
 	onDrive := isMountpoint(w.Sys, DataDir)
 	u.Say("")
 	u.Say("pi-fleet is already set up here as the master Pi.")
-	if !w.newerThanInstalled() {
-		if onDrive {
-			u.Say("It runs this version (%s) or a newer one, and its records are on the external drive. Nothing to do.", w.Version)
-			return nil
-		}
-		u.Say("Its records are on the SD card, not on an external drive.")
-		i, err := u.Choose("What would you like to do?", []string{"Move the records to an external drive (recommended)", "Stop"})
-		if err != nil || i == 1 {
-			return err
-		}
-		return w.moveToDrive(port)
+	type choice struct {
+		label string
+		do    func() error
 	}
-	opts := []string{fmt.Sprintf("Update to this version (%s)", w.Version), "Stop"}
-	if !onDrive {
+	var choices []choice
+	if onDrive {
+		choices = append(choices, choice{"Move the records to a different drive (for example, a new SSD)", func() error { return w.moveToDrive(port, true) }})
+	} else {
 		u.Say("Its records are on the SD card, not on an external drive.")
-		opts = append([]string{"Move the records to an external drive (recommended)"}, opts...)
+		choices = append(choices, choice{"Move the records to an external drive (recommended)", func() error { return w.moveToDrive(port, false) }})
 	}
-	i, err := u.Choose("What would you like to do?", opts)
+	if w.newerThanInstalled() {
+		choices = append(choices, choice{fmt.Sprintf("Update to this version (%s)", w.Version), func() error {
+			return w.update(DataDir, true, fmt.Sprintf("https://127.0.0.1:%d/login", port))
+		}})
+	}
+	choices = append(choices, choice{"Stop", func() error { return nil }})
+	labels := make([]string, len(choices))
+	for i, c := range choices {
+		labels[i] = c.label
+	}
+	i, err := u.Choose("What would you like to do?", labels)
 	if err != nil {
 		return err
 	}
-	if !onDrive {
-		i--
-	}
-	switch i {
-	case -1:
-		return w.moveToDrive(port)
-	case 0:
-		return w.update(DataDir, true, fmt.Sprintf("https://127.0.0.1:%d/login", port))
-	}
-	return nil
+	return choices[i].do()
 }
 
 // newerThanInstalled reports whether this file is a newer release than
@@ -513,18 +508,28 @@ func (w *Wizard) update(dataDir string, master bool, healthURL string) error {
 	return w.restart(healthURL)
 }
 
-// moveToDrive copies a master Pi's records from the SD card onto a new
-// external drive, checks the copy, and switches over. The SD card copy is
-// kept, renamed, until the user deletes it.
-func (w *Wizard) moveToDrive(port int) error {
+// moveToDrive copies a master Pi's records onto a new external drive,
+// from the SD card or (fromDrive) from the drive they are on now, checks
+// the copy, and switches over. The old copy is kept: on the SD card it is
+// renamed; an old drive is left as it was, relabelled so setup never
+// mistakes it for the current one.
+func (w *Wizard) moveToDrive(port int, fromDrive bool) error {
 	u := w.UI
 	if err := w.dependencies(true); err != nil {
 		return err
 	}
 	u.Step("External drive for the data")
-	u.Say("The records will be copied to the drive and checked before anything")
-	u.Say("switches over. pi-fleet is stopped while they are copied, usually for a")
-	u.Say("minute or two. The copy on the SD card is kept until you remove it.")
+	from := "the SD card"
+	if fromDrive {
+		from = "the drive they are on now"
+	}
+	u.Say("The records will be copied from %s to the new drive,", from)
+	u.Say("and checked before anything switches over. pi-fleet is stopped while")
+	u.Say("they are copied, usually for a minute or two. The old copy is kept.")
+	if fromDrive {
+		u.Say("Plug the new drive in alongside the current one. (The current one isn't")
+		u.Say("offered below.)")
+	}
 	var disk *Disk
 	for disk == nil {
 		if err := u.Pause("Plug the drive in, then press Enter."); err != nil {
@@ -549,6 +554,18 @@ func (w *Wizard) moveToDrive(port int) error {
 			disk = d
 		}
 	}
+	oldPart := ""
+	if fromDrive {
+		out, err := w.Sys.Output("findmnt", "-n", "-o", "SOURCE", DataDir)
+		if err != nil || strings.TrimSpace(string(out)) == "" {
+			return fmt.Errorf("couldn't tell which drive holds the records now: %v", err)
+		}
+		oldPart = strings.TrimSpace(string(out))
+	}
+	oldFstab, err := w.Sys.ReadFile("/etc/fstab")
+	if err != nil {
+		return err
+	}
 	u.Say("Preparing the drive…")
 	part, err := EraseAndFormat(w.Sys, *disk)
 	if err != nil {
@@ -568,7 +585,7 @@ func (w *Wizard) moveToDrive(port int) error {
 	undo := func(cause error) error {
 		w.Sys.Run("umount", tmp)
 		w.Sys.Run("systemctl", "start", "pi-fleet")
-		return fmt.Errorf("%w; nothing was switched over and pi-fleet is running from the SD card as before", cause)
+		return fmt.Errorf("%w; nothing was switched over and pi-fleet is running from %s as before", cause, from)
 	}
 	if err := w.Sys.Run("cp", "-a", DataDir+"/.", tmp+"/"); err != nil {
 		return undo(err)
@@ -588,15 +605,40 @@ func (w *Wizard) moveToDrive(port int) error {
 	if err := w.Sys.Run("umount", tmp); err != nil {
 		return undo(err)
 	}
-	old := fmt.Sprintf("%s.on-sd-card-%s", DataDir, w.Now().Format("2006-01-02"))
-	if err := w.Sys.Rename(DataDir, old); err != nil {
-		w.Sys.Run("systemctl", "start", "pi-fleet")
-		return err
+	// Switch over. If the new drive won't open, go back to the old copy.
+	var old string
+	var back func()
+	if fromDrive {
+		if err := w.Sys.Run("umount", DataDir); err != nil {
+			return undo(err)
+		}
+		back = func() {
+			w.Sys.WriteFile("/etc/fstab", oldFstab, 0o644)
+			w.Sys.Run("systemctl", "daemon-reload")
+			w.Sys.Run("mount", DataDir)
+			w.Sys.Run("systemctl", "start", "pi-fleet")
+		}
+	} else {
+		old = fmt.Sprintf("%s.on-sd-card-%s", DataDir, w.Now().Format("2006-01-02"))
+		if err := w.Sys.Rename(DataDir, old); err != nil {
+			w.Sys.Run("systemctl", "start", "pi-fleet")
+			return err
+		}
+		back = func() {
+			w.Sys.WriteFile("/etc/fstab", oldFstab, 0o644)
+			w.Sys.Run("systemctl", "daemon-reload")
+			w.Sys.Rename(old, DataDir)
+			w.Sys.Run("systemctl", "start", "pi-fleet")
+		}
 	}
 	if err := MountData(w.Sys, part.UUID, DataDir); err != nil {
-		w.Sys.Rename(old, DataDir)
-		w.Sys.Run("systemctl", "start", "pi-fleet")
-		return fmt.Errorf("%w; switched back to the SD card copy", err)
+		back()
+		return fmt.Errorf("%w; switched back to %s", err, from)
+	}
+	if fromDrive {
+		// The old drive keeps its copy, but must never be taken for the
+		// current one (setup reuses a drive labelled PIFLEET-DATA).
+		w.Sys.Run("e2label", oldPart, "PIFLEET-OLD")
 	}
 	if err := w.chownData(); err != nil {
 		return err
@@ -605,11 +647,17 @@ func (w *Wizard) moveToDrive(port int) error {
 		return err
 	}
 	u.Step("Done")
-	u.Say("The records now live on the external drive, and pi-fleet is running")
-	u.Say("from it. The old copy on the SD card is kept at:")
-	u.Say("    %s", old)
-	u.Say("Once you're happy everything works (say, after a week), delete it with:")
-	u.Say("    sudo rm -r %s", old)
+	u.Say("The records now live on the new drive, and pi-fleet is running from it.")
+	if fromDrive {
+		u.Say("The old drive still holds a copy as of the move, renamed PIFLEET-OLD so")
+		u.Say("it is never mistaken for the current one. Once you're happy everything")
+		u.Say("works, unplug it (shut the Pi down first) and reuse or wipe it.")
+	} else {
+		u.Say("The old copy on the SD card is kept at:")
+		u.Say("    %s", old)
+		u.Say("Once you're happy everything works (say, after a week), delete it with:")
+		u.Say("    sudo rm -r %s", old)
+	}
 	return nil
 }
 
