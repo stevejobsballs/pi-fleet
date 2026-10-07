@@ -423,6 +423,18 @@ func (w *Wizard) existingMaster(unit string) error {
 	onDrive := isMountpoint(w.Sys, DataDir)
 	u.Say("")
 	u.Say("pi-fleet is already set up here as the master Pi.")
+	if !w.newerThanInstalled() {
+		if onDrive {
+			u.Say("It runs this version (%s) or a newer one, and its records are on the external drive. Nothing to do.", w.Version)
+			return nil
+		}
+		u.Say("Its records are on the SD card, not on an external drive.")
+		i, err := u.Choose("What would you like to do?", []string{"Move the records to an external drive (recommended)", "Stop"})
+		if err != nil || i == 1 {
+			return err
+		}
+		return w.moveToDrive(port)
+	}
 	opts := []string{fmt.Sprintf("Update to this version (%s)", w.Version), "Stop"}
 	if !onDrive {
 		u.Say("Its records are on the SD card, not on an external drive.")
@@ -442,6 +454,17 @@ func (w *Wizard) existingMaster(unit string) error {
 		return w.update(DataDir, true, fmt.Sprintf("https://127.0.0.1:%d/login", port))
 	}
 	return nil
+}
+
+// newerThanInstalled reports whether this file is a newer release than
+// the installed program (or the installed version can't be told).
+func (w *Wizard) newerThanInstalled() bool {
+	out, err := w.Sys.Output(Binary, "version")
+	f := strings.Fields(string(out))
+	if err != nil || len(f) != 2 || !releaseVersion(f[1]) {
+		return true
+	}
+	return release.Compare(w.Version, f[1]) > 0
 }
 
 // update installs this release over an existing installation with the
@@ -758,6 +781,10 @@ func (w *Wizard) existingNode() error {
 	u := w.UI
 	u.Say("")
 	u.Say("pi-fleet is already set up here as an employee or kiosk Pi.")
+	if !w.newerThanInstalled() {
+		u.Say("It runs this version (%s) or a newer one. Nothing to do.", w.Version)
+		return nil
+	}
 	u.Say("Employee Pis normally update themselves from the master Pi.")
 	i, err := u.Choose("What would you like to do?", []string{fmt.Sprintf("Update to this version (%s) now", w.Version), "Stop"})
 	if err != nil || i == 1 {

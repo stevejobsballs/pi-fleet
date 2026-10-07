@@ -40,7 +40,12 @@ if [ ! -f /etc/systemd/system/pi-fleet.service ] || ! grep -q -- "-releases /srv
   echo "This Pi isn't set up as the master, so the release was only signed."
   exit 0
 fi
-confirm "Install $VER on this master Pi now?" y || exit 0
+INSTALLED=$(/opt/pi-fleet/current/pi-fleet version 2>/dev/null | awk '{print $2}')
+if [ "$INSTALLED" = "$VER" ]; then
+  echo "$VER is already installed on this master Pi; there is nothing more to do."
+  exit 0
+fi
+confirm "Install $VER on this master Pi now (it has ${INSTALLED:-no version})?" y || exit 0
 echo "You'll be asked for your sudo password."
 sudo install -o pifleet -g pifleet -m 0644 "$DIR"/* /srv/pi-fleet/releases/
 sudo bash "$KIT/update.sh"

@@ -484,3 +484,23 @@ func TestUpdateAnExistingMasterUsesTheVerifiedUpdate(t *testing.T) {
 		t.Fatal("copied the program around the verified update")
 	}
 }
+
+func TestNothingToUpdateWhenTheVersionIsInstalled(t *testing.T) {
+	sys := newFake()
+	sys.files[UnitPath] = []byte("ExecStart=/opt/pi-fleet/current/pi-fleet serve -data /srv/pi-fleet -listen :8443\n")
+	outputs(sys, map[string]string{"/opt/pi-fleet/current/pi-fleet version": "pi-fleet v1.0.0\n"})
+	// Records on the SD card: only the move is offered.
+	w, out := wizard(sys, "2")
+	if err := w.Run(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	if strings.Contains(out.String(), "Update to this version") || !strings.Contains(out.String(), "Move the records") {
+		t.Fatalf("output:\n%s", out)
+	}
+	// On the drive already: nothing to do, nothing run.
+	sys.mounts[DataDir] = true
+	w, out = wizard(sys)
+	if err := w.Run(); err != nil || !strings.Contains(out.String(), "Nothing to do") || sys.ran("systemctl") {
+		t.Fatalf("err %v\n%s", err, out)
+	}
+}
