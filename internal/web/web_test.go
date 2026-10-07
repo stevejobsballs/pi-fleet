@@ -64,7 +64,7 @@ func newEnv(t *testing.T) *env {
 	e.site, _ = e.app.CreateSite(e.ctx, e.super, "NYC", "New York", "America/New_York")
 	e.loc, _ = e.app.CreateLocation(e.ctx, e.super, e.site, "", "Biomed shop", "room")
 
-	s := &Server{App: e.app, Role: "central", Now: clock, PHIPatterns: DefaultPHIPatterns, Secure: true}
+	s := &Server{App: e.app, Role: "central", Now: clock, PHIPatterns: DefaultPHIPatterns, Secure: true, Version: "v0.7.0"}
 	h, err := s.Handler()
 	if err != nil {
 		t.Fatal(err)

@@ -918,3 +918,82 @@ func TestMergeWhileAPiIsOffline(t *testing.T) {
 		t.Fatalf("duplicates = %+v", groups)
 	}
 }
+
+func TestTooOldPiCannotSync(t *testing.T) {
+	f := newFleet(t)
+	tess := f.enrol("tess", domain.RoleUser)
+	tess.client.Version = "v0.3.0" // before the merge columns
+	f.must2(tess.app.RegisterAsset(f.ctx, tess.user, domain.AssetRegistered{Tag: "OLD-1", LocationID: f.loc, Manufacturer: "F", Model: "M"}))
+	_, err := tess.client.Sync(f.ctx)
+	if !errors.Is(err, ErrTooOld) || !strings.Contains(err.Error(), "v0.3.0") || !strings.Contains(err.Error(), MinNodeVersion) {
+		t.Fatalf("err = %v", err)
+	}
+	if v, _ := tess.app.Store.Config(f.ctx, ConfigUpdateNeeded); v != MinNodeVersion {
+		t.Fatalf("update_needed = %q", v)
+	}
+	if got := NodeVersion(f.ctx, f.app.Store, tess.client.NodeID); got != "v0.3.0" {
+		t.Fatalf("central recorded version %q", got)
+	}
+	// An old Pi that doesn't stop by itself is refused anyway.
+	pub, _ := tess.client.centralPub(f.ctx)
+	if err := tess.client.pullSnapshot(f.ctx, pub); err == nil || !strings.Contains(err.Error(), "needs "+MinNodeVersion) {
+		t.Fatalf("snapshot for an old Pi: %v", err)
+	}
+	if _, _, err := tess.client.push(f.ctx, 0, 100); err == nil || !strings.Contains(err.Error(), "needs "+MinNodeVersion) {
+		t.Fatalf("push from an old Pi: %v", err)
+	}
+	var n int
+	f.app.Store.DB().QueryRow(`SELECT count(*) FROM assets WHERE tag = 'OLD-1'`).Scan(&n)
+	if n != 0 {
+		t.Fatal("central took records from a too-old Pi")
+	}
+	// Updated, it syncs and the warning goes.
+	tess.client.Version = "v0.6.4"
+	if r := tess.sync(); r.Pushed != 1 {
+		t.Fatalf("sync after update = %+v", r)
+	}
+	if v, _ := tess.app.Store.Config(f.ctx, ConfigUpdateNeeded); v != "" {
+		t.Fatalf("update_needed still %q", v)
+	}
+}
+
+func TestRequiredVersionWithGracePeriod(t *testing.T) {
+	f := newFleet(t)
+	tess := f.enrol("tess", domain.RoleUser)
+	tess.client.Version = "v0.6.4"
+	if err := RequireVersion(f.ctx, f.app.Store, "v0.8.0", f.now, "v0.7.0"); err == nil {
+		t.Fatal("required a version newer than the master")
+	}
+	if err := RequireVersion(f.ctx, f.app.Store, "latest", f.now, "v0.7.0"); err == nil {
+		t.Fatal("accepted a bad version")
+	}
+	from := f.now.Add(7 * 24 * time.Hour)
+	f.must(RequireVersion(f.ctx, f.app.Store, "v0.7.0", from, "v0.7.0"))
+
+	// During the grace period: syncs, and is told the date.
+	tess.sync()
+	if v, _ := tess.app.Store.Config(f.ctx, ConfigUpdateDue); v != "v0.7.0 "+from.UTC().Format(time.RFC3339) {
+		t.Fatalf("update_due = %q", v)
+	}
+	// After it: blocked until updated.
+	f.now = from.Add(time.Hour)
+	if _, err := tess.client.Sync(f.ctx); !errors.Is(err, ErrTooOld) {
+		t.Fatalf("err = %v", err)
+	}
+	if !NodeRequirement(f.ctx, f.app.Store, f.now).Outdated("v0.6.4") {
+		t.Fatal("not shown as outdated")
+	}
+	tess.client.Version = "v0.7.0"
+	tess.sync()
+	// Cleared: back to the built-in minimum.
+	f.must(RequireVersion(f.ctx, f.app.Store, "", time.Time{}, "v0.7.0"))
+	if r := NodeRequirement(f.ctx, f.app.Store, f.now); r.Min != MinNodeVersion || r.Next != "" {
+		t.Fatalf("requirement = %+v", r)
+	}
+}
+
+func TestDevelopmentBuildsAreNeverBlocked(t *testing.T) {
+	if tooOld("dev", "v9.0.0") || tooOld("test", "v9.0.0") || tooOld("v1.0.0", "") || !tooOld("v0.3.9", "v0.4.0") || tooOld("v0.10.0", "v0.4.0") {
+		t.Fatal("tooOld")
+	}
+}

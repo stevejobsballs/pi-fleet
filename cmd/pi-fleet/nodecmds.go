@@ -246,13 +246,11 @@ func cmdRun(ctx context.Context, args []string, c *cli) error {
 			log.Printf("tls: renewal failed, using the current certificate: %v", err)
 		}
 	}
-	cfg := func(key string) func(context.Context) string {
-		return func(ctx context.Context) string { v, _ := n.store.Config(ctx, key); return v }
-	}
+	cfg := func(ctx context.Context, key string) string { v, _ := n.store.Config(ctx, key); return v }
 	ui, err := (&web.Server{
 		App: a, Role: "node", PHIPatterns: web.DefaultPHIPatterns, Fleet: cl, Secure: *https,
 		InsecureLAN: *insecureLAN && !*https,
-		Sync:        web.NodeSyncInfo(n.store.DB(), n.local.ChainID, cfg(fleetsync.ConfigLastSync), cfg(fleetsync.ConfigAckedSeq)),
+		Sync:        web.NodeSyncInfo(n.store.DB(), n.local.ChainID, cfg), Version: version,
 	}).Handler()
 	if err != nil {
 		return err

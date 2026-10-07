@@ -88,8 +88,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST "+PathActivate, s.limited(s.handleActivate))
 	mux.HandleFunc("GET "+PathStatus, s.signed(s.handleStatus, anyStatus))
 	mux.HandleFunc("POST "+PathHello, s.signed(s.handleHello, anyStatus))
-	mux.HandleFunc("POST "+PathEvents, s.signed(s.handleEvents, canPush))
-	mux.HandleFunc("GET "+PathSnapshot, s.signed(s.handleSnapshot, activeOnly))
+	mux.HandleFunc("POST "+PathEvents, s.signed(s.current(s.handleEvents), canPush))
+	mux.HandleFunc("GET "+PathSnapshot, s.signed(s.current(s.handleSnapshot), activeOnly))
 	if s.Fleet != nil {
 		mux.HandleFunc(PathFleet, s.signed(s.handleFleet, activeOnly))
 	}
@@ -102,8 +102,8 @@ func (s *Server) Handler() http.Handler {
 		})
 	}
 	if s.Blobs != nil {
-		mux.HandleFunc("HEAD "+PathBlobs+"{sha}", s.signed(s.handleBlobHead, canPush))
-		mux.HandleFunc("PUT "+PathBlobs+"{sha}", s.signedLimit(s.handleBlobPut, canPush, blobs.MaxSize+1))
+		mux.HandleFunc("HEAD "+PathBlobs+"{sha}", s.signed(s.current(s.handleBlobHead), canPush))
+		mux.HandleFunc("PUT "+PathBlobs+"{sha}", s.signedLimit(s.current(s.handleBlobPut), canPush, blobs.MaxSize+1))
 		mux.HandleFunc("GET "+PathBlobs+"{sha}", s.signed(s.handleBlobGet, activeOnly))
 	}
 	return mux
@@ -451,6 +451,16 @@ func (s *Server) handleHello(w http.ResponseWriter, r *http.Request, n domain.No
 	}
 	if err := s.chainOwnedBy(ctx, req.ChainID, n.ID); err != nil {
 		return err
+	}
+	if req.SoftwareVersion != "" {
+		if err := s.App.Store.SetConfig(ctx, configNodeVersion+n.ID, req.SoftwareVersion); err != nil {
+			return err
+		}
+	}
+	need := NodeRequirement(ctx, s.App.Store, s.now())
+	resp.MinVersion, resp.NextVersion = need.Min, need.Next
+	if need.Next != "" {
+		resp.NextVersionFrom = need.NextFrom.UTC().Format(time.RFC3339)
 	}
 	seq, h, err := s.App.Store.Head(ctx, req.ChainID)
 	if err != nil {

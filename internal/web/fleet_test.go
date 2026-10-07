@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"crypto/ed25519"
 	"net/http/httptest"
 	"net/url"
@@ -66,7 +67,9 @@ func (e *env) employeePi(syncURL, username string) (*httptest.Server, *store.Sto
 		e.t.Fatal(err)
 	}
 	// As cmd/pi-fleet sets up a real Pi.
-	ui := &Server{App: &app.App{Store: st, Author: author, Params: cheap, Now: clock, Blobs: bl, QueueUploads: true}, Role: "node", Fleet: cl, Now: clock}
+	cfg := func(ctx context.Context, key string) string { v, _ := st.Config(ctx, key); return v }
+	ui := &Server{App: &app.App{Store: st, Author: author, Params: cheap, Now: clock, Blobs: bl, QueueUploads: true}, Role: "node", Fleet: cl, Now: clock,
+		Sync: NodeSyncInfo(st.DB(), chainID, cfg)}
 	h, err := ui.Handler()
 	if err != nil {
 		e.t.Fatal(err)

@@ -1168,9 +1168,16 @@ employee Pis are wiped on contact (§6.4).
 4. Schema migrations are forward-only and transactional. Old event payloads are
    upgraded at read time (upcasters), never rewritten.
 5. **Enforcement on employee devices:** central can't force-install on
-   hardware it doesn't control. Instead, `hello` returns `min_supported_version`
-   and nodes below it can't sync until they update. Security releases set a
-   short grace period.
+   hardware it doesn't control. Instead, `hello` returns `min_version` and
+   nodes below it can't sync until they update: the node stops and shows how
+   to update, and central refuses events, snapshots and blobs from a node
+   whose last reported version is too old (in case it doesn't stop). The
+   minimum is the higher of a built-in floor (`MinNodeVersion`, raised when
+   a release changes what nodes must understand, such as snapshot columns)
+   and a version a super user requires on the Pis page from a date; until
+   that date `hello` also returns it as `next_version`, and nodes show a
+   reminder (the grace period, e.g. after a security release). Development
+   builds (not `vX.Y.Z`) are never blocked.
 6. Central updates happen in a maintenance window after a verified backup.
 
 ### 9.4 Release key compromise

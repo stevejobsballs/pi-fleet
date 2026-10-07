@@ -52,6 +52,11 @@ const (
 type SyncInfo struct {
 	LastSync time.Time // zero if never
 	Unsynced int64
+	// UpdateNeeded is the version the master Pi needs before this Pi can
+	// sync again; UpdateDue a newer one it will need from UpdateBy.
+	UpdateNeeded string
+	UpdateDue    string
+	UpdateBy     time.Time
 }
 
 // Server serves the UI.
@@ -61,6 +66,8 @@ type Server struct {
 	Role string
 	// Secure marks cookies Secure; set when served over HTTPS.
 	Secure bool
+	// Version is this program's version (the master Pi's, on central).
+	Version string
 	// CertFingerprint is the master Pi's HTTPS certificate fingerprint,
 	// shown on the Pis page so a new Pi's setup can be checked against it.
 	CertFingerprint string
@@ -193,6 +200,7 @@ func (s *Server) Handler() (http.Handler, error) {
 		mux.Handle("POST /admin/nodes/{id}/reject", super(s.nodeReject))
 		mux.Handle("POST /admin/nodes/{id}/revoke", super(s.nodeRevoke))
 		mux.Handle("POST /admin/nodes/{id}/unquarantine", super(s.nodeUnquarantine))
+		mux.Handle("POST /admin/nodes/require", super(s.nodeRequire))
 		mux.Handle("GET /admin/kiosks", super(s.kioskList))
 		mux.Handle("POST /admin/kiosks", super(s.kioskCreate))
 		mux.Handle("POST /admin/kiosks/{id}/reset", super(s.kioskReset))

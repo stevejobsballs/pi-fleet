@@ -449,6 +449,9 @@ func (c *Client) Sync(ctx context.Context) (Report, error) {
 	if hello.Quarantined {
 		return rep, ErrQuarantined
 	}
+	if err := c.checkVersion(ctx, hello); err != nil {
+		return rep, err
+	}
 	if hello.Status != "active" && !(hello.Wipe && hello.KeepUnsynced) {
 		if hello.Wipe {
 			return rep, c.wipe()
@@ -636,4 +639,26 @@ func (c *Client) wipe() error {
 		return fmt.Errorf("fleetsync: revoked, but wiping failed: %w", err)
 	}
 	return ErrRevoked
+}
+
+// checkVersion records what the master Pi needs of this Pi's version, for
+// its web interface to show, and stops a sync the master would refuse.
+func (c *Client) checkVersion(ctx context.Context, hello HelloResponse) error {
+	needed, due := "", ""
+	if tooOld(c.Version, hello.MinVersion) {
+		needed = hello.MinVersion
+	}
+	if hello.NextVersion != "" && tooOld(c.Version, hello.NextVersion) {
+		due = hello.NextVersion + " " + hello.NextVersionFrom
+	}
+	if err := c.Store.SetConfig(ctx, ConfigUpdateNeeded, needed); err != nil {
+		return err
+	}
+	if err := c.Store.SetConfig(ctx, ConfigUpdateDue, due); err != nil {
+		return err
+	}
+	if needed != "" {
+		return fmt.Errorf("%w: it runs pi-fleet %s and the master Pi needs %s or newer", ErrTooOld, c.Version, needed)
+	}
+	return nil
 }

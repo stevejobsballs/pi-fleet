@@ -1,12 +1,16 @@
 package web
 
 import (
+	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"pi-fleet/internal/app"
 	"pi-fleet/internal/domain"
+	"pi-fleet/internal/fleetsync"
 )
 
 // --- inventory ---
@@ -248,11 +252,16 @@ type nodeRow struct {
 	domain.Node
 	Username    string
 	Quarantined bool
+	Version     string // as it last reported
+	Outdated    bool
 }
 
 type nodesData struct {
 	Rows        []nodeRow
 	Fingerprint string
+	Need        fleetsync.Requirement
+	Master      string // this master Pi's version
+	DefaultFrom string // suggested date a new requirement starts
 }
 
 func (s *Server) nodeList(w http.ResponseWriter, r *http.Request, sess *session) error {
@@ -269,7 +278,36 @@ func (s *Server) nodeList(w http.ResponseWriter, r *http.Request, sess *session)
 		}
 		rows[i].Quarantined = s.App.Quarantined(ctx, n.ID)
 	}
-	return s.render(w, r, sess, "nodes", "Pis", nodesData{Rows: rows, Fingerprint: s.CertFingerprint})
+	need := fleetsync.NodeRequirement(ctx, s.App.Store, s.now())
+	for i := range rows {
+		rows[i].Version = fleetsync.NodeVersion(ctx, s.App.Store, rows[i].ID)
+		rows[i].Outdated = need.Outdated(rows[i].Version)
+	}
+	return s.render(w, r, sess, "nodes", "Pis", nodesData{Rows: rows, Fingerprint: s.CertFingerprint, Need: need, Master: s.Version,
+		DefaultFrom: s.now().AddDate(0, 0, 7).Format("2006-01-02")})
+}
+
+// nodeRequire sets the pi-fleet version employee Pis need, from a date,
+// or with "clear" goes back to the built-in minimum.
+func (s *Server) nodeRequire(w http.ResponseWriter, r *http.Request, sess *session) error {
+	ctx, f := r.Context(), r.PostFormValue
+	if f("clear") == "yes" {
+		if err := fleetsync.RequireVersion(ctx, s.App.Store, "", time.Time{}, s.Version); err != nil {
+			return err
+		}
+		log.Printf("web: %s cleared the required employee Pi version", sess.User.Username)
+		return s.done(w, r, sess, "/admin/nodes", "Employee Pis now need only the built-in minimum version.")
+	}
+	from, err := time.ParseInLocation("2006-01-02", f("from"), time.Local)
+	if err != nil {
+		return s.done(w, r, sess, "/admin/nodes", "Not saved: give the date the requirement starts.")
+	}
+	version := strings.TrimSpace(f("version"))
+	if err := fleetsync.RequireVersion(ctx, s.App.Store, version, from, s.Version); err != nil {
+		return s.done(w, r, sess, "/admin/nodes", "Not saved: "+err.Error()+".")
+	}
+	log.Printf("web: %s required employee Pis to run %s from %s", sess.User.Username, version, from.Format("2006-01-02"))
+	return s.done(w, r, sess, "/admin/nodes", fmt.Sprintf("Employee Pis need pi-fleet %s from %s.", version, from.Format("2 January 2006")))
 }
 
 func (s *Server) nodeConfirm(w http.ResponseWriter, r *http.Request, sess *session) error {

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"pi-fleet/internal/domain"
+	"pi-fleet/internal/fleetsync"
 )
 
 // page is what every template receives.
@@ -147,15 +148,20 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, sess *session, n
 func urlQuery(s string) string { return url.QueryEscape(s) }
 
 // NodeSyncInfo builds SyncInfo for an employee Pi from its store.
-func NodeSyncInfo(q domain.Querier, chainID string, lastSync, acked func(context.Context) string) func(context.Context) SyncInfo {
+func NodeSyncInfo(q domain.Querier, chainID string, cfg func(context.Context, string) string) func(context.Context) SyncInfo {
 	return func(ctx context.Context) SyncInfo {
 		var info SyncInfo
-		info.LastSync, _ = time.Parse(time.RFC3339, lastSync(ctx))
+		info.LastSync, _ = time.Parse(time.RFC3339, cfg(ctx, fleetsync.ConfigLastSync))
 		var head int64
 		q.QueryRowContext(ctx, `SELECT coalesce(max(seq), 0) FROM events WHERE chain_id = ?`, chainID).Scan(&head)
 		var a int64
-		fmt.Sscan(acked(ctx), &a)
+		fmt.Sscan(cfg(ctx, fleetsync.ConfigAckedSeq), &a)
 		info.Unsynced = head - a
+		info.UpdateNeeded = cfg(ctx, fleetsync.ConfigUpdateNeeded)
+		if due := strings.Fields(cfg(ctx, fleetsync.ConfigUpdateDue)); len(due) == 2 {
+			info.UpdateDue = due[0]
+			info.UpdateBy, _ = time.Parse(time.RFC3339, due[1])
+		}
 		return info
 	}
 }

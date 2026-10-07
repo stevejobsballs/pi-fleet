@@ -1,8 +1,9 @@
 {{define "content"}}
 <p class="hint">Devices that use a Pi's web interface over HTTPS (for example tablets with a kiosk) need the <a href="/v1/fleet-ca.pem">fleet CA certificate</a> installed once.</p>
 {{with .Data.Fingerprint}}<p>This master Pi's certificate fingerprint, for checking during a new Pi's setup:<br><code>{{.}}</code></p>{{end}}
-{{if .Data.Rows}}<table><thead><tr><th>Pi</th><th>Belongs to</th><th>Status</th><th>Activated</th><th>Pairing words</th><th></th></tr></thead><tbody>
-{{range .Data.Rows}}<tr><td><code>{{.ID}}</code></td><td>{{if eq .Mode "kiosk"}}kiosk{{else}}{{.Username}}{{end}}</td><td>{{label .Status}}{{if .Quarantined}}<br><span class="warn">quarantined after a chain fork</span>{{end}}</td><td>{{.ActivatedAt}}</td><td>{{.PairingWords}}</td><td>
+{{if .Data.Rows}}<table><thead><tr><th>Pi</th><th>Belongs to</th><th>Status</th><th>Version</th><th>Activated</th><th>Pairing words</th><th></th></tr></thead><tbody>
+{{range .Data.Rows}}<tr><td><code>{{.ID}}</code></td><td>{{if eq .Mode "kiosk"}}kiosk{{else}}{{.Username}}{{end}}</td><td>{{label .Status}}{{if .Quarantined}}<br><span class="warn">quarantined after a chain fork</span>{{end}}</td>
+  <td>{{if .Version}}{{.Version}}{{else}}not seen yet{{end}}{{if .Outdated}}<br><span class="warn">needs updating</span>{{end}}</td><td>{{.ActivatedAt}}</td><td>{{.PairingWords}}</td><td>
   {{if eq .Status "pending_confirmation"}}
   <form method="post" action="/admin/nodes/{{.ID}}/confirm" class="inline">{{template "csrf" $.CSRF}}<label>Words the employee reads out <input name="words" required></label><button>Confirm</button></form>
   <form method="post" action="/admin/nodes/{{.ID}}/reject" class="inline">{{template "csrf" $.CSRF}}<label>Reason <input name="reason" required></label><button class="danger">Reject</button></form>
@@ -14,4 +15,14 @@
 </tbody></table>
 <p class="hint">Check the words with the employee in person or by phone on a number you already have. Never confirm words you were sent.</p>
 {{else}}<p>No Pis have been activated yet.</p>{{end}}
+<section id="versions"><h2>Versions</h2>
+{{$n := .Data.Need}}
+<p>This master Pi runs pi-fleet {{.Data.Master}}. Employee Pis need {{$n.Min}} or newer to sync{{with $n.Next}}, and {{.}} or newer from {{$n.NextFrom.Format "2 January 2006"}}{{end}}. A Pi that is too old keeps its work and shows how to update; it syncs again once updated.</p>
+<form method="post" action="/admin/nodes/require" class="inline">{{template "csrf" .CSRF}}
+  <label>Require version <input name="version" value="{{.Data.Master}}" required pattern="v[0-9]+\.[0-9]+\.[0-9]+" size="8"></label>
+  <label>From <input name="from" type="date" value="{{.Data.DefaultFrom}}" required></label>
+  <button>Require</button></form>
+{{if $n.Next}}<form method="post" action="/admin/nodes/require" class="inline">{{template "csrf" .CSRF}}<input type="hidden" name="clear" value="yes"><button class="danger">Cancel the requirement</button></form>{{end}}
+<p class="hint">Use this after a security update: give employees a few days to update, then Pis that haven't can't sync until they do. A Pi updates from this master Pi's copy of the release (Update-Pi on the employee Pi).</p>
+</section>
 {{end}}

@@ -172,6 +172,13 @@ and install the fleet CA (download it from the master Pi's *Pis* page,
 
 ## Updates (both kinds of Pi)
 
+Update the master Pi first; employee Pis update from its copy of the
+release. The master's **Pis** page shows each Pi's version and which need
+updating. An employee Pi older than the master can serve shows a banner and
+stops syncing (keeping its work) until it is updated. After a security
+release, require the new version on the Pis page from a date a few days
+ahead: Pis show a reminder until then, and must update to sync after it.
+
 Releases are signed with an offline key and verified against keys compiled
 into the binary (DESIGN.md §9). A super user approves a release by copying
 its files into the master Pi's releases directory. Employee Pis fetch from

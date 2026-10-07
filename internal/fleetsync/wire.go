@@ -189,6 +189,11 @@ type HelloResponse struct {
 	DurableSeq   int64 `json:"durable_seq"`
 	StateVersion int64 `json:"state_version"`
 	Quarantined  bool  `json:"quarantined"`
+	// The oldest pi-fleet version central syncs with, and a newer one it
+	// will require from NextVersionFrom (DESIGN.md §9.3).
+	MinVersion      string `json:"min_version,omitempty"`
+	NextVersion     string `json:"next_version,omitempty"`
+	NextVersionFrom string `json:"next_version_from,omitempty"`
 }
 
 // EventsRequest pushes a contiguous batch of the node's own events.

@@ -34,6 +34,7 @@
   </div>
 </div>
 {{end}}
+{{with .Sync}}{{if .UpdateNeeded}}<p class="trial" role="alert"><strong>This Pi needs updating.</strong> The master Pi needs pi-fleet {{.UpdateNeeded}} or newer before this Pi can sync again. Your work is kept here meanwhile. Double-click Update-Pi, or run the newest pi-fleet release's setup on this Pi.</p>{{else if .UpdateDue}}<p class="trial" role="status">Please update this Pi to pi-fleet {{.UpdateDue}} before {{.UpdateBy.Format "2 January 2006"}}; after that it can't sync until it is updated.</p>{{end}}{{end}}
 {{if .Trial}}<p class="trial" role="alert"><strong>Trial installation.</strong> The records are on a USB stick, which is only for testing: don't use it for actual work. Before real use, move them to an SSD by running setup on the master Pi.</p>{{end}}
 {{if .Insecure}}<p class="insecure" role="alert">This Pi is serving its web interface without HTTPS. Passwords and records can be read by others on this network. Ask a super user to enable HTTPS.</p>{{end}}
 <main>
