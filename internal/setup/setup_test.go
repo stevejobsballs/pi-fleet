@@ -334,6 +334,7 @@ func TestNewMasterReusesADataDrive(t *testing.T) {
 
 func TestMoveAnExistingMasterToADrive(t *testing.T) {
 	sys := newFake()
+	sys.exists[DataDir+"/pi-fleet.db"] = true
 	sys.files[UnitPath] = []byte("ExecStart=/opt/pi-fleet/current/pi-fleet serve -data /srv/pi-fleet -listen :8443 -tls-cert /etc/pi-fleet/tls/cert.pem\n")
 	sys.files["/etc/pi-fleet/tls/cert.pem"] = []byte("x")
 	outputs(sys, map[string]string{"lsblk": piDisks, "blkid": "new-uuid\n"})
@@ -369,6 +370,7 @@ func TestMoveAnExistingMasterToADrive(t *testing.T) {
 
 func TestMoveStopsSafelyIfTheCopyFailsItsCheck(t *testing.T) {
 	sys := newFake()
+	sys.exists[DataDir+"/pi-fleet.db"] = true
 	sys.files[UnitPath] = []byte("ExecStart=/opt/pi-fleet/current/pi-fleet serve -data /srv/pi-fleet -listen :8443\n")
 	outputs(sys, map[string]string{"lsblk": piDisks, "blkid": "new-uuid\n"})
 	sys.fail = map[string]error{"runuser -u pifleet -- /opt/pi-fleet/current/pi-fleet selfcheck": errors.New("exit status 1")}
@@ -520,6 +522,7 @@ const stickAndSSD = `{"blockdevices": [
 
 func TestMoveToADifferentDrive(t *testing.T) {
 	sys := newFake()
+	sys.exists[DataDir+"/pi-fleet.db"] = true
 	sys.files[UnitPath] = []byte("ExecStart=/opt/pi-fleet/current/pi-fleet serve -data /srv/pi-fleet -listen :8443 -tls-cert /srv/pi-fleet/tls/cert.pem\n")
 	sys.files["/etc/fstab"] = []byte("proc /proc proc defaults 0 0\n" + FstabLine("old-uuid", DataDir) + "\n")
 	sys.mounts[DataDir] = true
@@ -571,6 +574,7 @@ func TestMoveToADifferentDrive(t *testing.T) {
 
 func TestDriveMoveStopsSafelyIfTheCopyFailsItsCheck(t *testing.T) {
 	sys := newFake()
+	sys.exists[DataDir+"/pi-fleet.db"] = true
 	sys.files[UnitPath] = []byte("ExecStart=/opt/pi-fleet/current/pi-fleet serve -data /srv/pi-fleet -listen :8443\n")
 	before := "proc /proc proc defaults 0 0\n" + FstabLine("old-uuid", DataDir) + "\n"
 	sys.files["/etc/fstab"] = []byte(before)
@@ -758,6 +762,7 @@ func TestTrialInstallationOnAUSBStick(t *testing.T) {
 
 func TestMovingOffTheStickEndsTheTrial(t *testing.T) {
 	sys := newFake()
+	sys.exists[DataDir+"/pi-fleet.db"] = true
 	sys.files[UnitPath] = []byte("ExecStart=/opt/pi-fleet/current/pi-fleet serve -data /srv/pi-fleet -listen :8443\n")
 	sys.files[DataDir+"/"+TrialMarker] = []byte("x")
 	sys.mounts[DataDir] = true
@@ -783,5 +788,119 @@ func TestAnExistingStickInstallIsMarkedAsATrial(t *testing.T) {
 	}
 	if _, ok := sys.files[DataDir+"/"+TrialMarker]; !ok || !sys.ran("systemctl restart pi-fleet") || !strings.Contains(out.String(), "TRIAL INSTALLATION") {
 		t.Fatalf("not marked:\n%s", out)
+	}
+}
+
+// What happened on the trial master: the data stick dropped out, came
+// back unopened, and setup was run.
+func TestMissingDataDriveIsNeverTakenForRecordsOnTheSDCard(t *testing.T) {
+	sys := newFake()
+	sys.files[UnitPath] = []byte(MasterUnit(8443))
+	sys.files["/etc/fstab"] = []byte("proc /proc proc defaults 0 0\n" + FstabLine("old-uuid", DataDir) + "\n")
+	// The stick is back, unopened, with the same file system.
+	disks := strings.Replace(stickAndSSD, `"mountpoints":["/srv/pi-fleet"]`, `"mountpoints":[]`, 1)
+	outputs(sys, map[string]string{"lsblk": disks, "/opt/pi-fleet/current/pi-fleet version": "pi-fleet v1.0.0\n"})
+	sys.exists["/dev/disk/by-uuid/old-uuid"] = true
+	w, out := wizard(sys, "3")
+	if err := w.Run(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	if !sys.ran("mount /srv/pi-fleet") || !sys.ran("systemctl restart pi-fleet") || !strings.Contains(out.String(), "Found the data drive") {
+		t.Fatalf("didn't reopen the drive:\n%s\n%s", strings.Join(sys.calls, "\n"), out)
+	}
+	if strings.Contains(out.String(), "on the SD card") || sys.ran("wipefs") {
+		t.Fatalf("took the missing drive for records on the SD card:\n%s", out)
+	}
+}
+
+func TestDataDriveOfferedForErasingNever(t *testing.T) {
+	sys := newFake()
+	sys.files["/etc/fstab"] = []byte(FstabLine("old-uuid", DataDir) + "\n")
+	disks := strings.Replace(stickAndSSD, `"mountpoints":["/srv/pi-fleet"]`, `"mountpoints":[]`, 1)
+	outputs(sys, map[string]string{"lsblk": disks})
+	w, out := wizard(sys, "1")
+	w.defaults()
+	d, err := w.pickDisk("Which?")
+	if err != nil || d == nil || d.Name != "sdb" || strings.Contains(out.String(), "STORE N GO") {
+		t.Fatalf("offered %v:\n%s", d, out)
+	}
+}
+
+func TestRestoreFromTheSDCardCopyWhenTheDriveIsLost(t *testing.T) {
+	sys := newFake()
+	sys.files[UnitPath] = []byte(MasterUnit(8443))
+	sys.files["/etc/fstab"] = []byte("proc /proc proc defaults 0 0\n" + FstabLine("old-uuid", DataDir) + "\n")
+	copy := "/srv/pi-fleet.on-sd-card-2026-10-07"
+	sys.exists[copy] = true
+	sys.exists[DataDir] = true
+	// The data stick was erased: the old file system is gone for good.
+	disks := strings.Replace(stickAndSSD, `"label":"PIFLEET-DATA","uuid":"old-uuid","mountpoints":["/srv/pi-fleet"]`, `"label":"","uuid":"erased","mountpoints":[]`, 1)
+	outputs(sys, map[string]string{"lsblk": disks, "blkid": "new-uuid\n", "/opt/pi-fleet/current/pi-fleet version": "pi-fleet v1.0.0\n"})
+	w, out := wizard(sys,
+		"2", // restore from the SD card copy
+		"y",
+		"", "2", "ERASE", // put them on the SSD
+	)
+	w.ReadDir = func(dir string) ([]os.DirEntry, error) {
+		switch dir {
+		case "/srv":
+			return []os.DirEntry{entry("pi-fleet"), entry("pi-fleet.on-sd-card-2026-10-07"), entry("other")}, nil
+		case DataDir:
+			return nil, nil // the empty mount point
+		}
+		return []os.DirEntry{}, nil
+	}
+	// cp -a puts the records in place.
+	orig := sys.output
+	sys.output = func(c string) ([]byte, error) { return orig(c) }
+	w.Sys = &restoreFake{sys}
+	if err := w.Run(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	order := []string{
+		"systemctl stop pi-fleet",
+		"rmdir /srv/pi-fleet",
+		"cp -a /srv/pi-fleet.on-sd-card-2026-10-07 /srv/pi-fleet",
+		"runuser -u pifleet -- /opt/pi-fleet/current/pi-fleet selfcheck -data /srv/pi-fleet",
+		"mkfs.ext4 -q -F -L PIFLEET-DATA -m 1 /dev/sdb1",
+		"cp -a /srv/pi-fleet/. /mnt/pi-fleet-move/",
+		"mv /srv/pi-fleet /srv/pi-fleet.on-sd-card-2026-10-07-120000",
+		"mount /srv/pi-fleet",
+		"systemctl restart pi-fleet",
+	}
+	i := 0
+	for _, c := range sys.calls {
+		if i < len(order) && strings.HasPrefix(c, order[i]) {
+			i++
+		}
+	}
+	if i != len(order) {
+		t.Fatalf("stopped matching at %q; ran:\n%s", order[i], strings.Join(sys.calls, "\n"))
+	}
+	if sys.ran("mv /srv/pi-fleet.on-sd-card-2026-10-07 ") || sys.ran("rm -r") {
+		t.Fatal("touched the SD card copy")
+	}
+	if !strings.Contains(string(sys.files["/etc/fstab"]), "# drive lost, removed by pi-fleet setup: UUID=old-uuid") {
+		t.Fatalf("fstab:\n%s", sys.files["/etc/fstab"])
+	}
+}
+
+// restoreFake makes cp -a of the SD card copy create the records.
+type restoreFake struct{ *fakeSys }
+
+func (r *restoreFake) Run(name string, args ...string) error {
+	if name == "cp" && len(args) == 3 && args[2] == DataDir {
+		r.exists[DataDir+"/pi-fleet.db"] = true
+	}
+	return r.fakeSys.Run(name, args...)
+}
+
+func TestMoveRefusesWhenThereAreNoRecords(t *testing.T) {
+	sys := newFake()
+	sys.files[UnitPath] = []byte("ExecStart=/opt/pi-fleet/current/pi-fleet serve -data /srv/pi-fleet -listen :8443\n")
+	outputs(sys, map[string]string{"lsblk": piDisks})
+	w, out := wizard(sys, "1")
+	if err := w.Run(); err == nil || !strings.Contains(err.Error(), "no records") || sys.ran("wipefs") {
+		t.Fatalf("err = %v\n%s", err, out)
 	}
 }

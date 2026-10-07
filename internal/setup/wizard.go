@@ -259,9 +259,10 @@ func (w *Wizard) pickDisk(question string) (*Disk, error) {
 	if err != nil {
 		return nil, err
 	}
+	protected := w.protectedUUIDs()
 	var usable []Disk
 	for _, d := range disks {
-		if d.Size >= MinDataDrive && !d.holds(DataDir) && !d.holds(BackupDir) {
+		if d.Size >= MinDataDrive && !d.holds(DataDir) && !d.holds(BackupDir) && !d.hasUUID(protected) {
 			usable = append(usable, d)
 		}
 	}
@@ -451,6 +452,15 @@ func (w *Wizard) existingMaster(unit string) error {
 	onDrive := isMountpoint(w.Sys, DataDir)
 	u.Say("")
 	u.Say("pi-fleet is already set up here as the master Pi.")
+	if fstab, _ := w.Sys.ReadFile("/etc/fstab"); !onDrive {
+		if uuid := fstabUUID(string(fstab), DataDir); uuid != "" {
+			back, err := w.missingDataDrive(port, uuid)
+			if err != nil || !back {
+				return err
+			}
+			onDrive = true
+		}
+	}
 	if d, ok := w.dataDisk(); ok && d.stickLike() && !w.Sys.Exists(DataDir+"/"+TrialMarker) {
 		// Set up before trial installations were marked.
 		if err := w.markTrial(DataDir, true); err != nil {
@@ -561,6 +571,9 @@ func (w *Wizard) update(dataDir string, master bool, healthURL string) error {
 // mistakes it for the current one.
 func (w *Wizard) moveToDrive(port int, fromDrive bool) error {
 	u := w.UI
+	if !w.DryRun && !w.Sys.Exists(DataDir+"/pi-fleet.db") {
+		return fmt.Errorf("there are no records in %s to move; nothing was changed", DataDir)
+	}
 	if err := w.dependencies(true); err != nil {
 		return err
 	}
@@ -679,6 +692,9 @@ func (w *Wizard) moveToDrive(port int, fromDrive bool) error {
 		}
 	} else {
 		old = fmt.Sprintf("%s.on-sd-card-%s", DataDir, w.Now().Format("2006-01-02"))
+		if w.Sys.Exists(old) { // an earlier copy from today is kept too
+			old = fmt.Sprintf("%s.on-sd-card-%s", DataDir, w.Now().Format("2006-01-02-150405"))
+		}
 		if err := w.Sys.Rename(DataDir, old); err != nil {
 			w.Sys.Run("systemctl", "start", "pi-fleet")
 			return err
