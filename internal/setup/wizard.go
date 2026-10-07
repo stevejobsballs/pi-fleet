@@ -150,7 +150,12 @@ func (w *Wizard) newMaster() error {
 	if err := w.markTrial(DataDir, trial); err != nil {
 		return err
 	}
-	fp, err := w.certificate(host)
+	u.Step("Network names")
+	extraNames, extraIPs, err := w.askNetworkNames()
+	if err != nil {
+		return err
+	}
+	fp, err := w.certificate(host, extraNames, extraIPs)
 	if err != nil {
 		return err
 	}
@@ -171,7 +176,11 @@ func (w *Wizard) newMaster() error {
 			return err
 		}
 	}
-	w.masterDone(host, port, fp, now)
+	addr := host + ".local"
+	if len(extraNames) > 0 {
+		addr = extraNames[0]
+	}
+	w.masterDone(addr, port, fp, now)
 	if trial {
 		w.trialWarning()
 	}
@@ -319,7 +328,7 @@ func (w *Wizard) chownData() error {
 
 // certificate makes the HTTPS certificate on the data drive, unless there
 // is one, and returns its fingerprint.
-func (w *Wizard) certificate(host string) (string, error) {
+func (w *Wizard) certificate(host string, extraNames []string, extraIPs []net.IP) (string, error) {
 	u := w.UI
 	u.Step("Secure connection (HTTPS)")
 	certPath := DataDir + "/tls/cert.pem"
@@ -337,8 +346,8 @@ func (w *Wizard) certificate(host string) (string, error) {
 			return Fingerprint(old)
 		}
 	}
-	names := []string{host + ".local", host}
-	cert, key, err := NewCertificate(names, w.Addrs(), w.Now())
+	names, ips := addNames([]string{host + ".local", host}, w.Addrs(), extraNames, extraIPs)
+	cert, key, err := NewCertificate(names, ips, w.Now())
 	if err != nil {
 		return "", err
 	}
@@ -409,9 +418,9 @@ func (w *Wizard) records(reused bool) error {
 	}
 }
 
-func (w *Wizard) masterDone(host string, port int, fingerprint string, backups bool) {
+func (w *Wizard) masterDone(name string, port int, fingerprint string, backups bool) {
 	u := w.UI
-	addr := "https://" + host + ".local"
+	addr := "https://" + name
 	if port != 443 {
 		addr += ":" + strconv.Itoa(port)
 	}
@@ -491,6 +500,7 @@ func (w *Wizard) existingMaster(unit string) error {
 			choices = append(choices, choice{"Set up backups (backup drive, backup keys, off-site disks)", func() error { return w.backups(port) }})
 		}
 	}
+	choices = append(choices, choice{"Add a network name or address to the master's certificate (for Pis at other sites)", func() error { return w.addCertNames(unit, port) }})
 	if w.newerThanInstalled() {
 		choices = append(choices, choice{fmt.Sprintf("Update to this version (%s)", w.Version), func() error {
 			return w.update(DataDir, true, fmt.Sprintf("https://127.0.0.1:%d/login", port))
@@ -783,8 +793,9 @@ func (w *Wizard) newNode(kiosk bool) error {
 func (w *Wizard) masterAddress() (string, error) {
 	u := w.UI
 	u.Step("Find the master Pi")
-	u.Say("Type the master Pi's name as shown at the end of its setup, for example")
-	u.Say("fleet-master.local, or its address in the web browser.")
+	u.Say("Type the master Pi's name as shown at the end of its setup: on the same")
+	u.Say("network, for example fleet-master.local; at another site, the network")
+	u.Say("name your IT department gave it, for example pi-fleet.example.org.")
 	for {
 		a, err := u.Ask("Master Pi", "fleet-master.local", nil)
 		if err != nil {
@@ -910,16 +921,27 @@ func (w *Wizard) existingNode() error {
 	u := w.UI
 	u.Say("")
 	u.Say("pi-fleet is already set up here as an employee or kiosk Pi.")
-	if !w.newerThanInstalled() {
-		u.Say("It runs this version (%s) or a newer one. Nothing to do.", w.Version)
-		return nil
+	type choice struct {
+		label string
+		do    func() error
 	}
-	u.Say("Employee Pis normally update themselves from the master Pi.")
-	i, err := u.Choose("What would you like to do?", []string{fmt.Sprintf("Update to this version (%s) now", w.Version), "Stop"})
-	if err != nil || i == 1 {
+	choices := []choice{{"Connect to the master again (it has a new address, or a new certificate)", w.reconnect}}
+	if w.newerThanInstalled() {
+		u.Say("Employee Pis normally update themselves from the master Pi.")
+		choices = append(choices, choice{fmt.Sprintf("Update to this version (%s) now", w.Version), func() error {
+			return w.update(NodeDataDir, false, "http://127.0.0.1:8080/login")
+		}})
+	}
+	choices = append(choices, choice{"Stop", func() error { return nil }})
+	labels := make([]string, len(choices))
+	for i, c := range choices {
+		labels[i] = c.label
+	}
+	i, err := u.Choose("What would you like to do?", labels)
+	if err != nil {
 		return err
 	}
-	return w.update(NodeDataDir, false, "http://127.0.0.1:8080/login")
+	return choices[i].do()
 }
 
 // --- shared steps ---

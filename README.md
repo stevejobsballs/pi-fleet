@@ -67,6 +67,10 @@ Running setup again on an installed Pi offers to update it to the file's
 version, through the verified update with rollback. `-dry-run` shows what
 setup would do without changing anything.
 
+Pis at other buildings or sites: give your IT department
+[docs/NETWORK.md](docs/NETWORK.md) before installing the master Pi. It
+needs a DNS name, and setup asks for it.
+
 ## Tools
 
 `deploy/tools` has double-click tools for an installed Pi: **Check-Pi**

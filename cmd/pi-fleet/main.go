@@ -71,6 +71,7 @@ employee Pi (node):
   activate           activate this Pi with a one-time password (-username, or -kiosk for a shared Pi)
   activation-status  check whether a super user has confirmed this Pi
   sync               sync with the master Pi once, or repeatedly with -every
+  set-master         point this Pi at the master Pi's new address or certificate
   run                serve the web interface on this Pi and sync in the background
 
 release maintainers (offline machine):
@@ -102,7 +103,7 @@ func run(ctx context.Context, args []string, stdin io.Reader, out io.Writer) err
 		"node-revoke": cmdNodeRevoke, "user-create": cmdUserCreate, "run": cmdRun, "kiosk-create": cmdKioskCreate, "kiosk-member": cmdKioskMember,
 		"backup-keygen": cmdBackupKeygen, "backup-config": cmdBackupConfig, "backup-now": cmdBackupNow, "backups": cmdBackups,
 		"offsite-register": cmdOffsiteRegister, "offsite-write": cmdOffsiteWrite, "offsite-confirm": cmdOffsiteConfirm, "restore": cmdRestore,
-		"selfcheck": cmdSelfcheck, "verify-export": cmdVerifyExport, "node-unquarantine": cmdNodeUnquarantine, "update": cmdUpdate, "release-keygen": cmdReleaseKeygen, "release-sign": cmdReleaseSign, "activate": cmdActivate, "activation-status": cmdActivationStatus, "sync": cmdSync, "setup": cmdSetup,
+		"selfcheck": cmdSelfcheck, "verify-export": cmdVerifyExport, "node-unquarantine": cmdNodeUnquarantine, "update": cmdUpdate, "release-keygen": cmdReleaseKeygen, "release-sign": cmdReleaseSign, "activate": cmdActivate, "activation-status": cmdActivationStatus, "sync": cmdSync, "setup": cmdSetup, "set-master": cmdSetMaster,
 	}
 	c := &cli{stdin: stdin, out: out}
 	switch cmd := args[0]; cmd {

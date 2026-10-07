@@ -132,6 +132,10 @@ WantedBy=multi-user.target
 
 ## Employee Pi
 
+Pis at other sites need the master Pi reachable by a DNS name that is in
+its certificate: see [NETWORK.md](NETWORK.md), the guide for IT.
+
+
 ```sh
 sudo useradd --system --home /var/lib/pi-fleet --shell /usr/sbin/nologin pifleet
 sudo mkdir -p /var/lib/pi-fleet && sudo chown pifleet: /var/lib/pi-fleet

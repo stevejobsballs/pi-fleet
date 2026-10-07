@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/pem"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -133,6 +134,25 @@ func TestEmployeePiEndToEnd(t *testing.T) {
 	}
 	if out := runOK(t, "", "verify", "-data", centralDir); !strings.Contains(out, "chains 2") {
 		t.Errorf("central verify: %s", out)
+	}
+
+	// The master moves to a new address with a new certificate.
+	moved := httptest.NewTLSServer((&fleetsync.Server{App: a, CentralKey: n.keys.Event, Logf: t.Logf}).Handler())
+	defer moved.Close()
+	ca := filepath.Join(t.TempDir(), "master.pem")
+	os.WriteFile(ca, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: moved.Certificate().Raw}), 0o644)
+	if _, err := runCmd(t, "", "set-master", "-data", piDir, "-url", "https://127.0.0.1:1"); err == nil {
+		t.Fatal("set-master accepted an address where no master answers")
+	}
+	if out := runOK(t, "", "sync", "-data", piDir); !strings.Contains(out, "pushed 0") {
+		t.Errorf("a failed set-master changed the settings: %s", out)
+	}
+	if out := runOK(t, "", "set-master", "-data", piDir, "-url", moved.URL, "-ca", ca); !strings.Contains(out, moved.URL) {
+		t.Errorf("set-master: %s", out)
+	}
+	srv.Close() // the old address is gone
+	if out := runOK(t, "", "sync", "-data", piDir); !strings.Contains(out, "pushed 0") {
+		t.Errorf("sync at the new address: %s", out)
 	}
 }
 

@@ -268,6 +268,7 @@ func TestNewMasterOnAnErasedDrive(t *testing.T) {
 		"1", "y", "erase", // the USB stick, as a trial, but ERASE not typed in capitals: back to the list
 		"",           // drive plugged in
 		"2", "ERASE", // the SSD
+		"",       // no network names for other sites
 		"Jsmith", // not lowercase
 		"jsmith", "Jo Smith", "jo at example", "jo@example.org",
 		"n", // backups later
@@ -320,7 +321,7 @@ func TestNewMasterReusesADataDrive(t *testing.T) {
 		"runuser -u pifleet -- /opt/pi-fleet/current/pi-fleet bootstrap -data /srv/pi-fleet -check": "this master Pi has a super user\n"})
 	sys.exists["/srv/pi-fleet/pi-fleet.db"] = true // on the drive, once mounted
 	sys.files["/srv/pi-fleet/tls/cert.pem"], _, _ = NewCertificate([]string{"fleet-master.local"}, nil, time.Now())
-	w, out := wizard(sys, "1", "", "", "2", "y", "n")
+	w, out := wizard(sys, "1", "", "", "2", "y", "", "n")
 	if err := w.Run(); err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
@@ -457,7 +458,7 @@ func TestUpdateAnExistingMasterUsesTheVerifiedUpdate(t *testing.T) {
 	sys := newFake()
 	sys.files[UnitPath] = []byte("ExecStart=/opt/pi-fleet/current/pi-fleet serve -data /srv/pi-fleet -listen :443\n")
 	sys.mounts[DataDir] = true
-	w, out := wizard(sys, "3")
+	w, out := wizard(sys, "4")
 	w.Self = "/home/pi/Downloads/v1.0.0/pi-fleet_v1.0.0_linux_arm64"
 	// Without the signature files next to it: nothing happens.
 	if err := w.Run(); !errors.Is(err, ErrCancelled) || sys.ran("systemctl stop") {
@@ -466,7 +467,7 @@ func TestUpdateAnExistingMasterUsesTheVerifiedUpdate(t *testing.T) {
 	for _, f := range []string{"manifest.json", "manifest.json.minisig"} {
 		sys.files["/home/pi/Downloads/v1.0.0/"+f] = []byte("x")
 	}
-	w, out = wizard(sys, "3")
+	w, out = wizard(sys, "4")
 	w.Self = "/home/pi/Downloads/v1.0.0/pi-fleet_v1.0.0_linux_arm64"
 	w.ReadDir = func(string) ([]os.DirEntry, error) {
 		return []os.DirEntry{entry("manifest.json"), entry("manifest.json.minisig"), entry("pi-fleet_v1.0.0_linux_arm64"), entry("notes.txt")}, nil
@@ -493,17 +494,17 @@ func TestNothingToUpdateWhenTheVersionIsInstalled(t *testing.T) {
 	sys := newFake()
 	sys.files[UnitPath] = []byte("ExecStart=/opt/pi-fleet/current/pi-fleet serve -data /srv/pi-fleet -listen :8443\n")
 	outputs(sys, map[string]string{"/opt/pi-fleet/current/pi-fleet version": "pi-fleet v1.0.0\n"})
-	// Records on the SD card: only the move is offered.
-	w, out := wizard(sys, "2")
+	// Records on the SD card: the move is offered, not an update.
+	w, out := wizard(sys, "3") // stop
 	if err := w.Run(); err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
 	if strings.Contains(out.String(), "Update to this version") || !strings.Contains(out.String(), "Move the records") {
 		t.Fatalf("output:\n%s", out)
 	}
-	// On a drive already: only a move to another drive, or stop.
+	// On a drive already: no update offered either.
 	sys.mounts[DataDir] = true
-	w, out = wizard(sys, "3")
+	w, out = wizard(sys, "4") // stop
 	if err := w.Run(); err != nil || !strings.Contains(out.String(), "1) Move the records to a different drive") || strings.Contains(out.String(), "Update to") || sys.ran("systemctl") {
 		t.Fatalf("err %v\n%s", err, out)
 	}
@@ -738,7 +739,7 @@ func TestTrialInstallationOnAUSBStick(t *testing.T) {
 		"1", "",
 		"", "1", "n", // the stick: not for a trial, so back to the list
 		"", "1", "y", "ERASE", // the stick, as a trial
-		"jsmith", "Jo Smith", "jo@example.org", "n")
+		"", "jsmith", "Jo Smith", "jo@example.org", "n")
 	if err := w.Run(); err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
@@ -751,7 +752,7 @@ func TestTrialInstallationOnAUSBStick(t *testing.T) {
 	// The SSD is no trial.
 	sys2 := newFake()
 	outputs(sys2, map[string]string{"lsblk": piDisks, "hostname": "fleet-master\n", "blkid": "new-uuid\n", "id pifleet": "uid=999"})
-	w, out = wizard(sys2, "1", "", "", "2", "ERASE", "jsmith", "Jo Smith", "jo@example.org", "n")
+	w, out = wizard(sys2, "1", "", "", "2", "ERASE", "", "jsmith", "Jo Smith", "jo@example.org", "n")
 	if err := w.Run(); err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
@@ -782,7 +783,7 @@ func TestAnExistingStickInstallIsMarkedAsATrial(t *testing.T) {
 	sys.files[UnitPath] = []byte("ExecStart=/opt/pi-fleet/current/pi-fleet serve -data /srv/pi-fleet -listen :8443\n")
 	sys.mounts[DataDir] = true
 	outputs(sys, map[string]string{"lsblk": stickAndSSD, "/opt/pi-fleet/current/pi-fleet version": "pi-fleet v1.0.0\n"})
-	w, out := wizard(sys, "3") // stop
+	w, out := wizard(sys, "4") // stop
 	if err := w.Run(); err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
@@ -801,7 +802,7 @@ func TestMissingDataDriveIsNeverTakenForRecordsOnTheSDCard(t *testing.T) {
 	disks := strings.Replace(stickAndSSD, `"mountpoints":["/srv/pi-fleet"]`, `"mountpoints":[]`, 1)
 	outputs(sys, map[string]string{"lsblk": disks, "/opt/pi-fleet/current/pi-fleet version": "pi-fleet v1.0.0\n"})
 	sys.exists["/dev/disk/by-uuid/old-uuid"] = true
-	w, out := wizard(sys, "3")
+	w, out := wizard(sys, "4") // stop
 	if err := w.Run(); err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
@@ -902,5 +903,67 @@ func TestMoveRefusesWhenThereAreNoRecords(t *testing.T) {
 	w, out := wizard(sys, "1")
 	if err := w.Run(); err == nil || !strings.Contains(err.Error(), "no records") || sys.ran("wipefs") {
 		t.Fatalf("err = %v\n%s", err, out)
+	}
+}
+
+func TestParseNetworkNames(t *testing.T) {
+	names, ips, err := parseNetworkNames("pi-fleet.Example.org, https://10.20.30.40:443/ fleet-master")
+	if err != nil || !slices.Equal(names, []string{"pi-fleet.example.org", "fleet-master"}) || len(ips) != 1 || ips[0].String() != "10.20.30.40" {
+		t.Fatalf("%v %v %v", names, ips, err)
+	}
+	if _, _, err := parseNetworkNames("pi fleet!"); err == nil {
+		t.Fatal("accepted a bad name")
+	}
+}
+
+func TestNewMasterWithANetworkNameForOtherSites(t *testing.T) {
+	sys := newFake()
+	outputs(sys, map[string]string{"lsblk": piDisks, "hostname": "fleet-master\n", "blkid": "new-uuid\n", "id pifleet": "uid=999"})
+	w, out := wizard(sys, "1", "", "", "2", "ERASE", "pi-fleet.example.org, 10.20.30.40", "jsmith", "Jo Smith", "jo@example.org", "n")
+	if err := w.Run(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	names, ips, err := certNames(sys.files[DataDir+"/tls/cert.pem"])
+	if err != nil || !slices.Contains(names, "pi-fleet.example.org") || !slices.Contains(names, "fleet-master.local") || len(ips) != 2 {
+		t.Fatalf("certificate covers %v %v (%v)", names, ips, err)
+	}
+	if !strings.Contains(out.String(), "https://pi-fleet.example.org") {
+		t.Fatalf("done screen should give the network name:\n%s", out)
+	}
+}
+
+func TestAddANetworkNameToAnExistingMaster(t *testing.T) {
+	sys := newFake()
+	sys.files[UnitPath] = []byte(MasterUnit(443))
+	sys.mounts[DataDir] = true
+	old, _, _ := NewCertificate([]string{"fleet-master.local", "fleet-master"}, nil, time.Now())
+	sys.files[DataDir+"/tls/cert.pem"] = old
+	outputs(sys, map[string]string{"lsblk": backupDisks, "/opt/pi-fleet/current/pi-fleet version": "pi-fleet v1.0.0\n"})
+	w, out := wizard(sys, "3", "pi-fleet.example.org", "y")
+	if err := w.Run(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	names, _, _ := certNames(sys.files[DataDir+"/tls/cert.pem"])
+	if !slices.Equal(names, []string{"fleet-master.local", "fleet-master", "pi-fleet.example.org"}) {
+		t.Fatalf("names = %v", names)
+	}
+	if _, ok := sys.files[DataDir+"/tls/key.pem"]; !ok || !sys.ran("systemctl restart pi-fleet") || !strings.Contains(out.String(), "Connect to the master again") {
+		t.Fatalf("output:\n%s", out)
+	}
+}
+
+func TestReconnectAnEmployeePi(t *testing.T) {
+	sys := newFake()
+	sys.files[UnitPath] = []byte(NodeUnit())
+	outputs(sys, map[string]string{"/opt/pi-fleet/current/pi-fleet version": "pi-fleet v1.0.0\n"})
+	cert, _, _ := NewCertificate([]string{"pi-fleet.example.org"}, nil, time.Now())
+	w, out := wizard(sys, "1", "pi-fleet.example.org", "y")
+	w.Fetch = func(hp string) ([]byte, error) { return cert, nil }
+	if err := w.Run(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	if !sys.ran("runuser -u pifleet -- /opt/pi-fleet/current/pi-fleet set-master -data /var/lib/pi-fleet -url https://pi-fleet.example.org -ca /etc/pi-fleet/master.pem") ||
+		!sys.ran("systemctl restart pi-fleet") || !bytes.Equal(sys.files[MasterCA], cert) {
+		t.Fatalf("ran:\n%s", strings.Join(sys.calls, "\n"))
 	}
 }

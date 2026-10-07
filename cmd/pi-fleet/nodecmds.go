@@ -46,7 +46,7 @@ func (n *node) client(ctx context.Context, baseURL string) (*fleetsync.Client, e
 		}
 	}
 	httpc := &http.Client{Timeout: 60 * time.Second}
-	if pem, err := n.store.Config(ctx, configCentralCA); err == nil {
+	if pem, err := n.store.Config(ctx, configCentralCA); err == nil && pem != "" { // "" means none
 		pool := x509.NewCertPool()
 		if !pool.AppendCertsFromPEM([]byte(pem)) {
 			return nil, errors.New("stored central CA is not valid PEM")
@@ -149,6 +149,62 @@ func cmdActivationStatus(ctx context.Context, args []string, c *cli) error {
 		return err
 	}
 	c.printf("%s\n", s)
+	return nil
+}
+
+// cmdSetMaster points an activated Pi at the master Pi's new address, or
+// its new certificate, checking that the master answers before saving.
+func cmdSetMaster(ctx context.Context, args []string, c *cli) error {
+	var url, caFile *string
+	_, data, err := parse("set-master", args, func(fs *flag.FlagSet) {
+		url = fs.String("url", "", "the master Pi's new address, e.g. https://pi-fleet.example.org")
+		caFile = fs.String("ca", "", "the master Pi's certificate (PEM), if it changed")
+	})
+	if err != nil {
+		return err
+	}
+	if *url == "" && *caFile == "" {
+		return errors.New("set-master needs -url, -ca or both")
+	}
+	n, err := openNode(ctx, *data)
+	if err != nil {
+		return err
+	}
+	defer n.Close()
+	oldURL, err := n.store.Config(ctx, fleetsync.ConfigCentralURL)
+	if err != nil {
+		return fmt.Errorf("this Pi is not activated: %w", err)
+	}
+	oldCA, _ := n.store.Config(ctx, configCentralCA)
+	newURL, newCA := oldURL, oldCA
+	if *url != "" {
+		newURL = strings.TrimRight(*url, "/")
+	}
+	if *caFile != "" {
+		pem, err := os.ReadFile(*caFile)
+		if err != nil {
+			return err
+		}
+		newCA = string(pem)
+	}
+	set := func(u, ca string) error {
+		if err := n.store.SetConfig(ctx, fleetsync.ConfigCentralURL, u); err != nil {
+			return err
+		}
+		return n.store.SetConfig(ctx, configCentralCA, ca)
+	}
+	if err := set(newURL, newCA); err != nil {
+		return err
+	}
+	cl, err := n.client(ctx, "")
+	if err == nil {
+		_, err = cl.ActivationStatus(ctx)
+	}
+	if err != nil {
+		set(oldURL, oldCA)
+		return fmt.Errorf("the master Pi didn't answer at %s, so nothing was changed: %w", newURL, err)
+	}
+	c.printf("this Pi now syncs with the master Pi at %s\n", newURL)
 	return nil
 }
 
