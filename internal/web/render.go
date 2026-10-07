@@ -25,6 +25,7 @@ type page struct {
 	PHIWarning bool
 	Notices    []string
 	Insecure   bool
+	Trial      bool
 	Path       string // the page's URL path, to mark the current menu item
 	Data       any
 }
@@ -115,7 +116,7 @@ func templateNames() ([]string, error) {
 
 // render writes a page. sess may be nil (login page).
 func (s *Server) render(w http.ResponseWriter, r *http.Request, sess *session, name, title string, data any) error {
-	p := page{Title: title, Role: s.Role, Data: data, PHIWarning: true, Insecure: s.InsecureLAN, Path: r.URL.Path}
+	p := page{Title: title, Role: s.Role, Data: data, PHIWarning: true, Insecure: s.InsecureLAN, Trial: s.Trial, Path: r.URL.Path}
 	if strings.HasPrefix(p.Path, "/fleet/assets") {
 		p.Path = "/assets" // the whole-fleet search is part of Equipment
 	}

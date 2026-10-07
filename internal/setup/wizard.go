@@ -137,7 +137,7 @@ func (w *Wizard) newMaster() error {
 		return err
 	}
 	u.Step("External drive for the data")
-	reused, err := w.dataDrive()
+	reused, trial, err := w.dataDrive()
 	if err != nil {
 		return err
 	}
@@ -145,6 +145,9 @@ func (w *Wizard) newMaster() error {
 		return err
 	}
 	if err := w.chownData(); err != nil {
+		return err
+	}
+	if err := w.markTrial(DataDir, trial); err != nil {
 		return err
 	}
 	fp, err := w.certificate(host)
@@ -169,66 +172,79 @@ func (w *Wizard) newMaster() error {
 		}
 	}
 	w.masterDone(host, port, fp, now)
+	if trial {
+		w.trialWarning()
+	}
 	return nil
 }
 
 // dataDrive asks for the external drive, prepares it and mounts it at
 // DataDir. It reports whether an earlier pi-fleet data drive was reused.
-func (w *Wizard) dataDrive() (bool, error) {
+func (w *Wizard) dataDrive() (reused, trial bool, err error) {
 	u := w.UI
 	if isMountpoint(w.Sys, DataDir) {
 		u.Say("A drive is already open at %s; using it.", DataDir)
-		return w.Sys.Exists(DataDir + "/pi-fleet.db"), nil
+		return w.Sys.Exists(DataDir + "/pi-fleet.db"), w.Sys.Exists(DataDir + "/" + TrialMarker), nil
 	}
 	u.Say("Plug the external drive into one of the Pi's blue USB 3 ports now.")
 	u.Say("A USB SSD of 250 GB or more is best. If the drive needs its own power")
 	u.Say("supply, plug that in too.")
 	for {
 		if err := u.Pause("Press Enter when the drive is plugged in."); err != nil {
-			return false, err
+			return false, false, err
 		}
 		w.Sleep(2 * time.Second) // let the system notice it
 		disk, err := w.pickDisk("Which drive should hold pi-fleet's data?")
 		if err != nil {
-			return false, err
+			return false, false, err
 		}
 		if disk == nil {
 			continue
+		}
+		trial = disk.stickLike()
+		if trial {
+			ok, err := w.confirmTrial(*disk)
+			if err != nil {
+				return false, false, err
+			}
+			if !ok {
+				continue
+			}
 		}
 		if part, ok := disk.DataPart(); ok {
 			u.Say("")
 			u.Say("This drive was prepared for pi-fleet before (it is labelled %s).", DataLabel)
 			reuse, err := u.Confirm("Use it as it is, keeping its records?", true)
 			if err != nil {
-				return false, err
+				return false, false, err
 			}
 			if reuse {
 				if err := MountData(w.Sys, part.UUID, DataDir); err != nil {
-					return false, err
+					return false, false, err
 				}
 				has := w.Sys.Exists(DataDir + "/pi-fleet.db")
 				if has {
 					u.Say("Found the master Pi's records on the drive; they will be kept.")
 				}
-				return has, nil
+				return has, trial, nil
 			}
 		}
 		if ok, err := w.confirmErase(*disk); err != nil || !ok {
 			if err != nil {
-				return false, err
+				return false, false, err
 			}
 			continue
 		}
 		u.Say("Preparing the drive. This takes a minute or so…")
 		part, err := EraseAndFormat(w.Sys, *disk)
 		if err != nil {
-			return false, fmt.Errorf("preparing the drive: %w", err)
+			return false, false, fmt.Errorf("preparing the drive: %w", err)
 		}
 		if err := MountData(w.Sys, part.UUID, DataDir); err != nil {
-			return false, err
+			return false, false, err
 		}
 		u.Say("The drive is ready and opens at %s every time the Pi starts.", DataDir)
-		return false, nil
+		return false, trial, nil
 	}
 }
 
@@ -435,6 +451,15 @@ func (w *Wizard) existingMaster(unit string) error {
 	onDrive := isMountpoint(w.Sys, DataDir)
 	u.Say("")
 	u.Say("pi-fleet is already set up here as the master Pi.")
+	if d, ok := w.dataDisk(); ok && d.stickLike() && !w.Sys.Exists(DataDir+"/"+TrialMarker) {
+		// Set up before trial installations were marked.
+		if err := w.markTrial(DataDir, true); err != nil {
+			return err
+		}
+		w.trialWarning()
+		u.Say("pi-fleet now shows this on every page; it takes effect when pi-fleet restarts.")
+		w.Sys.Run("systemctl", "restart", "pi-fleet")
+	}
 	type choice struct {
 		label string
 		do    func() error
@@ -564,6 +589,15 @@ func (w *Wizard) moveToDrive(port int, fromDrive bool) error {
 		if d == nil {
 			continue
 		}
+		if d.stickLike() {
+			ok, err := w.confirmTrial(*d)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				continue
+			}
+		}
 		if _, ok := d.DataPart(); ok {
 			u.Say("That drive already holds pi-fleet data. Erasing it destroys those records.")
 		}
@@ -575,6 +609,7 @@ func (w *Wizard) moveToDrive(port int, fromDrive bool) error {
 			disk = d
 		}
 	}
+	trial := disk.stickLike()
 	oldPart := ""
 	if fromDrive {
 		out, err := w.Sys.Output("findmnt", "-n", "-o", "SOURCE", DataDir)
@@ -617,6 +652,9 @@ func (w *Wizard) moveToDrive(port int, fromDrive bool) error {
 		}
 	}
 	if err := w.Sys.Run("chown", "-R", "pifleet:pifleet", tmp); err != nil {
+		return undo(err)
+	}
+	if err := w.markTrial(tmp, trial); err != nil {
 		return undo(err)
 	}
 	u.Say("Checking the copy…")
@@ -669,6 +707,11 @@ func (w *Wizard) moveToDrive(port int, fromDrive bool) error {
 	}
 	u.Step("Done")
 	u.Say("The records now live on the new drive, and pi-fleet is running from it.")
+	if trial {
+		w.trialWarning()
+	} else {
+		u.Say("It is no longer a trial installation.")
+	}
 	if fromDrive {
 		u.Say("The old drive still holds a copy as of the move, renamed PIFLEET-OLD so")
 		u.Say("it is never mistaken for the current one. Once you're happy everything")

@@ -67,6 +67,9 @@ type Server struct {
 	// InsecureLAN shows a warning on every page: plain HTTP is being
 	// served beyond localhost.
 	InsecureLAN bool
+	// Trial shows a warning on every page: the master Pi's records are on
+	// a USB stick, which is only for testing.
+	Trial bool
 	// Sync reports sync state on an employee Pi; nil on central.
 	Sync func(ctx context.Context) SyncInfo
 	// PHIPatterns flag free text that may contain patient information

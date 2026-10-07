@@ -266,7 +266,8 @@ func cmdServe(ctx context.Context, args []string, c *cli) error {
 	if pemBytes, err := os.ReadFile(*certFile); err == nil {
 		fingerprint, _ = setup.Fingerprint(pemBytes)
 	}
-	ui, err := (&web.Server{App: a, Role: "central", Secure: true, PHIPatterns: web.DefaultPHIPatterns, CertFingerprint: fingerprint,
+	_, trialErr := os.Stat(filepath.Join(*data, setup.TrialMarker))
+	ui, err := (&web.Server{App: a, Role: "central", Secure: true, PHIPatterns: web.DefaultPHIPatterns, CertFingerprint: fingerprint, Trial: trialErr == nil,
 		Notices: func(ctx context.Context) []string {
 			if _, err := n.store.Config(ctx, configBackupDir); err != nil {
 				return []string{"Backups are not configured. Run setup on the master Pi and choose Set up backups."}

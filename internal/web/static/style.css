@@ -44,6 +44,7 @@ header nav a[aria-current="page"] { color: #fff; border-bottom-color: var(--rasp
 .me button.link { font-size: 13px; }
 .status .warn { font-weight: 600; }
 .insecure { margin: 0; padding: .6rem 1rem; background: var(--bad); color: #fff; font-weight: 600; }
+.trial { margin: 0; padding: .55rem 1rem; background: repeating-linear-gradient(-45deg, #f2c94c 0 14px, #e9b93a 14px 28px); color: #15181b; font-size: 14px; border-bottom: 1px solid #b8901f; }
 
 main { max-width: 74rem; margin: 0 auto; padding: 1.25rem 1rem 2rem; }
 footer { padding: 1rem; text-align: center; color: var(--muted); font-size: 12px; border-top: 1px solid var(--line); }

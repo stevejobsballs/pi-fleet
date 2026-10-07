@@ -262,10 +262,10 @@ func TestNewMasterOnAnErasedDrive(t *testing.T) {
 	sys := newFake()
 	outputs(sys, map[string]string{"lsblk": piDisks, "hostname": "raspberrypi\n", "blkid": "new-uuid\n", "id pifleet": "uid=999"})
 	w, out := wizard(sys,
-		"1",          // master Pi
-		"",           // name: fleet-master
-		"",           // drive plugged in
-		"1", "erase", // the USB stick, but not typed in capitals: back to the list
+		"1",               // master Pi
+		"",                // name: fleet-master
+		"",                // drive plugged in
+		"1", "y", "erase", // the USB stick, as a trial, but ERASE not typed in capitals: back to the list
 		"",           // drive plugged in
 		"2", "ERASE", // the SSD
 		"Jsmith", // not lowercase
@@ -306,7 +306,7 @@ func TestNewMasterOnAnErasedDrive(t *testing.T) {
 		t.Error("no certificate on the data drive")
 	}
 	text := out.String()
-	for _, want := range []string{"pi-fleet release keys", "release signing key", "may be a USB stick", "https://fleet-master.local", "Certificate fingerprint"} {
+	for _, want := range []string{"looks like a USB stick", "only for testing", "pi-fleet release keys", "release signing key", "may be a USB stick", "https://fleet-master.local", "Certificate fingerprint"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("output lacks %q:\n%s", want, text)
 		}
@@ -724,5 +724,64 @@ func TestAddOffsiteDisksLater(t *testing.T) {
 	}
 	if !sys.ran("udevadm control --reload-rules") || sys.files[OffsiteRulePath] == nil {
 		t.Fatal("automatic write not reinstalled")
+	}
+}
+
+func TestTrialInstallationOnAUSBStick(t *testing.T) {
+	sys := newFake()
+	outputs(sys, map[string]string{"lsblk": piDisks, "hostname": "fleet-master\n", "blkid": "new-uuid\n", "id pifleet": "uid=999"})
+	w, out := wizard(sys,
+		"1", "",
+		"", "1", "n", // the stick: not for a trial, so back to the list
+		"", "1", "y", "ERASE", // the stick, as a trial
+		"jsmith", "Jo Smith", "jo@example.org", "n")
+	if err := w.Run(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	if _, ok := sys.files[DataDir+"/"+TrialMarker]; !ok {
+		t.Fatal("not marked as a trial")
+	}
+	if !strings.Contains(out.String(), "Don't use a USB stick for actual work") || !strings.Contains(out.String(), "TRIAL INSTALLATION") {
+		t.Fatalf("output:\n%s", out)
+	}
+	// The SSD is no trial.
+	sys2 := newFake()
+	outputs(sys2, map[string]string{"lsblk": piDisks, "hostname": "fleet-master\n", "blkid": "new-uuid\n", "id pifleet": "uid=999"})
+	w, out = wizard(sys2, "1", "", "", "2", "ERASE", "jsmith", "Jo Smith", "jo@example.org", "n")
+	if err := w.Run(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	if _, ok := sys2.files[DataDir+"/"+TrialMarker]; ok || strings.Contains(out.String(), "TRIAL") {
+		t.Fatal("an SSD install marked as a trial")
+	}
+}
+
+func TestMovingOffTheStickEndsTheTrial(t *testing.T) {
+	sys := newFake()
+	sys.files[UnitPath] = []byte("ExecStart=/opt/pi-fleet/current/pi-fleet serve -data /srv/pi-fleet -listen :8443\n")
+	sys.files[DataDir+"/"+TrialMarker] = []byte("x")
+	sys.mounts[DataDir] = true
+	outputs(sys, map[string]string{"lsblk": stickAndSSD, "blkid": "new-uuid\n", "findmnt -n -o SOURCE /srv/pi-fleet": "/dev/sda1\n",
+		"/opt/pi-fleet/current/pi-fleet version": "pi-fleet v1.0.0\n"})
+	w, out := wizard(sys, "1", "", "1", "ERASE")
+	if err := w.Run(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	if !sys.ran("rm -f /mnt/pi-fleet-move/"+TrialMarker) || !strings.Contains(out.String(), "no longer a trial") {
+		t.Fatalf("trial mark kept on the SSD:\n%s\n%s", strings.Join(sys.calls, "\n"), out)
+	}
+}
+
+func TestAnExistingStickInstallIsMarkedAsATrial(t *testing.T) {
+	sys := newFake()
+	sys.files[UnitPath] = []byte("ExecStart=/opt/pi-fleet/current/pi-fleet serve -data /srv/pi-fleet -listen :8443\n")
+	sys.mounts[DataDir] = true
+	outputs(sys, map[string]string{"lsblk": stickAndSSD, "/opt/pi-fleet/current/pi-fleet version": "pi-fleet v1.0.0\n"})
+	w, out := wizard(sys, "3") // stop
+	if err := w.Run(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	if _, ok := sys.files[DataDir+"/"+TrialMarker]; !ok || !sys.ran("systemctl restart pi-fleet") || !strings.Contains(out.String(), "TRIAL INSTALLATION") {
+		t.Fatalf("not marked:\n%s", out)
 	}
 }

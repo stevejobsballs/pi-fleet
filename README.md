@@ -53,6 +53,11 @@ Setup installs whatever else the Pi needs, names the Pi, and then:
   be moved the same way to a different one, for example from a temporary
   USB stick to an SSD; the old drive keeps its copy, relabelled
   `PIFLEET-OLD`.
+- **Trying it out:** a USB stick can stand in for the master's drive (for
+  example when the Pi's power supply can't run an SSD). Setup recognises a
+  stick, explains that a database on it is only for testing, and asks
+  before using it. Every page then shows a *Trial installation* banner
+  until the records are moved to an SSD with setup.
 - **Employee or kiosk Pi:** asks for the master Pi's name, shows the
   master's certificate fingerprint to compare with the master's **Pis**
   page, then activates the Pi with the one-time password from the super
