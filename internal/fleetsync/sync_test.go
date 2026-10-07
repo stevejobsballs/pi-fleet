@@ -803,3 +803,38 @@ func TestPiWebCertificate(t *testing.T) {
 		t.Fatal("pending Pi got a certificate")
 	}
 }
+
+func TestChecklistCompletedOffline(t *testing.T) {
+	f := newFleet(t)
+	tess := f.enrol("tess", domain.RoleUser)
+	a := f.asset("A1")
+	proc, _, err := f.app.PublishProcedure(f.ctx, f.mid, "PM", []domain.Step{
+		{ID: "visual", Text: "Visual", Kind: domain.StepCheck, Required: true},
+		{ID: "leak", Text: "Leakage", Kind: domain.StepNumber, Unit: "µA", Lower: "0", Upper: "300", Required: true},
+	})
+	f.must(err)
+	wo, _, err := f.app.OpenWorkOrder(f.ctx, f.mid, app.NewWorkOrder{Type: "pm", AssetID: a, Priority: "normal", Title: "PM", ProcedureID: proc})
+	f.must(err)
+	_, err = f.app.AssignWorkOrder(f.ctx, f.mid, wo, tess.user.UserID)
+	f.must(err)
+	tess.sync()
+
+	// All offline on the Pi: start, record, log time, sign.
+	f.must(tess.app.ChangeWorkOrderStatus(f.ctx, tess.user, wo, domain.WOInProgress, ""))
+	f.must(tess.app.RecordStep(f.ctx, tess.user, wo, "visual", "pass", ""))
+	f.must(tess.app.RecordStep(f.ctx, tess.user, wo, "leak", "95.5", ""))
+	_, err = tess.app.LogLabor(f.ctx, tess.user, wo, 50, "2026-10-06", "")
+	f.must(err)
+	f.must(tess.app.Sign(f.ctx, tess.user, wo, domain.MeaningPerformed, "copper-ladder-sunrise", false))
+
+	// Central recomputes the same signed content and accepts everything.
+	if r := tess.sync(); r.Pushed != 6 || r.Flagged != 0 {
+		t.Fatalf("sync = %+v", r)
+	}
+	w, _ := domain.GetWorkOrder(f.ctx, f.app.Store.DB(), wo)
+	sigs, _ := domain.WorkOrderSignatures(f.ctx, f.app.Store.DB(), wo)
+	_, total, _ := domain.Labor(f.ctx, f.app.Store.DB(), wo)
+	if w.Status != domain.WOCompleted || len(sigs) != 1 || sigs[0].Stale || total != 50 {
+		t.Fatalf("central: status %s, signatures %+v, labour %d", w.Status, sigs, total)
+	}
+}
