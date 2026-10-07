@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 
 	"pi-fleet/internal/domain"
@@ -44,13 +45,13 @@ func TestMergeDuplicateEquipment(t *testing.T) {
 	e.must(e.app.SetAssetStatus(e.ctx, tech, dup, e.getAsset(dup).Version, domain.AssetOutOfService, "cracked housing"))
 
 	// Only mid-tier users merge, only records with the same MasterID, with a reason.
-	wantRejection(t, e.app.MergeAssets(e.ctx, tech, keep, 1, dup, "same pump"), domain.FlagNotAuthorized)
-	wantRejection(t, e.app.MergeAssets(e.ctx, mid, keep, 1, other, "same pump"), domain.FlagConflict)
-	wantRejection(t, e.app.MergeAssets(e.ctx, mid, none, 1, keep, "same pump"), domain.FlagConflict)
-	wantRejection(t, e.app.MergeAssets(e.ctx, mid, keep, 1, dup, " "), domain.FlagInvalid)
-	wantRejection(t, e.app.MergeAssets(e.ctx, mid, keep, 1, keep, "itself"), domain.FlagInvalid)
+	wantRejection(t, e.app.MergeAssets(e.ctx, tech, keep, 1, dup, "same pump", true), domain.FlagNotAuthorized)
+	wantRejection(t, e.app.MergeAssets(e.ctx, mid, keep, 1, other, "same pump", true), domain.FlagConflict)
+	wantRejection(t, e.app.MergeAssets(e.ctx, mid, none, 1, keep, "same pump", true), domain.FlagConflict)
+	wantRejection(t, e.app.MergeAssets(e.ctx, mid, keep, 1, dup, " ", true), domain.FlagInvalid)
+	wantRejection(t, e.app.MergeAssets(e.ctx, mid, keep, 1, keep, "itself", true), domain.FlagInvalid)
 
-	e.must(e.app.MergeAssets(e.ctx, mid, keep, 1, dup, "PROV-7 is NYC-0001 registered twice"))
+	e.must(e.app.MergeAssets(e.ctx, mid, keep, 1, dup, "PROV-7 is NYC-0001 registered twice", true))
 	k, d := e.getAsset(keep), e.getAsset(dup)
 	if d.MergedInto != keep || k.MergedInto != "" {
 		t.Fatalf("merged_into: kept %q, merged %q", k.MergedInto, d.MergedInto)
@@ -77,13 +78,13 @@ func TestMergeDuplicateEquipment(t *testing.T) {
 	serial := "X"
 	wantRejection(t, e.app.UpdateAsset(e.ctx, tech, dup, d.Version, domain.AssetUpdated{Serial: &serial}), domain.FlagConflict)
 	wantRejection(t, e.app.RelocateAsset(e.ctx, tech, dup, d.Version, e.loc), domain.FlagConflict)
-	wantRejection(t, e.app.MergeAssets(e.ctx, mid, keep, k.Version, dup, "again"), domain.FlagConflict)
-	wantRejection(t, e.app.MergeAssets(e.ctx, mid, dup, d.Version, keep, "backwards"), domain.FlagConflict)
+	wantRejection(t, e.app.MergeAssets(e.ctx, mid, keep, k.Version, dup, "again", true), domain.FlagConflict)
+	wantRejection(t, e.app.MergeAssets(e.ctx, mid, dup, d.Version, keep, "backwards", true), domain.FlagConflict)
 
 	// A third record of the same equipment; merging the kept one into it
 	// carries the earlier merge along.
 	third := e.assetWithMasterID("BOS-0042", "M-100")
-	e.must(e.app.MergeAssets(e.ctx, mid, third, 1, keep, "moved to Boston and re-registered"))
+	e.must(e.app.MergeAssets(e.ctx, mid, third, 1, keep, "moved to Boston and re-registered", true))
 	if d = e.getAsset(dup); d.MergedInto != third {
 		t.Fatalf("earlier merged record points at %s, want %s", d.MergedInto, third)
 	}
@@ -111,7 +112,7 @@ func TestStatusChangeOnMergedRecordFromAnOfflinePi(t *testing.T) {
 	edit := "SN-NEW"
 	upd := pi.write(e, tech, domain.TypeAssetUpdated, domain.EntityAsset, dup, 1, "", domain.AssetUpdated{Serial: &edit})
 
-	e.must(e.app.MergeAssets(e.ctx, mid, keep, 1, dup, "same pump"))
+	e.must(e.app.MergeAssets(e.ctx, mid, keep, 1, dup, "same pump", true))
 	e.must(e.st.Ingest(e.ctx, oos))
 	e.must(e.st.Ingest(e.ctx, upd))
 
@@ -151,5 +152,89 @@ func TestMasterIDRules(t *testing.T) {
 	e.must(e.app.UpdateAsset(e.ctx, e.super, id, 1, domain.AssetUpdated{MasterID: &m}))
 	if a := e.getAsset(id); a.MasterID != "M-300" {
 		t.Fatalf("MasterID = %q", a.MasterID)
+	}
+}
+
+func TestMergeKeepingHistorySeparate(t *testing.T) {
+	e := newEnv(t)
+	mid, tech := e.activeUser("mona", domain.RoleMidTier), e.activeUser("tess", domain.RoleUser)
+	a := e.assetWithMasterID("NYC-0001", "M-100")
+	b := e.assetWithMasterID("OLD-7", "M-100")
+	e.openHeld(mid, tech, "corrective", b)
+	e.must(e.app.SetAssetStatus(e.ctx, tech, b, e.getAsset(b).Version, domain.AssetMissing, "not in room"))
+
+	// No: B's history stays with B, but safety still applies.
+	e.must(e.app.MergeAssets(e.ctx, mid, a, 1, b, "old import", false))
+	if g, _ := domain.AssetGroup(e.ctx, e.st.DB(), a); !reflect.DeepEqual(g, []string{a}) {
+		t.Fatalf("group = %v, want only the kept record", g)
+	}
+	if got := e.getAsset(b); got.MergedInto != a || got.HistoryIntegrated {
+		t.Fatalf("merged record: into %q, integrated %v", got.MergedInto, got.HistoryIntegrated)
+	}
+	if got := e.getAsset(a); got.Status != domain.AssetMissing {
+		t.Fatalf("kept record status = %s", got.Status)
+	}
+
+	// A is then merged, with its history, into C: B stays separate, under C.
+	c := e.assetWithMasterID("BOS-0042", "M-100")
+	e.must(e.app.MergeAssets(e.ctx, mid, c, 1, a, "moved to Boston", true))
+	if g, _ := domain.AssetGroup(e.ctx, e.st.DB(), c); !reflect.DeepEqual(g, []string{c, a}) {
+		t.Fatalf("group = %v", g)
+	}
+	if got := e.getAsset(b); got.MergedInto != c || got.HistoryIntegrated {
+		t.Fatalf("separate record after second merge: into %q, integrated %v", got.MergedInto, got.HistoryIntegrated)
+	}
+
+	// D is merged into C keeping its history, after records were merged
+	// into D with theirs: those stay with D, and changes to them reach C.
+	d := e.assetWithMasterID("D-1", "M-100")
+	dd := e.assetWithMasterID("D-2", "M-100")
+	e.must(e.app.MergeAssets(e.ctx, mid, d, 1, dd, "same", true))
+	e.must(e.app.MergeAssets(e.ctx, mid, c, e.getAsset(c).Version, d, "same", false))
+	if got := e.getAsset(dd); got.MergedInto != d {
+		t.Fatalf("D-2 moved to %s; it should stay with D-1, kept separate", got.MergedInto)
+	}
+	e.must(e.app.SetAssetStatus(e.ctx, mid, c, e.getAsset(c).Version, domain.AssetInService, ""))
+	pi := e.remote()
+	oos := pi.write(e, tech, domain.TypeAssetStatusChanged, domain.EntityAsset, dd, 1, "", domain.AssetStatusChanged{Status: domain.AssetOutOfService, Reason: "cracked"})
+	e.must(e.st.Ingest(e.ctx, oos))
+	if got := e.getAsset(c); got.Status != domain.AssetOutOfService {
+		t.Fatalf("out of service on D-2 should reach BOS-0042 through D-1; status %s", got.Status)
+	}
+
+	before := snapshot(t, e.st.DB())
+	e.must(e.st.Rebuild(e.ctx))
+	if after := snapshot(t, e.st.DB()); !reflect.DeepEqual(before["assets"], after["assets"]) {
+		t.Fatalf("assets differ after rebuild:\n%v\n%v", before["assets"], after["assets"])
+	}
+}
+
+// Merges made before the question existed carry no answer, and showed
+// both histories together; they still do.
+func TestMergeWithoutAnAnswerIntegrates(t *testing.T) {
+	e := newEnv(t)
+	mid := e.activeUser("mona", domain.RoleMidTier)
+	a, b := e.assetWithMasterID("A", "M-1"), e.assetWithMasterID("B", "M-1")
+	old := e.remote().write(e, mid, domain.TypeAssetMerged, domain.EntityAsset, a, 1, "", domain.AssetMerged{MergedAssetID: b, Reason: "v0.3.0"})
+	if strings.Contains(string(old.Payload), "integrate") {
+		t.Fatalf("payload %s", old.Payload)
+	}
+	e.must(e.st.Ingest(e.ctx, old))
+	if g, _ := domain.AssetGroup(e.ctx, e.st.DB(), a); len(g) != 2 {
+		t.Fatalf("group = %v", g)
+	}
+}
+
+// Work orders record when they were opened; the migration fills it in
+// for older ones from the same event, the same way.
+func TestWorkOrderOpenedAt(t *testing.T) {
+	e := newEnv(t)
+	mid, tech := e.activeUser("mona", domain.RoleMidTier), e.activeUser("tess", domain.RoleUser)
+	wo := e.openHeld(mid, tech, "corrective", e.asset("A1"))
+	var live, backfill string
+	e.must(e.st.DB().QueryRow(`SELECT opened_at FROM work_orders WHERE id = ?`, wo).Scan(&live))
+	e.must(e.st.DB().QueryRow(`SELECT substr(wall_time, 1, 19) || 'Z' FROM events WHERE entity_id = ? AND type = 'workorder.opened'`, wo).Scan(&backfill))
+	if live == "" || live != backfill {
+		t.Fatalf("opened_at %q, migration would give %q", live, backfill)
 	}
 }

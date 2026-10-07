@@ -139,6 +139,7 @@ type Asset struct {
 	Status              string
 	MasterID            string // equipment with the same MasterID is the same equipment
 	MergedInto          string // set when this record was merged into another
+	HistoryIntegrated   bool   // its service history joined that record's timeline
 	RiskClass           string
 	IsReferenceStandard bool
 	CustomFields        map[string]string
@@ -151,9 +152,9 @@ func GetAsset(ctx context.Context, q Querier, id string) (Asset, error) {
 	var a Asset
 	var custom, fv string
 	err := q.QueryRowContext(ctx, `SELECT id, tag, site_id, location_id, manufacturer, model, serial, status,
-		risk_class, is_reference_standard, custom_fields, field_versions, version, master_id, merged_into FROM assets WHERE id = ?`, id).
+		risk_class, is_reference_standard, custom_fields, field_versions, version, master_id, merged_into, history_integrated FROM assets WHERE id = ?`, id).
 		Scan(&a.ID, &a.Tag, &a.SiteID, &a.LocationID, &a.Manufacturer, &a.Model, &a.Serial, &a.Status,
-			&a.RiskClass, &a.IsReferenceStandard, &custom, &fv, &a.Version, &a.MasterID, &a.MergedInto)
+			&a.RiskClass, &a.IsReferenceStandard, &custom, &fv, &a.Version, &a.MasterID, &a.MergedInto, &a.HistoryIntegrated)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Asset{}, ErrNotFound
 	}

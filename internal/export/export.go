@@ -62,7 +62,8 @@ const workOrderCond = `entity_id = ?1
 
 // An asset's record: its own events, its schedules, meter readings, and
 // the full record of each of its work orders and calibrations; with all
-// of the same for every record merged into it, and the merge itself.
+// of the same for every record merged into it whose history joined its
+// timeline, and the merges themselves.
 const assetCond = `entity_id IN ` + assetGroup + `
 	OR (type = 'asset.merged' AND json_extract(CAST(payload AS TEXT), '$.merged_asset_id') = ?1)
 	OR entity_id IN (SELECT id FROM pm_schedules WHERE asset_id IN ` + assetGroup + `)
@@ -76,8 +77,9 @@ const assetCond = `entity_id IN ` + assetGroup + `
 	OR entity_id IN (SELECT a.id FROM attachments a JOIN work_orders w ON w.id = a.target_id
 		WHERE a.target_type = 'work_order' AND w.asset_id IN ` + assetGroup + `)`
 
-// assetGroup is the asset ?1 and the records merged into it.
-const assetGroup = `(SELECT id FROM assets WHERE id = ?1 OR merged_into = ?1)`
+// assetGroup is the asset ?1 and the records merged into it whose
+// history joined its timeline.
+const assetGroup = `(SELECT id FROM assets WHERE id = ?1 OR (merged_into = ?1 AND history_integrated = 1))`
 
 // Events returns the signed events behind a record, including decisions
 // on their flags and any redactions of them, in the order stored.

@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"pi-fleet/internal/app"
 	"pi-fleet/internal/domain"
@@ -52,12 +53,27 @@ func TestMergeDuplicatesThroughTheUI(t *testing.T) {
 	if !strings.Contains(page, "NYC-0100") || !strings.Contains(page, "PROV-0100") {
 		t.Fatalf("merge page:\n%s", page)
 	}
-	if _, page = mona.post("/assets/merge", url.Values{"master_id": {"M-77"}, "keep": {keep}, "reason": {""}}); !strings.Contains(page, "Not saved") {
+	if !strings.Contains(page, `name="integrate" value="yes" required`) || !strings.Contains(page, "to the kept record's timeline?") {
+		t.Fatalf("merge page doesn't ask about the service history:\n%s", page)
+	}
+	if _, page = mona.post("/assets/merge", url.Values{"master_id": {"M-77"}, "keep": {keep}, "reason": {""}, "integrate": {"yes"}}); !strings.Contains(page, "Not saved") {
 		t.Fatalf("merge without a reason:\n%s", page)
 	}
-	_, page = mona.post("/assets/merge", url.Values{"master_id": {"M-77"}, "keep": {keep}, "reason": {"PROV-0100 registered twice"}})
-	if !strings.Contains(page, "Merged 1 record into this one") || !strings.Contains(page, "PROV-0100") || !strings.Contains(page, "/work-orders/"+wo) {
+	if _, page = mona.post("/assets/merge", url.Values{"master_id": {"M-77"}, "keep": {keep}, "reason": {"twice"}}); !strings.Contains(page, "Not saved: answer whether") {
+		t.Fatalf("merge without answering the question:\n%s", page)
+	}
+	// A later work order on the kept record: the timeline is in date order.
+	e.now = e.now.Add(10 * time.Minute)
+	later, _, err := e.app.OpenWorkOrder(e.ctx, e.super, app.NewWorkOrder{Type: "corrective", AssetID: keep, Priority: "normal", Title: "Later"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, page = mona.post("/assets/merge", url.Values{"master_id": {"M-77"}, "keep": {keep}, "reason": {"PROV-0100 registered twice"}, "integrate": {"yes"}})
+	if !strings.Contains(page, "Merged 1 record into this one. Their service history is now part of this record&#39;s timeline") || !strings.Contains(page, "/work-orders/"+wo) {
 		t.Fatalf("kept record after merge:\n%s", page)
+	}
+	if i, j := strings.Index(page, "/work-orders/"+later), strings.Index(page, "/work-orders/"+wo); i < 0 || j < i {
+		t.Fatalf("timeline not newest first: later at %d, merged record's at %d", i, j)
 	}
 	if strings.Contains(page, "Other records have the same MasterID") {
 		t.Fatal("still warned about duplicates after merging")
@@ -108,5 +124,32 @@ func TestMergeDuplicatesThroughTheUI(t *testing.T) {
 	// The kept record's audit trail has the merged record's history.
 	if _, _, page = tess.get("/assets/" + keep + "/audit"); !strings.Contains(page, "PROV-0100 registered twice") || !strings.Contains(page, "PROV-0100") {
 		t.Fatalf("audit trail:\n%s", page)
+	}
+}
+
+func TestMergeKeepingHistorySeparateThroughTheUI(t *testing.T) {
+	e := newEnv(t)
+	e.user("mona", "Mona Mid", domain.RoleMidTier)
+	reg := func(tag string) string {
+		id, err := e.app.RegisterAsset(e.ctx, e.super, domain.AssetRegistered{Tag: tag, LocationID: e.loc, Manufacturer: "Baxter", Model: "Sigma", MasterID: "M-9"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	keep, old := reg("NYC-9"), reg("OLD-9")
+	wo, _, err := e.app.OpenWorkOrder(e.ctx, e.super, app.NewWorkOrder{Type: "corrective", AssetID: old, Priority: "normal", Title: "Old repair"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := e.browser()
+	b.login("mona", "brass-kettle-orchard-7")
+	b.get("/assets/merge?master_id=M-9")
+	_, page := b.post("/assets/merge", url.Values{"master_id": {"M-9"}, "keep": {keep}, "reason": {"old import"}, "integrate": {"no"}})
+	if !strings.Contains(page, "stays with them") || !strings.Contains(page, "with their service history kept separate") || strings.Contains(page, "/work-orders/"+wo) {
+		t.Fatalf("kept record:\n%s", page)
+	}
+	if _, _, page = b.get("/assets/" + old); !strings.Contains(page, "kept here, separate") || !strings.Contains(page, "/work-orders/"+wo) {
+		t.Fatalf("merged record:\n%s", page)
 	}
 }

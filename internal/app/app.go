@@ -370,11 +370,13 @@ func (a *App) SetAssetStatus(ctx context.Context, actor Actor, assetID string, b
 
 // MergeAssets merges a duplicate equipment record into the one kept.
 // Both must have the same MasterID; baseVersion is the kept record's
-// version the user was looking at.
-func (a *App) MergeAssets(ctx context.Context, actor Actor, keepID string, baseVersion int64, mergedID, reason string) error {
+// version the user was looking at. integrate is the user's answer to
+// whether the merged record's service history joins the kept record's
+// timeline.
+func (a *App) MergeAssets(ctx context.Context, actor Actor, keepID string, baseVersion int64, mergedID, reason string, integrate bool) error {
 	return a.Store.Update(ctx, func(tx *store.Tx) error {
 		return a.emit(ctx, tx, actor, domain.TypeAssetMerged, domain.EntityAsset, keepID, baseVersion, "",
-			domain.AssetMerged{MergedAssetID: mergedID, Reason: reason})
+			domain.AssetMerged{MergedAssetID: mergedID, Reason: reason, IntegrateHistory: &integrate})
 	})
 }
 

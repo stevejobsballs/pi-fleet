@@ -87,6 +87,7 @@ func standardOptions(ctx context.Context, q domain.Querier, exclude string) ([]o
 
 type woRow struct {
 	ID, Number, Type, Title, Status, Priority, DueAt, Asset, AssignedTo string
+	OpenedAt                                                            string // RFC 3339 UTC; empty for work orders from before v0.4.0 on a Pi
 }
 
 func listWorkOrders(ctx context.Context, q domain.Querier, view, userID string) ([]woRow, error) {
@@ -101,13 +102,13 @@ func listWorkOrders(ctx context.Context, q domain.Querier, view, userID string) 
 		where = "w.assigned_to = ? AND w.status NOT IN ('closed', 'cancelled')"
 	}
 	rows, err := q.QueryContext(ctx, `SELECT w.id, w.number, w.type, w.title, w.status, w.priority, w.due_at, a.tag,
-			coalesce((SELECT legal_name FROM users u WHERE u.id = w.assigned_to), '')
+			coalesce((SELECT legal_name FROM users u WHERE u.id = w.assigned_to), ''), w.opened_at
 		FROM work_orders w JOIN assets a ON a.id = w.asset_id
 		WHERE `+where+` ORDER BY CASE w.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END,
 			w.due_at = '', w.due_at, w.number LIMIT 500`, userID)
 	return scanAll(rows, err, func(r *sql.Rows) (woRow, error) {
 		var w woRow
-		return w, r.Scan(&w.ID, &w.Number, &w.Type, &w.Title, &w.Status, &w.Priority, &w.DueAt, &w.Asset, &w.AssignedTo)
+		return w, r.Scan(&w.ID, &w.Number, &w.Type, &w.Title, &w.Status, &w.Priority, &w.DueAt, &w.Asset, &w.AssignedTo, &w.OpenedAt)
 	})
 }
 

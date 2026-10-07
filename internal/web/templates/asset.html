@@ -1,6 +1,6 @@
 {{define "content"}}
 {{$a := .Data.Asset}}{{$merged := ne $a.MergedInto ""}}
-{{if $merged}}<p class="warn">This record was merged into <a href="/assets/{{.Data.MergedInto.ID}}">{{.Data.MergedInto.Label}}</a>, the same equipment. Its history is shown there too. Nothing here can be changed.</p>{{end}}
+{{if $merged}}<p class="warn">This record was merged into <a href="/assets/{{.Data.MergedInto.ID}}">{{.Data.MergedInto.Label}}</a>, the same equipment. {{if $a.HistoryIntegrated}}Its service history is part of that record's timeline.{{else}}Its service history was kept here, separate.{{end}} Nothing here can be changed.</p>{{end}}
 {{with .Data.Duplicates}}<p class="warn">Other records have the same MasterID, so they are this equipment:
   {{range $i, $o := .}}{{if $i}}, {{end}}<a href="/assets/{{$o.ID}}">{{$o.Label}}</a>{{end}}.
   {{if $.IsMid}}<a href="/assets/merge?master_id={{urlquery $a.MasterID}}">Merge them</a>{{else}}A mid-tier user can merge them.{{end}}</p>{{end}}
@@ -14,7 +14,8 @@
   <dt>Risk class</dt><dd>{{$a.RiskClass}}</dd>
 </dl>
 <p class="records"><a href="/assets/{{$a.ID}}/audit">Audit trail</a> · <a href="/assets/{{$a.ID}}/print">Printable record</a> · <a href="/assets/{{$a.ID}}/export.json">Download signed JSON</a></p>
-{{with .Data.Merged}}<p>Merged into this record: {{range $i, $o := .}}{{if $i}}, {{end}}<a href="/assets/{{$o.ID}}">{{$o.Label}}</a>{{end}}. Their work orders, calibrations, schedules and files are listed below.</p>{{end}}
+{{with .Data.Merged}}<p>Merged into this record, with their service history in this record's timeline: {{range $i, $o := .}}{{if $i}}, {{end}}<a href="/assets/{{$o.ID}}">{{$o.Label}}</a>{{end}}. Their work orders, calibrations, schedules and files are listed below.</p>{{end}}
+{{with .Data.Separate}}<p>Also merged into this record, with their service history kept separate: {{range $i, $o := .}}{{if $i}}, {{end}}<a href="/assets/{{$o.ID}}">{{$o.Label}}</a>{{end}}.</p>{{end}}
 {{if not $merged}}<section class="actions">
   <a class="button" href="/work-orders/new?asset={{$a.ID}}">New work order</a>
   <form method="post" action="/assets/{{$a.ID}}/status" class="inline">{{template "csrf" .CSRF}}<input type="hidden" name="version" value="{{$a.Version}}">

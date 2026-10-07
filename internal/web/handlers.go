@@ -174,7 +174,8 @@ type assetData struct {
 	Now          string
 	// Merging duplicate records (same MasterID).
 	MergedInto option   // the record this one was merged into
-	Merged     []option // records merged into this one
+	Merged     []option // records merged into this one, history integrated
+	Separate   []option // records merged into this one, history kept with them
 	Duplicates []option // other unmerged records with the same MasterID
 }
 
@@ -201,11 +202,24 @@ func (s *Server) loadAsset(r *http.Request, id string) (assetData, error) {
 		return d, err
 	}
 	groupJSON, _ := json.Marshal(group)
-	for _, id := range group[1:] {
-		var o option
-		q.QueryRowContext(ctx, `SELECT id, tag FROM assets WHERE id = ?`, id).Scan(&o.ID, &o.Label)
-		d.Merged = append(d.Merged, o)
+	rows, err := q.QueryContext(ctx, `SELECT id, tag, history_integrated FROM assets WHERE merged_into = ? ORDER BY tag`, a.ID)
+	if err != nil {
+		return d, err
 	}
+	for rows.Next() {
+		var o option
+		var integrated bool
+		if err := rows.Scan(&o.ID, &o.Label, &integrated); err != nil {
+			rows.Close()
+			return d, err
+		}
+		if integrated {
+			d.Merged = append(d.Merged, o)
+		} else {
+			d.Separate = append(d.Separate, o)
+		}
+	}
+	rows.Close()
 	if a.MergedInto != "" {
 		d.MergedInto.ID = a.MergedInto
 		q.QueryRowContext(ctx, `SELECT tag FROM assets WHERE id = ?`, a.MergedInto).Scan(&d.MergedInto.Label)
@@ -225,13 +239,14 @@ func (s *Server) loadAsset(r *http.Request, id string) (assetData, error) {
 		}
 		d.Schedules = append(d.Schedules, sched...)
 	}
-	rows, err := q.QueryContext(ctx, `SELECT w.id, w.number, w.type, w.title, w.status, w.priority, w.due_at, a.tag,
-			coalesce((SELECT legal_name FROM users u WHERE u.id = w.assigned_to), '')
+	// The timeline: newest first, by when each work order was opened.
+	rows, err = q.QueryContext(ctx, `SELECT w.id, w.number, w.type, w.title, w.status, w.priority, w.due_at, a.tag,
+			coalesce((SELECT legal_name FROM users u WHERE u.id = w.assigned_to), ''), w.opened_at
 		FROM work_orders w JOIN assets a ON a.id = w.asset_id
-		WHERE w.asset_id IN (SELECT value FROM json_each(?)) ORDER BY w.number DESC LIMIT 50`, string(groupJSON))
+		WHERE w.asset_id IN (SELECT value FROM json_each(?)) ORDER BY w.opened_at DESC, w.number DESC LIMIT 50`, string(groupJSON))
 	if d.WorkOrders, err = scanAll(rows, err, func(r *sql.Rows) (woRow, error) {
 		var x woRow
-		return x, r.Scan(&x.ID, &x.Number, &x.Type, &x.Title, &x.Status, &x.Priority, &x.DueAt, &x.Asset, &x.AssignedTo)
+		return x, r.Scan(&x.ID, &x.Number, &x.Type, &x.Title, &x.Status, &x.Priority, &x.DueAt, &x.Asset, &x.AssignedTo, &x.OpenedAt)
 	}); err != nil {
 		return d, err
 	}

@@ -605,10 +605,14 @@ record and names the merged one, with a reason. Both must have the same
 non-empty MasterID and neither may already be merged. Nothing recorded
 against the merged record is rewritten: a signed work order's content hash
 includes its `asset_id`, so moving work orders would make their signatures
-stale. Instead the merged record gets `merged_into` and the kept record's
-pages, printable record and export include the history of every record
-merged into it (records merged into the merged one are re-pointed, so the
-chain stays one level deep). A merged record takes no more edits or moves;
+stale. Instead the merged record gets `merged_into`. When merging, the user
+is asked whether to add the merged record's service history (work orders,
+calibrations, schedules, files) to the kept record's timeline
+(`integrate_history`; absent, as in merges made before the question, means
+yes). If yes, the kept record's pages, printable record and export include
+that history in date order (work orders carry `opened_at`), and records
+whose history had been integrated into the merged one come along. If no,
+the history stays on the merged record, which the kept record links to. A merged record takes no more edits or moves;
 such events from Pis that hadn't synced are flagged `conflict`. A status
 change to it that is more restrictive than the kept record's (out of service,
 missing) is applied to the kept record instead and flagged, for the same

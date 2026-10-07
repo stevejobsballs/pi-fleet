@@ -900,7 +900,7 @@ func TestMergeWhileAPiIsOffline(t *testing.T) {
 	f.must(tess.app.SetAssetStatus(f.ctx, tess.user, dup, 1, domain.AssetOutOfService, "fails leakage"))
 	third := reg(tess.app, tess.user, "NYC-1B")
 	// Meanwhile on the master.
-	f.must(f.app.MergeAssets(f.ctx, f.mid, keep, 1, dup, "same pump"))
+	f.must(f.app.MergeAssets(f.ctx, f.mid, keep, 1, dup, "same pump", true))
 
 	if r := tess.sync(); r.Pushed != 2 || r.Flagged != 1 {
 		t.Fatalf("sync = %+v", r)

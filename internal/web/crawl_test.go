@@ -58,14 +58,15 @@ func (e *env) seedEverything() {
 	must(err)
 	_, err = e.app.RecordStock(e.ctx, e.super, domain.StockTxnRecorded{Kind: domain.StockReceive, PartID: part, StockLocationID: shop, Quantity: 10})
 	must(err)
-	// Duplicates: one pair merged, one pair waiting for a merge.
+	// Duplicates: merged with and without their history, and a pair waiting.
 	twin := func(tag, masterID string) string {
 		id, err := e.app.RegisterAsset(e.ctx, e.super, domain.AssetRegistered{Tag: tag, LocationID: e.loc, Manufacturer: "Baxter", Model: "Sigma", MasterID: masterID})
 		must(err)
 		return id
 	}
 	kept := twin("PUMP-1", "M-1")
-	must(e.app.MergeAssets(e.ctx, mid, kept, 1, twin("PROV-1", "M-1"), "registered twice"))
+	must(e.app.MergeAssets(e.ctx, mid, kept, 1, twin("PROV-1", "M-1"), "registered twice", true))
+	must(e.app.MergeAssets(e.ctx, mid, kept, 2, twin("OLD-1", "M-1"), "old database import", false))
 	twin("PUMP-2", "M-2")
 	twin("PROV-2", "M-2")
 	kiosk, _, err := e.app.CreateKiosk(e.ctx, e.super, e.site, "nyc-shop")

@@ -18,12 +18,19 @@ const TypeAssetMerged = "asset.merged"
 // AssetMerged names the record merged into the kept one. The merged
 // record keeps everything recorded against it, untouched (signed work
 // orders include the equipment id, so rewriting it would make their
-// signatures stale); it points at the kept record from then on, and
-// the kept record's pages show both histories.
+// signatures stale); it points at the kept record from then on.
+// IntegrateHistory is the user's answer to whether the merged record's
+// service history joins the kept record's timeline. Absent means yes,
+// as merges made before the question existed did.
 type AssetMerged struct {
-	MergedAssetID string `json:"merged_asset_id"`
-	Reason        string `json:"reason"`
+	MergedAssetID    string `json:"merged_asset_id"`
+	Reason           string `json:"reason"`
+	IntegrateHistory *bool  `json:"integrate_history,omitempty"`
 }
+
+// Integrates reports whether the merged record's history joins the
+// kept record's timeline.
+func (p AssetMerged) Integrates() bool { return p.IntegrateHistory == nil || *p.IntegrateHistory }
 
 func init() {
 	payloadTypes[TypeAssetMerged] = struct {
@@ -96,10 +103,21 @@ func (ap *applier) assetMerged(p *AssetMerged) error {
 		return store.Reject(FlagConflict, "%s and %s don't have the same MasterID (%q, %q); only records with the same MasterID are the same equipment",
 			keep.Tag, gone.Tag, keep.MasterID, gone.MasterID)
 	}
-	// Records merged into the one going away now point at the kept one.
-	if err := ap.exec(`UPDATE assets SET merged_into = ?, version = version + 1, last_event_id = ?
-		WHERE id = ? OR merged_into = ?`, keep.ID, ap.e.EventID, gone.ID, gone.ID); err != nil {
-		return err
+	if p.Integrates() {
+		// The merged record's timeline, including records whose history
+		// was integrated into it, joins the kept record's. Records merged
+		// into it but kept separate stay separate, now under the kept one.
+		if err := ap.exec(`UPDATE assets SET merged_into = ?, history_integrated = CASE WHEN id = ? THEN 1 ELSE history_integrated END,
+			version = version + 1, last_event_id = ? WHERE id = ? OR merged_into = ?`, keep.ID, gone.ID, ap.e.EventID, gone.ID, gone.ID); err != nil {
+			return err
+		}
+	} else {
+		// Kept separate: its history stays with it, including anything
+		// merged into it before.
+		if err := ap.exec(`UPDATE assets SET merged_into = ?, history_integrated = 0, version = version + 1, last_event_id = ?
+			WHERE id = ?`, keep.ID, ap.e.EventID, gone.ID); err != nil {
+			return err
+		}
 	}
 	// Safety: if the merged record was out of service or missing, the
 	// equipment is, so the kept record takes the more restrictive status.
@@ -110,9 +128,9 @@ func (ap *applier) assetMerged(p *AssetMerged) error {
 }
 
 // AssetGroup returns the ids of an asset and of every record merged into
-// it, the asset first.
+// it whose history joins its timeline, the asset first.
 func AssetGroup(ctx context.Context, q Querier, id string) ([]string, error) {
-	rest, err := queryStrings(ctx, q, `SELECT id FROM assets WHERE merged_into = ? ORDER BY tag`, id)
+	rest, err := queryStrings(ctx, q, `SELECT id FROM assets WHERE merged_into = ? AND history_integrated = 1 ORDER BY tag`, id)
 	if err != nil {
 		return nil, err
 	}
@@ -170,7 +188,7 @@ func Duplicates(ctx context.Context, q Querier, masterID string) ([]DuplicateGro
 // service, missing) is applied to it; anything else is refused. Either
 // way the event is flagged for review.
 func (ap *applier) mergedStatusChanged(gone Asset, p *AssetStatusChanged) error {
-	keep, err := GetAsset(ap.ctx, ap.tx, gone.MergedInto)
+	keep, err := ap.finalRecord(gone)
 	if err != nil {
 		return err
 	}
@@ -182,4 +200,20 @@ func (ap *applier) mergedStatusChanged(gone Asset, p *AssetStatusChanged) error 
 		return err
 	}
 	return ap.bumpAsset(keep, []string{"status"}, `status = ?`, p.Status)
+}
+
+// finalRecord follows merges from a to the record that was kept in the
+// end. (A record kept separate can itself have records merged into it.)
+func (ap *applier) finalRecord(a Asset) (Asset, error) {
+	for i := 0; a.MergedInto != ""; i++ {
+		if i > 100 {
+			return Asset{}, fmt.Errorf("domain: merges of %s form a loop", a.ID)
+		}
+		next, err := GetAsset(ap.ctx, ap.tx, a.MergedInto)
+		if err != nil {
+			return Asset{}, err
+		}
+		a = next
+	}
+	return a, nil
 }

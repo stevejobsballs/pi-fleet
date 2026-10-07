@@ -50,8 +50,8 @@
 
 {{define "worows"}}
 {{if .}}
-<table><thead><tr><th>Number</th><th>Title</th><th>Equipment</th><th>Type</th><th>Priority</th><th>Status</th><th>Due</th><th>Assigned</th></tr></thead><tbody>
-{{range .}}<tr><td><a href="/work-orders/{{.ID}}">{{.Number}}</a></td><td>{{.Title}}</td><td>{{.Asset}}</td><td>{{.Type}}</td>
+<table><thead><tr><th>Number</th><th>Opened</th><th>Title</th><th>Equipment</th><th>Type</th><th>Priority</th><th>Status</th><th>Due</th><th>Assigned</th></tr></thead><tbody>
+{{range .}}<tr><td><a href="/work-orders/{{.ID}}">{{.Number}}</a></td><td>{{if .OpenedAt}}{{slice .OpenedAt 0 10}}{{end}}</td><td>{{.Title}}</td><td>{{.Asset}}</td><td>{{.Type}}</td>
   <td class="p-{{.Priority}}">{{.Priority}}</td><td>{{label .Status}}</td><td>{{.DueAt}}</td><td>{{.AssignedTo}}</td></tr>{{end}}
 </tbody></table>
 {{else}}<p>None.</p>{{end}}

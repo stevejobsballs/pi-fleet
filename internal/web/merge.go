@@ -35,6 +35,14 @@ func (s *Server) mergeDo(w http.ResponseWriter, r *http.Request, sess *session) 
 	if err := s.phiCheck(r, reason); err != nil {
 		return s.failed(w, r, sess, back, err)
 	}
+	var integrate bool
+	switch f("integrate") {
+	case "yes":
+		integrate = true
+	case "no":
+	default:
+		return s.done(w, r, sess, back, "Not saved: answer whether to add the merged records' service history to the kept record's timeline.")
+	}
 	groups, err := domain.Duplicates(ctx, s.App.Store.DB(), masterID)
 	if err != nil {
 		return err
@@ -51,14 +59,19 @@ func (s *Server) mergeDo(w http.ResponseWriter, r *http.Request, sess *session) 
 		if a.ID == keep.ID {
 			continue
 		}
-		if err := s.App.MergeAssets(ctx, s.actor(sess), keep.ID, keep.Version, a.ID, reason); err != nil {
+		if err := s.App.MergeAssets(ctx, s.actor(sess), keep.ID, keep.Version, a.ID, reason, integrate); err != nil {
 			return s.failed(w, r, sess, back, err)
 		}
 		n++
 	}
-	msg := "Merged 1 record into this one. Its history is shown here."
-	if n != 1 {
-		msg = fmt.Sprintf("Merged %d records into this one. Their history is shown here.", n)
+	msg := fmt.Sprintf("Merged %d records into this one.", n)
+	if n == 1 {
+		msg = "Merged 1 record into this one."
+	}
+	if integrate {
+		msg += " Their service history is now part of this record's timeline."
+	} else {
+		msg += " Their service history stays with them; they are linked below."
 	}
 	return s.done(w, r, sess, "/assets/"+keep.ID, msg)
 }

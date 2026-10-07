@@ -46,6 +46,7 @@ Signed: {{when .SignedAt}} ({{whenLocal .SignedAt $.WO.SiteTZ}}){{if eq .ClockSt
 <tr><th>MasterID</th><td>{{if $a.MasterID}}{{$a.MasterID}}{{else}}not set{{end}}</td></tr>
 {{if $a.MergedInto}}<tr><th>Merged into</th><td>{{.MergedInto.Label}} (the same equipment)</td></tr>{{end}}
 {{with .Merged}}<tr><th>Records merged into this one</th><td>{{range $i, $o := .}}{{if $i}}, {{end}}{{$o.Label}}{{end}} (their history is included below)</td></tr>{{end}}
+{{with .Separate}}<tr><th>Merged, history kept separate</th><td>{{range $i, $o := .}}{{if $i}}, {{end}}{{$o.Label}}{{end}} (print those records for their history)</td></tr>{{end}}
 </tbody></table>
 <h2>Files</h2>
 {{range .Attachments}}<p>{{.Filename}} ({{.MIME}}, {{kib .Size}}) added by {{.AddedBy}} {{when .AddedAt}}{{if ne .Status "attached"}} · {{.Status}}: {{.DetachReason}}{{end}}<br><small>sha256 {{.SHA256}}</small></p>{{else}}<p>None.</p>{{end}}
