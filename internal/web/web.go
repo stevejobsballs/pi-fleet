@@ -125,6 +125,8 @@ func (s *Server) Handler() (http.Handler, error) {
 	mux.Handle("POST /assets/{id}/status", user(s.assetStatus))
 	mux.Handle("POST /assets/{id}/relocate", user(s.assetRelocate))
 	mux.Handle("POST /assets/{id}/edit", user(s.assetEdit))
+	mux.Handle("POST /assets/{id}/meters", user(s.meterRecord))
+	mux.Handle("POST /meters/{id}/void", user(s.meterVoid))
 	mux.Handle("GET /assets/{id}/audit", user(s.auditPage("asset")))
 	mux.Handle("GET /assets/{id}/print", user(s.printPage("asset")))
 	mux.Handle("GET /assets/{id}/export.json", user(s.exportJSON("asset")))

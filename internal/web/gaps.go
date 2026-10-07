@@ -60,6 +60,10 @@ func (s *Server) scheduleChange(w http.ResponseWriter, r *http.Request, sess *se
 	if v := f("next_due"); v != "" {
 		c.NextDue = &v
 	}
+	if _, ok := r.PostForm["meter"]; ok {
+		meter, interval, lead := strings.ToLower(strings.TrimSpace(f("meter"))), strings.TrimSpace(f("meter_interval")), strings.TrimSpace(f("meter_lead"))
+		c.Meter, c.MeterInterval, c.MeterLead = &meter, &interval, &lead
+	}
 	if err := s.App.ChangeSchedule(r.Context(), s.actor(sess), r.PathValue("id"), c); err != nil {
 		return s.failed(w, r, sess, "/schedules", err)
 	}

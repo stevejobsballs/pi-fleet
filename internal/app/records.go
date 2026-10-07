@@ -88,7 +88,7 @@ const WorkingSetWindow = 31 * 24 * time.Hour
 func (a *App) GenerateDueWorkOrders(ctx context.Context, horizon time.Duration) ([]string, error) {
 	cutoff := a.now().Add(horizon).UTC().Format("2006-01-02")
 	rows, err := a.Store.DB().QueryContext(ctx, `SELECT id FROM pm_schedules
-		WHERE status = 'active' AND open_wo_id = '' AND next_due <= ? ORDER BY next_due, id`, cutoff)
+		WHERE status = 'active' AND open_wo_id = '' AND (next_due <= ? OR meter != '') ORDER BY next_due, id`, cutoff)
 	if err != nil {
 		return nil, err
 	}
@@ -111,10 +111,23 @@ func (a *App) GenerateDueWorkOrders(ctx context.Context, horizon time.Duration) 
 		if err != nil {
 			return numbers, err
 		}
+		// Whichever comes first: the calendar date or the usage trigger.
+		dueAt, why := s.NextDue, fmt.Sprintf("Scheduled every %d days", s.IntervalDays)
+		if s.NextDue > cutoff {
+			m, err := domain.ScheduleMeterStatus(ctx, a.Store.DB(), s)
+			if err != nil {
+				return numbers, err
+			}
+			if !m.Due {
+				continue
+			}
+			dueAt = a.now().UTC().Format("2006-01-02")
+			why = fmt.Sprintf("Usage: %s of %s %s since the last service", m.Used, m.Interval, s.Meter)
+		}
 		_, number, err := a.OpenWorkOrder(ctx, Scheduler, NewWorkOrder{
 			Type: s.WOType, AssetID: s.AssetID, Priority: "normal", Title: s.Title,
-			Problem: fmt.Sprintf("Scheduled every %d days. Procedure: %s", s.IntervalDays, s.Procedure),
-			DueAt:   s.NextDue, scheduleID: s.ID, ProcedureID: s.ProcedureID,
+			Problem: fmt.Sprintf("%s. Procedure: %s", why, s.Procedure),
+			DueAt:   dueAt, scheduleID: s.ID, ProcedureID: s.ProcedureID,
 		})
 		if err != nil {
 			return numbers, fmt.Errorf("app: schedule %s: %w", s.ID, err)

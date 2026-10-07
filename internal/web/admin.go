@@ -81,6 +81,7 @@ type schedulesData struct {
 	Rows       []scheduleRow
 	Assets     []assetRow
 	Procedures []option
+	Usage      map[string]usageRow
 }
 
 func (s *Server) scheduleList(w http.ResponseWriter, r *http.Request, sess *session) error {
@@ -97,7 +98,15 @@ func (s *Server) scheduleList(w http.ResponseWriter, r *http.Request, sess *sess
 	if err != nil {
 		return err
 	}
-	return s.render(w, r, sess, "schedules", "PM schedules", schedulesData{Rows: rows, Assets: assets, Procedures: procs})
+	usage, err := usageSchedules(r.Context(), s.App.Store.DB(), "", false)
+	if err != nil {
+		return err
+	}
+	byID := map[string]usageRow{}
+	for _, u := range usage {
+		byID[u.Schedule.ID] = u
+	}
+	return s.render(w, r, sess, "schedules", "PM schedules", schedulesData{Rows: rows, Assets: assets, Procedures: procs, Usage: byID})
 }
 
 func (s *Server) scheduleCreate(w http.ResponseWriter, r *http.Request, sess *session) error {
@@ -107,6 +116,8 @@ func (s *Server) scheduleCreate(w http.ResponseWriter, r *http.Request, sess *se
 	if _, err := s.App.CreateSchedule(r.Context(), s.actor(sess), domain.PMScheduleCreated{
 		AssetID: f("asset"), WOType: f("type"), Title: strings.TrimSpace(f("title")), Procedure: strings.TrimSpace(f("procedure")),
 		IntervalDays: interval, GraceDays: grace, FirstDue: f("first_due"), ProcedureID: f("procedure_id"),
+		Meter: strings.ToLower(strings.TrimSpace(f("meter"))), MeterInterval: strings.TrimSpace(f("meter_interval")),
+		MeterLead: strings.TrimSpace(f("meter_lead")),
 	}); err != nil {
 		return s.failed(w, r, sess, "/schedules", err)
 	}

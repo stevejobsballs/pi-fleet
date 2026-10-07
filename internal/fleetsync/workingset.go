@@ -56,7 +56,7 @@ var snapshotTables = []string{
 	"assets", "pm_schedules", "work_orders", "wo_leases",
 	"calibration_records", "cal_points", "cal_standards", "signatures", "attachments",
 	"parts", "stock_locations", "stock_levels", "flag_resolutions",
-	"procedures", "checklist_results", "labor_entries",
+	"procedures", "checklist_results", "labor_entries", "meter_readings",
 }
 
 // BuildSnapshot assembles a node's working set (DESIGN.md §5.6, decision
@@ -105,6 +105,10 @@ func BuildSnapshot(ctx context.Context, db *sql.DB, centralNodeID string, node d
 		SELECT asset_id FROM pm_schedules WHERE status = 'active' AND next_due <= ?
 		UNION SELECT asset_id FROM work_orders WHERE status NOT IN ('closed', 'cancelled')
 		UNION SELECT id FROM assets WHERE is_reference_standard = 1
+		UNION SELECT p.asset_id FROM pm_schedules p WHERE p.status = 'active' AND p.meter != ''
+			AND CAST((SELECT total FROM meter_readings m WHERE m.asset_id = p.asset_id AND m.meter = p.meter AND m.status = 'recorded'
+				ORDER BY m.read_at DESC, m.id DESC LIMIT 1) AS REAL)
+			>= CAST(p.meter_baseline AS REAL) + 0.8 * CAST(p.meter_interval AS REAL)
 		UNION SELECT id FROM assets WHERE status != 'retired'
 			AND site_id IN (SELECT value FROM json_each(?))`, horizon, sites)
 	if err != nil {
@@ -160,6 +164,11 @@ func BuildSnapshot(ctx context.Context, db *sql.DB, centralNodeID string, node d
 		{"procedures", "1", nil},
 		{"checklist_results", in("wo_id"), []any{workOrders}},
 		{"labor_entries", in("wo_id"), []any{workOrders}},
+		// Recent readings of included equipment; the oldest carries
+		// central's running total, so new readings on the Pi add up right.
+		{"meter_readings", `id IN (SELECT id FROM (SELECT id, row_number() OVER (PARTITION BY asset_id, meter
+			ORDER BY read_at DESC, id DESC) AS rn FROM meter_readings WHERE status = 'recorded' AND ` + in("asset_id") + `) WHERE rn <= 20)`,
+			[]any{assets}},
 		{"flag_resolutions", "event_id IN (SELECT event_id FROM events WHERE node_id = ?)", []any{node.ID}},
 	}
 	for _, sp := range specs {

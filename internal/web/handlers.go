@@ -97,6 +97,7 @@ func (s *Server) changePassword(w http.ResponseWriter, r *http.Request, sess *se
 type dashboardData struct {
 	Mine       []woRow
 	Due        []dueRow
+	UsageDue   []usageRow
 	Unassigned int
 	Flags      int
 }
@@ -109,6 +110,9 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request, sess *session
 		return err
 	}
 	if d.Due, err = dueSoon(ctx, q, s.now()); err != nil {
+		return err
+	}
+	if d.UsageDue, err = usageSchedules(ctx, q, "", true); err != nil {
 		return err
 	}
 	q.QueryRowContext(ctx, `SELECT count(*) FROM work_orders WHERE status = 'open'`).Scan(&d.Unassigned)
@@ -163,6 +167,10 @@ type assetData struct {
 	Locations    []option
 	Statuses     []string
 	Attachments  []domain.Attachment
+	Meters       []domain.Meter
+	Readings     []domain.MeterReadingRow
+	Usage        []usageRow
+	Now          string
 }
 
 func (s *Server) assetView(w http.ResponseWriter, r *http.Request, sess *session) error {
@@ -199,6 +207,18 @@ func (s *Server) loadAsset(r *http.Request, id string) (assetData, error) {
 	}
 	if d.Attachments, err = domain.ListAttachments(ctx, q, domain.EntityAsset, a.ID); err != nil {
 		return d, err
+	}
+	if d.Meters, err = domain.AssetMeters(ctx, q, a.ID); err != nil {
+		return d, err
+	}
+	if d.Readings, err = domain.RecentMeterReadings(ctx, q, a.ID, 20); err != nil {
+		return d, err
+	}
+	if d.Usage, err = usageSchedules(ctx, q, a.ID, false); err != nil {
+		return d, err
+	}
+	if loc, lerr := time.LoadLocation(d.Site.Timezone); lerr == nil {
+		d.Now = s.now().In(loc).Format("2006-01-02T15:04")
 	}
 	d.Locations, err = locationOptions(ctx, q)
 	return d, err

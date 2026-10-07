@@ -462,7 +462,7 @@ func snapshot(t *testing.T, db *sql.DB) map[string][]string {
 	for _, table := range []string{"users", "user_password_history", "user_lockouts", "sites", "locations", "assets",
 		"work_orders", "wo_leases", "pm_schedules", "calibration_records", "cal_points", "cal_standards",
 		"parts", "stock_locations", "stock_txns", "stock_levels", "event_flags",
-		"procedures", "checklist_results", "labor_entries", "attachments"} {
+		"procedures", "checklist_results", "labor_entries", "attachments", "meter_readings"} {
 		rows, err := db.Query(`SELECT * FROM ` + table + ` ORDER BY 1, 2`)
 		if err != nil {
 			t.Fatal(err)
@@ -561,6 +561,16 @@ func (e *env) TestScenario() {
 	labor, err := e.app.LogLabor(e.ctx, tech, clWO, 30, "2026-10-06", "")
 	e.must(err)
 	e.must(e.app.ReverseLabor(e.ctx, mid, labor, "duplicate"))
+
+	// Meter readings, one backdated and one voided, and a usage trigger.
+	at := func(h int) time.Time { return time.Date(2026, 10, 1, h, 0, 0, 0, time.UTC) }
+	e.must2(e.app.RecordMeter(e.ctx, tech, id, "hours", "100", at(1), false))
+	e.must2(e.app.RecordMeter(e.ctx, tech, id, "hours", "300", at(3), false))
+	e.must2(e.app.RecordMeter(e.ctx, tech, id, "hours", "200", at(2), false))
+	bad := e.must2(e.app.RecordMeter(e.ctx, tech, id, "hours", "350", at(4), false))
+	e.must(e.app.VoidMeter(e.ctx, mid, bad, "typo"))
+	e.must2(e.app.CreateSchedule(e.ctx, mid, domain.PMScheduleCreated{AssetID: id, WOType: "inspection", Title: "Usage check",
+		IntervalDays: 365, FirstDue: "2027-06-01", Meter: "hours", MeterInterval: "250"}))
 
 	// A lockout.
 	for i := 0; i < MaxFailedLogins; i++ {

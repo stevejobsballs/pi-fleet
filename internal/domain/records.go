@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/big"
 	"regexp"
 	"strings"
 	"time"
@@ -418,28 +419,35 @@ func (ap *applier) scheduleCreated(p *PMScheduleCreated) error {
 			return err
 		}
 	}
+	lead, baseline, err := ap.checkMeterTrigger(p.AssetID, p.Meter, p.MeterInterval, p.MeterLead)
+	if err != nil {
+		return err
+	}
 	return ap.exec(`INSERT INTO pm_schedules (id, asset_id, wo_type, title, procedure, interval_days, grace_days,
-			next_due, status, open_wo_id, procedure_id, version, last_event_id)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', '', ?, 1, ?)`,
-		ap.e.EntityID, p.AssetID, p.WOType, p.Title, p.Procedure, p.IntervalDays, p.GraceDays, p.FirstDue, p.ProcedureID, ap.e.EventID)
+			next_due, status, open_wo_id, procedure_id, meter, meter_interval, meter_lead, meter_baseline, version, last_event_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', '', ?, ?, ?, ?, ?, 1, ?)`,
+		ap.e.EntityID, p.AssetID, p.WOType, p.Title, p.Procedure, p.IntervalDays, p.GraceDays, p.FirstDue, p.ProcedureID,
+		p.Meter, p.MeterInterval, lead, baseline, ap.e.EventID)
 }
 
 // Schedule is a projected PM schedule.
 type Schedule struct {
-	ID, AssetID, WOType, Title, Procedure string
-	IntervalDays, GraceDays               int
-	NextDue, Status, OpenWorkOrderID      string
-	ProcedureID                           string
-	Version                               int64
+	ID, AssetID, WOType, Title, Procedure          string
+	IntervalDays, GraceDays                        int
+	NextDue, Status, OpenWorkOrderID               string
+	ProcedureID                                    string
+	Meter, MeterInterval, MeterLead, MeterBaseline string
+	Version                                        int64
 }
 
 // GetSchedule returns a schedule by id.
 func GetSchedule(ctx context.Context, q Querier, id string) (Schedule, error) {
 	var s Schedule
 	err := q.QueryRowContext(ctx, `SELECT id, asset_id, wo_type, title, procedure, interval_days, grace_days,
-		next_due, status, open_wo_id, procedure_id, version FROM pm_schedules WHERE id = ?`, id).
+		next_due, status, open_wo_id, procedure_id, meter, meter_interval, meter_lead, meter_baseline, version
+		FROM pm_schedules WHERE id = ?`, id).
 		Scan(&s.ID, &s.AssetID, &s.WOType, &s.Title, &s.Procedure, &s.IntervalDays, &s.GraceDays,
-			&s.NextDue, &s.Status, &s.OpenWorkOrderID, &s.ProcedureID, &s.Version)
+			&s.NextDue, &s.Status, &s.OpenWorkOrderID, &s.ProcedureID, &s.Meter, &s.MeterInterval, &s.MeterLead, &s.MeterBaseline, &s.Version)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Schedule{}, ErrNotFound
 	}
@@ -505,8 +513,32 @@ func (ap *applier) scheduleChanged(p *PMScheduleChanged) error {
 		}
 		s.ProcedureID = *p.ProcedureID
 	}
-	return ap.bumpSchedule(s.ID, `title = ?, procedure = ?, interval_days = ?, grace_days = ?, next_due = ?, procedure_id = ?`,
-		s.Title, s.Procedure, s.IntervalDays, s.GraceDays, s.NextDue, s.ProcedureID)
+	if p.Meter != nil || p.MeterInterval != nil || p.MeterLead != nil {
+		meter, interval, lead := s.Meter, s.MeterInterval, ""
+		if p.Meter != nil {
+			meter = *p.Meter
+		}
+		if p.MeterInterval != nil {
+			interval = *p.MeterInterval
+		}
+		if p.MeterLead != nil {
+			lead = *p.MeterLead
+		}
+		if meter == "" {
+			interval, lead = "", "" // removing the usage trigger
+		}
+		newLead, baseline, err := ap.checkMeterTrigger(s.AssetID, meter, interval, lead)
+		if err != nil {
+			return err
+		}
+		if meter == s.Meter && meter != "" {
+			baseline = s.MeterBaseline // same meter: keep counting from the last completion
+		}
+		s.Meter, s.MeterInterval, s.MeterLead, s.MeterBaseline = meter, interval, newLead, baseline
+	}
+	return ap.bumpSchedule(s.ID, `title = ?, procedure = ?, interval_days = ?, grace_days = ?, next_due = ?, procedure_id = ?,
+		meter = ?, meter_interval = ?, meter_lead = ?, meter_baseline = ?`,
+		s.Title, s.Procedure, s.IntervalDays, s.GraceDays, s.NextDue, s.ProcedureID, s.Meter, s.MeterInterval, s.MeterLead, s.MeterBaseline)
 }
 
 func (ap *applier) scheduleEnded(p *PMScheduleEnded) error {
@@ -520,6 +552,33 @@ func (ap *applier) scheduleEnded(p *PMScheduleEnded) error {
 		return invalid("ending a schedule requires a reason")
 	}
 	return ap.bumpSchedule(ap.e.EntityID, `status = 'ended'`)
+}
+
+// checkMeterTrigger validates a schedule's optional usage trigger and
+// returns its lead (10% of the interval by default) and the starting
+// baseline (the meter's current total).
+func (ap *applier) checkMeterTrigger(assetID, meter, interval, lead string) (string, string, error) {
+	if meter == "" {
+		if interval != "" || lead != "" {
+			return "", "", invalid("a usage interval needs a meter name")
+		}
+		return "", "", nil
+	}
+	if !meterNameRE.MatchString(meter) {
+		return "", "", invalid("meter name %q must be lowercase letters, digits or _", meter)
+	}
+	iv, err := parseDecimal(interval)
+	if err != nil || iv.Sign() <= 0 {
+		return "", "", invalid("usage interval %q must be a positive decimal", interval)
+	}
+	l := new(big.Rat).Quo(iv, big.NewRat(10, 1))
+	if lead != "" {
+		if l, err = parseDecimal(lead); err != nil || l.Sign() < 0 || l.Cmp(iv) >= 0 {
+			return "", "", invalid("usage lead must be at least 0 and less than the interval")
+		}
+	}
+	baseline, _, err := MeterTotal(ap.ctx, ap.tx, assetID, meter)
+	return formatLimit(l), baseline, err
 }
 
 // linkSchedule ties a newly opened work order to its schedule. A
@@ -560,7 +619,14 @@ func (ap *applier) scheduleFollowsWorkOrder(w WorkOrder, to string) error {
 			return err
 		}
 		next := today.AddDate(0, 0, s.IntervalDays).Format(dateLayout)
-		return ap.bumpSchedule(s.ID, `next_due = ?, open_wo_id = ''`, next)
+		baseline := s.MeterBaseline
+		if s.Meter != "" {
+			// Usage restarts from the meter's total at completion.
+			if baseline, _, err = MeterTotal(ap.ctx, ap.tx, s.AssetID, s.Meter); err != nil {
+				return err
+			}
+		}
+		return ap.bumpSchedule(s.ID, `next_due = ?, open_wo_id = '', meter_baseline = ?`, next, baseline)
 	case to == WOCancelled && s.OpenWorkOrderID == w.ID:
 		return ap.bumpSchedule(s.ID, `open_wo_id = ''`)
 	case to == WOInProgress && (w.Status == WOCompleted || w.Status == WOReviewed) && s.OpenWorkOrderID == "":

@@ -838,3 +838,48 @@ func TestChecklistCompletedOffline(t *testing.T) {
 		t.Fatalf("central: status %s, signatures %+v, labour %d", w.Status, sigs, total)
 	}
 }
+
+func TestMeterReadingsFromPis(t *testing.T) {
+	f := newFleet(t)
+	tess, bob := f.enrol("tess", domain.RoleUser), f.enrol("bob", domain.RoleUser)
+	a := f.asset("VENT-1")
+	at := func(h int) time.Time { return time.Date(2026, 10, 5, h, 0, 0, 0, time.UTC) }
+	_, err := f.app.RecordMeter(f.ctx, f.mid, a, "hours", "1000", at(1), false)
+	f.must(err)
+	sched, err := f.app.CreateSchedule(f.ctx, f.mid, domain.PMScheduleCreated{AssetID: a, WOType: "pm", Title: "500 h PM",
+		IntervalDays: 365, FirstDue: "2027-09-01", Meter: "hours", MeterInterval: "500"})
+	f.must(err)
+	tess.sync()
+	bob.sync()
+
+	// Both read the meter offline; Bob's earlier reading syncs last.
+	_, err = tess.app.RecordMeter(f.ctx, tess.user, a, "hours", "1460", at(8), false)
+	f.must(err)
+	_, err = bob.app.RecordMeter(f.ctx, bob.user, a, "hours", "1300", at(5), false)
+	f.must(err)
+	tot, _, _ := domain.MeterTotal(f.ctx, tess.app.Store.DB(), a, "hours")
+	if tot != "460" {
+		t.Fatalf("total on Tess's Pi = %s", tot)
+	}
+	tess.sync()
+	if r := bob.sync(); r.Flagged != 0 {
+		t.Fatalf("bob = %+v", r)
+	}
+	tot, _, _ = domain.MeterTotal(f.ctx, f.app.Store.DB(), a, "hours")
+	if tot != "460" {
+		t.Fatalf("central total = %s", tot)
+	}
+	// Central generates the usage-triggered work, and Bob's Pi agrees on
+	// the total after its next snapshot.
+	got, err := f.app.GenerateDueWorkOrders(f.ctx, WorkingSetHorizon)
+	f.must(err)
+	if len(got) != 1 {
+		t.Fatalf("generated %v", got)
+	}
+	bob.sync()
+	tot, _, _ = domain.MeterTotal(f.ctx, bob.app.Store.DB(), a, "hours")
+	s, _ := domain.GetSchedule(f.ctx, bob.app.Store.DB(), sched)
+	if tot != "460" || s.OpenWorkOrderID == "" {
+		t.Fatalf("Bob's Pi: total %s, open work %q", tot, s.OpenWorkOrderID)
+	}
+}

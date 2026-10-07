@@ -12,6 +12,11 @@
   </tbody></table>
   {{else}}<p>Nothing due.</p>{{end}}
 </section>
+{{if .Data.UsageDue}}<section><h2>Due by usage</h2>
+<table><thead><tr><th>Equipment</th><th>Schedule</th><th>Usage since last service</th><th>Work order</th></tr></thead><tbody>
+{{range .Data.UsageDue}}<tr><td><a href="/assets/{{.Schedule.AssetID}}">{{.Asset}}</a></td><td>{{.Schedule.Title}}</td><td>{{.Status.Used}} of {{.Status.Interval}} {{.Schedule.Meter}}</td>
+  <td>{{if .Schedule.OpenWorkOrderID}}<a href="/work-orders/{{.Schedule.OpenWorkOrderID}}">open</a>{{else}}generated within the hour{{end}}</td></tr>{{end}}
+</tbody></table></section>{{end}}
 <p><a href="/work-orders?view=unassigned">{{.Data.Unassigned}} unassigned work order{{if ne .Data.Unassigned 1}}s{{end}}</a>
 {{if .IsMid}} · <a href="/review">{{.Data.Flags}} flagged record{{if ne .Data.Flags 1}}s{{end}} to review</a>{{end}}</p>
 {{end}}

@@ -306,16 +306,25 @@ type PMScheduleCreated struct {
 	FirstDue     string `json:"first_due"` // YYYY-MM-DD
 	// ProcedureID is the checklist generated work orders follow.
 	ProcedureID string `json:"procedure_id,omitempty"`
+	// Meter, MeterInterval and MeterLead add a usage trigger: work is
+	// generated once usage since the last completion comes within the
+	// lead of the interval, or at the calendar interval, whichever first.
+	Meter         string `json:"meter,omitempty"`
+	MeterInterval string `json:"meter_interval,omitempty"` // decimal
+	MeterLead     string `json:"meter_lead,omitempty"`     // decimal; default 10% of the interval
 }
 
 type PMScheduleChanged struct {
-	Title        *string `json:"title,omitempty"`
-	Procedure    *string `json:"procedure,omitempty"`
-	IntervalDays *int    `json:"interval_days,omitempty"`
-	GraceDays    *int    `json:"grace_days,omitempty"`
-	NextDue      *string `json:"next_due,omitempty"`
-	ProcedureID  *string `json:"procedure_id,omitempty"`
-	Reason       string  `json:"reason"`
+	Title         *string `json:"title,omitempty"`
+	Procedure     *string `json:"procedure,omitempty"`
+	IntervalDays  *int    `json:"interval_days,omitempty"`
+	GraceDays     *int    `json:"grace_days,omitempty"`
+	NextDue       *string `json:"next_due,omitempty"`
+	ProcedureID   *string `json:"procedure_id,omitempty"`
+	Meter         *string `json:"meter,omitempty"` // "" removes the usage trigger
+	MeterInterval *string `json:"meter_interval,omitempty"`
+	MeterLead     *string `json:"meter_lead,omitempty"`
+	Reason        string  `json:"reason"`
 }
 
 type PMScheduleEnded struct {

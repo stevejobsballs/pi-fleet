@@ -1,10 +1,12 @@
 {{define "content"}}
 {{if .Data.Rows}}<table><thead><tr><th>Equipment</th><th>Schedule</th><th>Type</th><th>Every</th><th>Grace</th><th>Next due</th><th>Outstanding</th><th>Status</th></tr></thead><tbody>
-{{range .Data.Rows}}<tr><td><a href="/assets/{{.AssetID}}">{{.Asset}}</a></td><td>{{.Title}}</td><td>{{.Type}}</td><td>{{.Interval}} days</td><td>{{.Grace}} days</td><td>{{.NextDue}}</td><td>{{.OpenWO}}</td><td>{{.Status}}</td></tr>
+{{range .Data.Rows}}<tr><td><a href="/assets/{{.AssetID}}">{{.Asset}}</a></td><td>{{.Title}}</td><td>{{.Type}}</td><td>{{.Interval}} days{{with index $.Data.Usage .ID}}{{if .Schedule.Meter}}<br>or {{.Status.Interval}} {{.Schedule.Meter}} <small>({{.Status.Used}} used)</small>{{end}}{{end}}</td><td>{{.Grace}} days</td><td>{{.NextDue}}</td><td>{{.OpenWO}}</td><td>{{.Status}}</td></tr>
 {{if and $.IsMid (eq .Status "active")}}<tr><td colspan="8"><details><summary>Change or end</summary>
   <form method="post" action="/schedules/{{.ID}}/change" class="inline">{{template "csrf" $.CSRF}}
     <label>Title <input name="title" value="{{.Title}}"></label><label>Every (days) <input name="interval" value="{{.Interval}}" size="5"></label>
     <label>Grace <input name="grace" value="{{.Grace}}" size="4"></label><label>Next due <input name="next_due" type="date" value="{{.NextDue}}"></label>
+    {{$u := index $.Data.Usage .ID}}<label>Meter <input name="meter" value="{{$u.Schedule.Meter}}" size="8" placeholder="none"></label>
+    <label>Every (usage) <input name="meter_interval" value="{{$u.Schedule.MeterInterval}}" size="6"></label><label>Lead <input name="meter_lead" value="{{$u.Schedule.MeterLead}}" size="5"></label>
     <label>Reason <input name="reason" required></label><button>Change</button></form>
   <form method="post" action="/schedules/{{.ID}}/end" class="inline">{{template "csrf" $.CSRF}}<label>Reason <input name="reason" required></label><button class="danger">End schedule</button></form>
 </details></td></tr>{{end}}{{end}}
@@ -18,6 +20,11 @@
   <label>Every (days) <input name="interval" inputmode="numeric" required></label>
   <label>Grace (days) <input name="grace" inputmode="numeric" value="0"></label>
   <label>First due <input name="first_due" type="date" required></label>
+  <fieldset><legend>Also by usage (optional): whichever comes first</legend>
+    <label>Meter <input name="meter" placeholder="hours" pattern="[a-z][a-z0-9_]{0,31}"></label>
+    <label>Every <input name="meter_interval" inputmode="decimal" placeholder="500"></label>
+    <label>Generate when within <input name="meter_lead" inputmode="decimal" placeholder="10% of the interval"></label>
+  </fieldset>
   <label>Checklist for generated work <select name="procedure_id"><option value="">none</option>{{range .Data.Procedures}}<option value="{{.ID}}">{{.Label}}</option>{{end}}</select></label>
   <button>Create schedule</button>
 </form></section>{{end}}
