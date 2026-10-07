@@ -29,19 +29,22 @@ func scanAll[T any](rows *sql.Rows, err error, scan func(*sql.Rows) (T, error)) 
 type assetRow struct {
 	ID, Tag, Manufacturer, Model, Serial, Status, Site, Location, NextDue string
 	Reference                                                             bool
+	MasterID, MergedIntoTag                                               string
 }
 
 func listAssets(ctx context.Context, q domain.Querier, search string) ([]assetRow, error) {
 	like := "%" + search + "%"
 	rows, err := q.QueryContext(ctx, `SELECT a.id, a.tag, a.manufacturer, a.model, a.serial, a.status, s.code, l.name,
 			coalesce((SELECT min(next_due) FROM pm_schedules p WHERE p.asset_id = a.id AND p.status = 'active'), ''),
-			a.is_reference_standard
+			a.is_reference_standard, a.master_id, coalesce((SELECT k.tag FROM assets k WHERE k.id = a.merged_into), '')
 		FROM assets a JOIN sites s ON s.id = a.site_id JOIN locations l ON l.id = a.location_id
-		WHERE ? = '' OR a.tag LIKE ? OR a.manufacturer LIKE ? OR a.model LIKE ? OR a.serial LIKE ? OR l.name LIKE ?
-		ORDER BY a.tag LIMIT 500`, search, like, like, like, like, like)
+		WHERE CASE WHEN ? = '' THEN a.merged_into = ''
+			ELSE a.tag LIKE ? OR a.manufacturer LIKE ? OR a.model LIKE ? OR a.serial LIKE ? OR l.name LIKE ? OR a.master_id LIKE ? END
+		ORDER BY a.tag LIMIT 500`, search, like, like, like, like, like, like)
 	return scanAll(rows, err, func(r *sql.Rows) (assetRow, error) {
 		var a assetRow
-		err := r.Scan(&a.ID, &a.Tag, &a.Manufacturer, &a.Model, &a.Serial, &a.Status, &a.Site, &a.Location, &a.NextDue, &a.Reference)
+		err := r.Scan(&a.ID, &a.Tag, &a.Manufacturer, &a.Model, &a.Serial, &a.Status, &a.Site, &a.Location, &a.NextDue, &a.Reference,
+			&a.MasterID, &a.MergedIntoTag)
 		return a, err
 	})
 }

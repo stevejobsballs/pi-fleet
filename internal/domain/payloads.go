@@ -179,6 +179,7 @@ type AssetRegistered struct {
 	RiskClass           string            `json:"risk_class"`
 	IsReferenceStandard bool              `json:"is_reference_standard"`
 	CustomFields        map[string]string `json:"custom_fields"`
+	MasterID            string            `json:"master_id,omitempty"`
 }
 
 // AssetUpdated changes only the fields that are present (DESIGN.md §5.4:
@@ -190,6 +191,7 @@ type AssetUpdated struct {
 	RiskClass           *string            `json:"risk_class,omitempty"`
 	IsReferenceStandard *bool              `json:"is_reference_standard,omitempty"`
 	CustomFields        *map[string]string `json:"custom_fields,omitempty"`
+	MasterID            *string            `json:"master_id,omitempty"`
 }
 
 // fields lists the projection fields an update touches.
@@ -206,6 +208,7 @@ func (u *AssetUpdated) fields() []string {
 	add(u.RiskClass != nil, "risk_class")
 	add(u.IsReferenceStandard != nil, "is_reference_standard")
 	add(u.CustomFields != nil, "custom_fields")
+	add(u.MasterID != nil, "master_id")
 	return f
 }
 

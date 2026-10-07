@@ -375,7 +375,7 @@ erDiagram
 | `kiosk_group` | C | id, site_id, name, member user ids | Managed by super users. Membership changes reach the kiosk through its working set (§6.3). |
 | `location` | C | id, site_id, parent_id, name, kind | Tree |
 | `manufacturer`, `model` | C | | Shared catalog |
-| `asset` | C | id, tag (the physical asset tag, unique fleet-wide; a duplicate is a conflict), manufacturer and model (text in v1; a shared `model` catalog comes later), serial, location_id (implies site), status (`in_service`, `out_of_service`, `retired`, `missing`), risk_class, is_reference_standard, custom fields (schema-checked JSON) | Field edits from nodes are merged by central (§5.4). Moving an asset to another site is a relocation. No two-phase transfer is needed because central holds authority. |
+| `asset` | C | id, tag (the physical asset tag, unique fleet-wide; a duplicate is a conflict), master_id (optional; records with the same MasterID are the same equipment), merged_into (set when the record was merged into another), manufacturer and model (text in v1; a shared `model` catalog comes later), serial, location_id (implies site), status (`in_service`, `out_of_service`, `retired`, `missing`), risk_class, is_reference_standard, custom fields (schema-checked JSON) | Field edits from nodes are merged by central (§5.4). Moving an asset to another site is a relocation. No two-phase transfer is needed because central holds authority. |
 | `procedure_version` (checklist) | C (mid-tier) | name, version, steps[] (pass/fail check, number with optional decimal limits, text; each optionally required), status (active/retired) | Immutable once published. Changing a checklist publishes the next version. Schedules and work orders name the version they follow; retired versions can't be chosen for new work. |
 | `pm_schedule` | C | asset_id, wo_type (pm / calibration / inspection), procedure, checklist, interval_days, grace_days, next_due (projection), open_wo_id; optional usage trigger: meter, meter_interval, meter_lead (default 10%), meter_baseline | Central's `system:scheduler` opens a WO for each schedule due within 31 days that has none outstanding. With a usage trigger, work is also generated once usage since the last completion comes within the lead of the meter interval: whichever comes first, with the calendar interval as a backstop. Completing it sets next_due = completion date (site time zone) + interval and the meter baseline to the meter's total at completion. Cancelling it lets the scheduler regenerate. |
 | `work_order` | C to create/assign, **L** to perform | id, number, type (`pm`, `corrective`, `calibration`, `inspection`, `install`, `retire`), asset_id, priority, status, problem, findings, resolution, due_at, assigned_to | §4.5 |
@@ -581,7 +581,7 @@ of data has an explicit write rule:
 | Shared stockroom issues/receipts | Ledger, additive and commutative. | No |
 | Shared stockroom **counts** | **Online only** (`/v1/fleet/stock/count`), so central computes the adjustment against its own complete ledger at one serialisation point. | No |
 | Personal stock locations (employee van/kit) | Owned by the employee's node, so counts work offline. | No |
-| Same device registered twice (provisional tags from two nodes) | Central flags duplicates (manufacturer + model + serial). A mid-tier user resolves with `asset.merged`. Both histories are preserved. | Yes → human |
+| Same device registered twice (e.g. under two tags, or from two offline Pis) | Records are duplicates **only** when they have the same MasterID; nothing else (manufacturer, model, serial) makes two records the same. Duplicates are listed on the review queue and on each record. A mid-tier user picks the record to keep and merges the others with `asset.merged` (see below). | Yes → human |
 | Fork (same `(chain_id, seq)`, different hash) | Security incident (§5.8). | Yes → incident |
 
 ### 5.5 Conflict queue
@@ -599,6 +599,24 @@ of data has an explicit write rule:
 - Decisions are signed and audited, and appear in the record's audit trail and
   exports. The original flagged event stays in the log forever.
 - The affected node receives the decision in its working set.
+
+**Merging duplicate equipment (`asset.merged`).** The event targets the kept
+record and names the merged one, with a reason. Both must have the same
+non-empty MasterID and neither may already be merged. Nothing recorded
+against the merged record is rewritten: a signed work order's content hash
+includes its `asset_id`, so moving work orders would make their signatures
+stale. Instead the merged record gets `merged_into` and the kept record's
+pages, printable record and export include the history of every record
+merged into it (records merged into the merged one are re-pointed, so the
+chain stays one level deep). A merged record takes no more edits or moves;
+such events from Pis that hadn't synced are flagged `conflict`. A status
+change to it that is more restrictive than the kept record's (out of service,
+missing) is applied to the kept record instead and flagged, for the same
+safety reason that more restrictive statuses win in §5.4; the merge itself
+also gives the kept record the more restrictive of the two statuses. Active
+schedules of the merged record keep running and are listed on the kept
+record, so duplicates can be ended. Working sets carry merged records
+alongside their kept record.
 
 ### 5.6 Working set (31-day window)
 

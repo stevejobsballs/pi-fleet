@@ -2,9 +2,10 @@
 <p class="hint">Read-only, live from the master Pi. <a href="/fleet/assets">Back to fleet search</a></p>
 {{with .Data.Error}}<p class="error" role="alert">{{.}}</p>{{end}}
 {{with .Data.Asset}}{{if .Asset.ID}}{{$a := .Asset}}
+{{if $a.MergedInto}}<p class="warn">This record was merged into <a href="/fleet/assets/{{$a.MergedInto}}">another record</a> of the same equipment.</p>{{end}}
 <dl class="facts">
   <dt>Equipment</dt><dd>{{$a.Manufacturer}} {{$a.Model}}{{if $a.IsReferenceStandard}} <span class="tag">reference standard</span>{{end}}</dd>
-  <dt>Serial</dt><dd>{{$a.Serial}}</dd><dt>Site</dt><dd>{{.Site.Code}} · {{.Site.Name}}</dd>
+  <dt>Serial</dt><dd>{{$a.Serial}}</dd><dt>MasterID</dt><dd>{{if $a.MasterID}}{{$a.MasterID}}{{else}}not set{{end}}</dd><dt>Site</dt><dd>{{.Site.Code}} · {{.Site.Name}}</dd>
   <dt>Location</dt><dd>{{.Location}}</dd><dt>Status</dt><dd class="s-{{$a.Status}}"><strong>{{label $a.Status}}</strong></dd>
 </dl>
 <h2>Schedules</h2>

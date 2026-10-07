@@ -127,8 +127,9 @@ func (s *Server) scheduleCreate(w http.ResponseWriter, r *http.Request, sess *se
 // --- review queue ---
 
 type reviewData struct {
-	All  bool
-	Rows []flagRow
+	All        bool
+	Rows       []flagRow
+	Duplicates []domain.DuplicateGroup
 }
 
 func (s *Server) review(w http.ResponseWriter, r *http.Request, sess *session) error {
@@ -137,7 +138,11 @@ func (s *Server) review(w http.ResponseWriter, r *http.Request, sess *session) e
 	if err != nil {
 		return err
 	}
-	return s.render(w, r, sess, "review", "Review queue", reviewData{All: all, Rows: rows})
+	dups, err := domain.Duplicates(r.Context(), s.App.Store.DB(), "")
+	if err != nil {
+		return err
+	}
+	return s.render(w, r, sess, "review", "Review queue", reviewData{All: all, Rows: rows, Duplicates: dups})
 }
 
 // --- users ---

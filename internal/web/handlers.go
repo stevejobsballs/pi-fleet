@@ -2,6 +2,7 @@ package web
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -149,7 +150,7 @@ func (s *Server) assetCreate(w http.ResponseWriter, r *http.Request, sess *sessi
 	id, err := s.App.RegisterAsset(r.Context(), s.actor(sess), domain.AssetRegistered{
 		Tag: strings.TrimSpace(f("tag")), LocationID: f("location"), Manufacturer: strings.TrimSpace(f("manufacturer")),
 		Model: strings.TrimSpace(f("model")), Serial: strings.TrimSpace(f("serial")), RiskClass: f("risk_class"),
-		IsReferenceStandard: f("reference") == "yes",
+		IsReferenceStandard: f("reference") == "yes", MasterID: strings.TrimSpace(f("master_id")),
 	})
 	if err != nil {
 		return s.failed(w, r, sess, "/assets/new", err)
@@ -171,6 +172,10 @@ type assetData struct {
 	Readings     []domain.MeterReadingRow
 	Usage        []usageRow
 	Now          string
+	// Merging duplicate records (same MasterID).
+	MergedInto option   // the record this one was merged into
+	Merged     []option // records merged into this one
+	Duplicates []option // other unmerged records with the same MasterID
 }
 
 func (s *Server) assetView(w http.ResponseWriter, r *http.Request, sess *session) error {
@@ -190,23 +195,55 @@ func (s *Server) loadAsset(r *http.Request, id string) (assetData, error) {
 	d := assetData{Asset: a, Statuses: []string{domain.AssetInService, domain.AssetOutOfService, domain.AssetMissing, domain.AssetRetired}}
 	q.QueryRowContext(ctx, `SELECT id, code, name, timezone FROM sites WHERE id = ?`, a.SiteID).Scan(&d.Site.ID, &d.Site.Code, &d.Site.Name, &d.Site.Timezone)
 	q.QueryRowContext(ctx, `SELECT name FROM locations WHERE id = ?`, a.LocationID).Scan(&d.Location)
-	if d.Schedules, err = listSchedules(ctx, q, a.ID); err != nil {
+	// The history of records merged into this one shows here too.
+	group, err := domain.AssetGroup(ctx, q, a.ID)
+	if err != nil {
 		return d, err
 	}
-	rows, err := q.QueryContext(ctx, `SELECT w.id, w.number, w.type, w.title, w.status, w.priority, w.due_at, '',
+	groupJSON, _ := json.Marshal(group)
+	for _, id := range group[1:] {
+		var o option
+		q.QueryRowContext(ctx, `SELECT id, tag FROM assets WHERE id = ?`, id).Scan(&o.ID, &o.Label)
+		d.Merged = append(d.Merged, o)
+	}
+	if a.MergedInto != "" {
+		d.MergedInto.ID = a.MergedInto
+		q.QueryRowContext(ctx, `SELECT tag FROM assets WHERE id = ?`, a.MergedInto).Scan(&d.MergedInto.Label)
+	} else if a.MasterID != "" {
+		rows, err := q.QueryContext(ctx, `SELECT id, tag FROM assets WHERE master_id = ? AND merged_into = '' AND id != ? ORDER BY tag`, a.MasterID, a.ID)
+		if d.Duplicates, err = scanAll(rows, err, func(r *sql.Rows) (option, error) {
+			var o option
+			return o, r.Scan(&o.ID, &o.Label)
+		}); err != nil {
+			return d, err
+		}
+	}
+	for _, id := range group {
+		sched, err := listSchedules(ctx, q, id)
+		if err != nil {
+			return d, err
+		}
+		d.Schedules = append(d.Schedules, sched...)
+	}
+	rows, err := q.QueryContext(ctx, `SELECT w.id, w.number, w.type, w.title, w.status, w.priority, w.due_at, a.tag,
 			coalesce((SELECT legal_name FROM users u WHERE u.id = w.assigned_to), '')
-		FROM work_orders w WHERE w.asset_id = ? ORDER BY w.number DESC LIMIT 50`, a.ID)
+		FROM work_orders w JOIN assets a ON a.id = w.asset_id
+		WHERE w.asset_id IN (SELECT value FROM json_each(?)) ORDER BY w.number DESC LIMIT 50`, string(groupJSON))
 	if d.WorkOrders, err = scanAll(rows, err, func(r *sql.Rows) (woRow, error) {
 		var x woRow
 		return x, r.Scan(&x.ID, &x.Number, &x.Type, &x.Title, &x.Status, &x.Priority, &x.DueAt, &x.Asset, &x.AssignedTo)
 	}); err != nil {
 		return d, err
 	}
-	if d.Calibrations, err = calibrations(ctx, q, "c.asset_id = ?", a.ID); err != nil {
+	if d.Calibrations, err = calibrations(ctx, q, "c.asset_id IN (SELECT value FROM json_each(?))", string(groupJSON)); err != nil {
 		return d, err
 	}
-	if d.Attachments, err = domain.ListAttachments(ctx, q, domain.EntityAsset, a.ID); err != nil {
-		return d, err
+	for _, id := range group {
+		files, err := domain.ListAttachments(ctx, q, domain.EntityAsset, id)
+		if err != nil {
+			return d, err
+		}
+		d.Attachments = append(d.Attachments, files...)
 	}
 	if d.Meters, err = domain.AssetMeters(ctx, q, a.ID); err != nil {
 		return d, err

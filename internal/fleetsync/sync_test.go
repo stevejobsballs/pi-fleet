@@ -883,3 +883,38 @@ func TestMeterReadingsFromPis(t *testing.T) {
 		t.Fatalf("Bob's Pi: total %s, open work %q", tot, s.OpenWorkOrderID)
 	}
 }
+
+// A Pi works offline on a record that central merges meanwhile, and
+// registers the same equipment again.
+func TestMergeWhileAPiIsOffline(t *testing.T) {
+	f := newFleet(t)
+	tess := f.enrol("tess", domain.RoleUser)
+	reg := func(a *app.App, actor app.Actor, tag string) string {
+		return f.must2(a.RegisterAsset(f.ctx, actor, domain.AssetRegistered{Tag: tag, LocationID: f.loc, Manufacturer: "Baxter", Model: "Sigma", MasterID: "M-1"}))
+	}
+	keep, dup := reg(f.app, f.super, "NYC-1"), reg(f.app, f.super, "PROV-1")
+	tess.sync()
+
+	// Offline on the Pi: the duplicate fails a test, and the pump gets
+	// registered a third time.
+	f.must(tess.app.SetAssetStatus(f.ctx, tess.user, dup, 1, domain.AssetOutOfService, "fails leakage"))
+	third := reg(tess.app, tess.user, "NYC-1B")
+	// Meanwhile on the master.
+	f.must(f.app.MergeAssets(f.ctx, f.mid, keep, 1, dup, "same pump"))
+
+	if r := tess.sync(); r.Pushed != 2 || r.Flagged != 1 {
+		t.Fatalf("sync = %+v", r)
+	}
+	for name, st := range map[string]*store.Store{"central": f.app.Store, "pi": tess.app.Store} {
+		k, _ := domain.GetAsset(f.ctx, st.DB(), keep)
+		d, _ := domain.GetAsset(f.ctx, st.DB(), dup)
+		if k.Status != domain.AssetOutOfService || d.MergedInto != keep {
+			t.Errorf("%s: kept record %s, merged record points at %q", name, k.Status, d.MergedInto)
+		}
+	}
+	groups, err := domain.Duplicates(f.ctx, f.app.Store.DB(), "M-1")
+	f.must(err)
+	if len(groups) != 1 || len(groups[0].Assets) != 2 || groups[0].Assets[1].ID != third {
+		t.Fatalf("duplicates = %+v", groups)
+	}
+}

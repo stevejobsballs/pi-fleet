@@ -32,6 +32,9 @@ func (s *Server) assetEdit(w http.ResponseWriter, r *http.Request, sess *session
 	if v, ok := changed("risk_class"); ok {
 		u.RiskClass = &v
 	}
+	if v, ok := changed("master_id"); ok {
+		u.MasterID = &v
+	}
 	ref := f("reference") == "yes"
 	if ref != (f("orig_reference") == "yes") {
 		u.IsReferenceStandard = &ref

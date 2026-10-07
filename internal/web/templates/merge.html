@@ -1,0 +1,13 @@
+{{define "content"}}{{$g := .Data.Group}}
+<p>These records all have MasterID <strong>{{$g.MasterID}}</strong>, so they are the same equipment. Choose the record to keep. The others are merged into it: everything recorded against them stays exactly as it was, signatures included, and is shown on the kept record. The merged records can't be changed afterwards.</p>
+<form method="post" action="/assets/merge">{{template "csrf" .CSRF}}<input type="hidden" name="master_id" value="{{$g.MasterID}}">
+<table><thead><tr><th>Keep</th><th>Tag</th><th>Equipment</th><th>Serial</th><th>Site</th><th>Location</th><th>Status</th><th>Work orders</th><th>Calibrations</th><th>Active schedules</th></tr></thead><tbody>
+{{range $i, $a := $g.Assets}}<tr><td><input type="radio" name="keep" value="{{$a.ID}}" aria-label="Keep {{$a.Tag}}" required {{if eq $i 0}}checked{{end}}></td>
+  <td><a href="/assets/{{$a.ID}}">{{$a.Tag}}</a></td><td>{{$a.Manufacturer}} {{$a.Model}}</td><td>{{$a.Serial}}</td><td>{{$a.Site}}</td><td>{{$a.Location}}</td>
+  <td class="s-{{$a.Status}}">{{label $a.Status}}</td><td>{{$a.WorkOrders}}</td><td>{{$a.Calibrations}}</td><td>{{$a.Schedules}}</td></tr>{{end}}
+</tbody></table>
+<p class="hint">Keep the record whose tag is on the equipment. If a merged record is out of service or missing, the kept record takes that status. Active schedules of the merged records keep running: end any duplicates afterwards on the Schedules page.</p>
+<label>Reason <input name="reason" required size="50" placeholder="e.g. PROV-7 is NYC-0001 registered twice"></label>{{template "nophi"}}
+<button>Merge</button>
+</form>
+{{end}}

@@ -121,6 +121,8 @@ func (s *Server) Handler() (http.Handler, error) {
 	mux.Handle("GET /assets", user(s.assetList))
 	mux.Handle("GET /assets/new", user(s.assetNew))
 	mux.Handle("POST /assets", user(s.assetCreate))
+	mux.Handle("GET /assets/merge", mid(s.mergePage))
+	mux.Handle("POST /assets/merge", mid(s.mergeDo))
 	mux.Handle("GET /assets/{id}", user(s.assetView))
 	mux.Handle("POST /assets/{id}/status", user(s.assetStatus))
 	mux.Handle("POST /assets/{id}/relocate", user(s.assetRelocate))

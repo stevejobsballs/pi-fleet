@@ -6,6 +6,8 @@
   <label>Manufacturer <input name="manufacturer" required></label>
   <label>Model <input name="model" required></label>
   <label>Serial number <input name="serial"></label>
+  <label>MasterID <input name="master_id" maxlength="64"></label>
+  <p class="hint">Records with the same MasterID are treated as the same equipment and can be merged. Leave it empty if the equipment has none.</p>
   <label>Risk class <select name="risk_class"><option value="">not set</option><option>low</option><option>medium</option><option>high</option></select></label>
   <label class="check"><input type="checkbox" name="reference" value="yes"> This is a reference standard used to calibrate other equipment</label>
   <button>Register</button>

@@ -368,6 +368,16 @@ func (a *App) SetAssetStatus(ctx context.Context, actor Actor, assetID string, b
 	})
 }
 
+// MergeAssets merges a duplicate equipment record into the one kept.
+// Both must have the same MasterID; baseVersion is the kept record's
+// version the user was looking at.
+func (a *App) MergeAssets(ctx context.Context, actor Actor, keepID string, baseVersion int64, mergedID, reason string) error {
+	return a.Store.Update(ctx, func(tx *store.Tx) error {
+		return a.emit(ctx, tx, actor, domain.TypeAssetMerged, domain.EntityAsset, keepID, baseVersion, "",
+			domain.AssetMerged{MergedAssetID: mergedID, Reason: reason})
+	})
+}
+
 // --- work orders ---
 
 // NewWorkOrder describes a work order to open.

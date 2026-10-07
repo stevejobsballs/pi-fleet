@@ -114,6 +114,9 @@ func BuildSnapshot(ctx context.Context, db *sql.DB, centralNodeID string, node d
 	if err != nil {
 		return nil, err
 	}
+	if assets, err = idSet(ctx, tx, withMerged, assets); err != nil {
+		return nil, err
+	}
 	records, err := idSet(ctx, tx, `
 		SELECT id FROM (
 			SELECT id, row_number() OVER (PARTITION BY asset_id ORDER BY performed_at DESC, id DESC) AS rn
@@ -132,6 +135,9 @@ func BuildSnapshot(ctx context.Context, db *sql.DB, centralNodeID string, node d
 	}
 	// Assets of included work orders (closed ones referenced by history).
 	if assets, err = idSet(ctx, tx, `SELECT value FROM json_each(?) UNION SELECT asset_id FROM work_orders WHERE id IN (SELECT value FROM json_each(?))`, assets, workOrders); err != nil {
+		return nil, err
+	}
+	if assets, err = idSet(ctx, tx, withMerged, assets); err != nil {
 		return nil, err
 	}
 
@@ -202,6 +208,13 @@ func BuildSnapshot(ctx context.Context, db *sql.DB, centralNodeID string, node d
 	}
 	return snap, rows.Err()
 }
+
+// withMerged adds to a set of asset ids the records merged into them and
+// the records they were merged into, so a Pi shows a kept record with its
+// merged history, and work against a merged record leads to the kept one.
+const withMerged = `SELECT value FROM json_each(?1)
+	UNION SELECT id FROM assets WHERE merged_into IN (SELECT value FROM json_each(?1))
+	UNION SELECT merged_into FROM assets WHERE merged_into != '' AND id IN (SELECT value FROM json_each(?1))`
 
 // idSet runs a query returning one id column and gives the ids as a JSON
 // array, ready to pass to json_each.

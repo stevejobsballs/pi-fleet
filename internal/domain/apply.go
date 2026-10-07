@@ -122,6 +122,8 @@ func (p *Projector) Apply(ctx context.Context, tx *sql.Tx, e *event.Event) error
 		return ap.assetRelocated(pl)
 	case *AssetStatusChanged:
 		return ap.assetStatusChanged(pl)
+	case *AssetMerged:
+		return ap.assetMerged(pl)
 	case *WorkOrderOpened:
 		return ap.workOrderOpened(pl)
 	case *WorkOrderAssigned:
@@ -603,16 +605,21 @@ func (ap *applier) assetRegistered(p *AssetRegistered) error {
 	if ok, err := ap.exists(`SELECT 1 FROM assets WHERE tag = ?`, p.Tag); err != nil || ok {
 		return orConflict(err, "asset tag %s already exists", p.Tag)
 	}
+	// A MasterID already in use is allowed: the records are then
+	// duplicates, listed for a mid-tier user to merge.
+	if err := CheckMasterID(p.MasterID); err != nil {
+		return err
+	}
 	custom, _ := json.Marshal(nonNilMap(p.CustomFields))
 	fv, _ := json.Marshal(map[string]int64{
 		"manufacturer": 1, "model": 1, "serial": 1, "risk_class": 1,
-		"is_reference_standard": 1, "custom_fields": 1, "location": 1, "status": 1,
+		"is_reference_standard": 1, "custom_fields": 1, "location": 1, "status": 1, "master_id": 1,
 	})
 	return ap.exec(`INSERT INTO assets (id, tag, site_id, location_id, manufacturer, model, serial, status,
-			risk_class, is_reference_standard, custom_fields, field_versions, version, last_event_id)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+			risk_class, is_reference_standard, custom_fields, field_versions, version, last_event_id, master_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
 		ap.e.EntityID, p.Tag, siteID, p.LocationID, p.Manufacturer, p.Model, p.Serial, AssetInService,
-		p.RiskClass, p.IsReferenceStandard, string(custom), string(fv), ap.e.EventID)
+		p.RiskClass, p.IsReferenceStandard, string(custom), string(fv), ap.e.EventID, p.MasterID)
 }
 
 func (ap *applier) targetAsset() (Asset, error) {
@@ -660,6 +667,9 @@ func (ap *applier) assetUpdated(p *AssetUpdated) error {
 	if len(fields) == 0 {
 		return invalid("asset update changes nothing")
 	}
+	if err := mergedRecord(a); err != nil {
+		return err
+	}
 	if a.Status == AssetRetired {
 		return invalid("asset %s is retired", a.Tag)
 	}
@@ -694,6 +704,12 @@ func (ap *applier) assetUpdated(p *AssetUpdated) error {
 		b, _ := json.Marshal(nonNilMap(*p.CustomFields))
 		set("custom_fields", string(b))
 	}
+	if p.MasterID != nil {
+		if err := CheckMasterID(*p.MasterID); err != nil {
+			return err
+		}
+		set("master_id", *p.MasterID)
+	}
 	return ap.bumpAsset(a, fields, strings.Join(sets, ", "), args...)
 }
 
@@ -703,6 +719,9 @@ func (ap *applier) assetRelocated(p *AssetRelocated) error {
 	}
 	a, err := ap.targetAsset()
 	if err != nil {
+		return err
+	}
+	if err := mergedRecord(a); err != nil {
 		return err
 	}
 	if a.Status == AssetRetired {
@@ -738,6 +757,9 @@ func (ap *applier) assetStatusChanged(p *AssetStatusChanged) error {
 	}
 	if (p.Status == AssetRetired || a.Status == AssetRetired) && !ap.actor.atLeast(RoleMidTier) {
 		return store.Reject(FlagNotAuthorized, "retiring or un-retiring an asset requires mid_tier")
+	}
+	if a.MergedInto != "" {
+		return ap.mergedStatusChanged(a, p)
 	}
 	if p.Status == a.Status {
 		return invalid("asset %s is already %s", a.Tag, p.Status)
