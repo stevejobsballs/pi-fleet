@@ -113,7 +113,7 @@ func cmdActivate(ctx context.Context, args []string, c *cli) error {
 	if *kiosk != "" {
 		act, err = cl.ActivateKiosk(ctx, *kiosk, oneTime)
 	} else {
-		c.printf("Now choose your own password (at least 12 characters).\n")
+		c.printf("Now choose your own password (at least 12 characters, not one known from data breaches).\n")
 		chosen, perr := c.newPassword(*username, "New password: ")
 		if perr != nil {
 			return perr

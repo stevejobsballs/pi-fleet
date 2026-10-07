@@ -123,7 +123,7 @@ type PolicyError struct{ Reason string }
 func (e *PolicyError) Error() string { return "password: " + e.Reason }
 
 // CheckPolicy enforces the password rules that need the plaintext:
-// length, common passwords, and containing the username. Reuse of recent
+// length, common and breached passwords, and containing the username. Reuse of recent
 // passwords is checked with CheckHistory.
 func CheckPolicy(pw, username string) error {
 	if utf8.RuneCountInString(pw) < MinLength {
@@ -135,6 +135,9 @@ func CheckPolicy(pw, username string) error {
 	}
 	if isCommon(lower) {
 		return &PolicyError{"is too common"}
+	}
+	if isBreached(lower) {
+		return &PolicyError{"has appeared in published data breaches, so attackers try it first; choose another"}
 	}
 	if distinct(pw) < 4 {
 		return &PolicyError{"must use more distinct characters"}

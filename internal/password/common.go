@@ -2,9 +2,9 @@ package password
 
 import "strings"
 
-// commonPasswords is a small seed list of passwords long enough to pass
-// the length rule but trivially guessable. A larger breached-password
-// list should replace it before release (DESIGN.md §6.5).
+// commonPasswords adds guessable passwords specific to pi-fleet's users
+// (maintenance, calibration, Raspberry Pi) to the breached-password filter
+// (breached.go), which catches the general ones.
 var commonPasswords = map[string]bool{}
 
 func init() {

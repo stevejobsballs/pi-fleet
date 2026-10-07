@@ -397,7 +397,8 @@ func (w *Wizard) records(reused bool) error {
 		if err != nil {
 			return err
 		}
-		u.Say("Now choose a password: at least 12 characters, not containing the username.")
+		u.Say("Now choose a password: at least 12 characters, not containing the username,")
+		u.Say("and not one that has appeared in a data breach (pi-fleet checks).")
 		if err := w.asPifleet("bootstrap", "-data", DataDir, "-username", user, "-name", name, "-email", email); err == nil {
 			return nil
 		}

@@ -881,9 +881,13 @@ unsynced events can still be imported (§8.4 B).
 - **Plaintext passwords never leave the device they are typed on.** Nodes send
   central only new salts and verifiers, inside signed events. Central's own web
   UI receives passwords over TLS and hashes them server-side.
-- **Password policy:** minimum 12 characters, checked against a bundled
-  common/breached-password list, and must differ from the last 5 (compared by
-  verifier). All checks run on the node, so changes work offline.
+- **Password policy:** minimum 12 characters, not containing the username,
+  not in a bundled breached-password list (about 2.2 million published
+  breached passwords of 12+ characters, case-insensitive, as a Bloom filter
+  with a 1-in-1000 false-positive rate built into the binary; sources and
+  rebuild in `internal/password/BREACHED.md`) or pi-fleet's own list of
+  guessable ones, and must differ from the last 5 (compared by verifier).
+  All checks run on the node, so changes work offline.
 - **Expiry: every 31 days (D11).**
   - Reminders start 7 days before expiry.
   - After expiry, login is allowed **only to change the password**. Nothing

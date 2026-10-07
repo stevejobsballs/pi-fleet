@@ -81,7 +81,7 @@ func cmdBootstrap(ctx context.Context, args []string, c *cli) error {
 		return err
 	}
 	defer n.Close()
-	c.printf("Choose a password for %s (at least 12 characters).\n", *username)
+	c.printf("Choose a password for %s (at least 12 characters, not one known from data breaches).\n", *username)
 	pw, err := c.newPassword(*username, "Password: ")
 	if err != nil {
 		return err

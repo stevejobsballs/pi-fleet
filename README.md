@@ -121,4 +121,4 @@ RWQAisnE7wGQwd/uCF+DUmXqqMY3QC3F2TPYRxyIBqZJGgvB4xR+U5XM
 
 ## License
 
-Apache-2.0. See [LICENSE](LICENSE).
+Apache-2.0. See [LICENSE](LICENSE). The breached-password filter is derived from MIT-licensed lists in SecLists; see [NOTICE](NOTICE).
