@@ -20,6 +20,8 @@ import (
 	"pi-fleet/internal/blobs"
 	"pi-fleet/internal/domain"
 	"pi-fleet/internal/event"
+	"pi-fleet/internal/fleetca"
+	"pi-fleet/internal/fleetsync"
 	"pi-fleet/internal/hlc"
 	"pi-fleet/internal/password"
 	"pi-fleet/internal/store"
@@ -62,12 +64,21 @@ func newEnv(t *testing.T) *env {
 	e.site, _ = e.app.CreateSite(e.ctx, e.super, "NYC", "New York", "America/New_York")
 	e.loc, _ = e.app.CreateLocation(e.ctx, e.super, e.site, "", "Biomed shop", "room")
 
-	s := &Server{App: e.app, Role: "central", Now: clock, PHIPatterns: DefaultPHIPatterns}
+	s := &Server{App: e.app, Role: "central", Now: clock, PHIPatterns: DefaultPHIPatterns, Secure: true}
 	h, err := s.Handler()
 	if err != nil {
 		t.Fatal(err)
 	}
-	e.srv = httptest.NewServer(h)
+	// Like the master Pi: the sync API and the web interface on one address.
+	ca, err := fleetca.LoadOrCreate(t.TempDir(), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	mux.Handle("/v1/", (&fleetsync.Server{App: e.app, CentralKey: e.key, Now: clock, Logf: t.Logf,
+		Fleet: (&FleetAPI{App: e.app}).Handler(), Blobs: e.app.Blobs, CA: ca}).Handler())
+	mux.Handle("/", h)
+	e.srv = httptest.NewTLSServer(mux)
 	t.Cleanup(e.srv.Close)
 	return e
 }
@@ -85,7 +96,7 @@ func (e *env) user(username, legalName, role string) string {
 	return id
 }
 
-// browser is one signed-in person.
+// browser is one signed-in person using Firefox (see browser_test.go).
 type browser struct {
 	e    *env
 	c    *http.Client
@@ -94,7 +105,8 @@ type browser struct {
 
 func (e *env) browser() *browser {
 	jar, _ := cookiejar.New(nil)
-	return &browser{e: e, c: &http.Client{Jar: jar, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
+	ff := &firefox{t: e.t, base: e.srv.Client().Transport}
+	return &browser{e: e, c: &http.Client{Jar: jar, Transport: ff, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
 }
 
 var csrfRE = regexp.MustCompile(`name="csrf" value="([^"]+)"`)
@@ -138,6 +150,7 @@ func (b *browser) post(path string, form url.Values) (int, string) {
 
 func (b *browser) login(username, pw string) {
 	b.e.t.Helper()
+	b.get("/login")
 	code, page := b.post("/login", url.Values{"username": {username}, "password": {pw}})
 	if code != http.StatusSeeOther {
 		b.e.t.Fatalf("login %s: %d\n%s", username, code, page)
@@ -152,7 +165,7 @@ func TestSecurityHeadersAndLoginRequired(t *testing.T) {
 	if code != http.StatusSeeOther || loc != "/login" {
 		t.Fatalf("unauthenticated: %d %s", code, loc)
 	}
-	resp, err := http.Get(e.srv.URL + "/login")
+	resp, err := e.srv.Client().Get(e.srv.URL + "/login")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -190,6 +203,8 @@ func TestLoginCSRFAndOrigin(t *testing.T) {
 	req, _ := http.NewRequest("POST", e.srv.URL+"/admin/sites", strings.NewReader(url.Values{"csrf": {b.csrf}, "code": {"EVL"}, "name": {"x"}, "timezone": {"UTC"}}.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Origin", "https://evil.example")
+	req.Header.Set("Referer", "https://evil.example/")
+	req.Header.Set("Sec-Fetch-Site", "cross-site")
 	resp, err := b.c.Do(req)
 	if err != nil {
 		t.Fatal(err)

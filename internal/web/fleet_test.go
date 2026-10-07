@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 
 	"pi-fleet/internal/app"
+	"pi-fleet/internal/blobs"
 	"pi-fleet/internal/domain"
 	"pi-fleet/internal/event"
 	"pi-fleet/internal/fleetsync"
@@ -48,7 +49,11 @@ func (e *env) employeePi(syncURL, username string) (*httptest.Server, *store.Sto
 	author := &store.Author{NodeID: nodeID, ChainID: chainID, Signer: k.EventSigner(), Clock: hlc.New(clock, 0), Now: clock}
 	st.Append(e.ctx, author, event.Draft{ActorUserID: "system:init", ActorSessionID: "s", Type: event.TypeChainStarted,
 		EntityType: "chain", EntityID: chainID, SchemaVersion: 1, Payload: []byte(`{}`)})
-	cl := &fleetsync.Client{BaseURL: syncURL, Store: st, Keys: k, NodeID: nodeID, ChainID: chainID, Now: clock, Wipe: func() error { return nil }}
+	bl := &blobs.Store{Dir: filepath.Join(dir, "blobs")}
+	cl := &fleetsync.Client{BaseURL: syncURL, Store: st, Keys: k, NodeID: nodeID, ChainID: chainID, Now: clock, Wipe: func() error { return nil }, Blobs: bl}
+	if syncURL == e.srv.URL {
+		cl.HTTP = e.srv.Client() // trusts the test master's certificate, like master.pem on a real Pi
+	}
 	act, err := cl.Activate(e.ctx, username, temp, "copper-ladder-sunrise", cheap)
 	if err != nil {
 		e.t.Fatal(err)
@@ -60,7 +65,8 @@ func (e *env) employeePi(syncURL, username string) (*httptest.Server, *store.Sto
 	if _, err := cl.Sync(e.ctx); err != nil {
 		e.t.Fatal(err)
 	}
-	ui := &Server{App: &app.App{Store: st, Author: author, Params: cheap, Now: clock}, Role: "node", Fleet: cl, Now: clock}
+	// As cmd/pi-fleet sets up a real Pi.
+	ui := &Server{App: &app.App{Store: st, Author: author, Params: cheap, Now: clock, Blobs: bl, QueueUploads: true}, Role: "node", Fleet: cl, Now: clock}
 	h, err := ui.Handler()
 	if err != nil {
 		e.t.Fatal(err)
