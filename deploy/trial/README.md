@@ -11,6 +11,27 @@ self-signed certificate on port 8443 and keeps its data on the SD card
 Every script accepts `--dry-run`, which prints what it would do without
 changing anything. Use it first if you want to see the steps.
 
+## The easy way: double-click
+
+The kit has files you can double-click in the File Manager instead of
+typing commands. Each opens a terminal window, asks its questions (and your
+sudo password), runs the matching script below, and waits for Enter before
+closing so you can read the result. If the File Manager asks what to do,
+choose **Execute** or **Execute in Terminal**; either works.
+
+| File | Where | What it does |
+|---|---|---|
+| `Setup-Master-Pi.sh` | master | offers to rename the Pi, then runs `master-setup.sh` with the newest release binary |
+| `Make-Employee-Kit.sh` | master | puts the kit, the binary, the master's certificate and address in a `pi-fleet-employee-kit` folder on the Desktop, and can send it over the network |
+| `Setup-Employee-Pi.sh` | employee Pi | from that copied folder: offers to rename the Pi, asks for your username (or kiosk name), runs `node-setup.sh` |
+| `Update-Pi.sh` | either | runs `update.sh` |
+| `Check-Pi.sh` | either | runs `check.sh` |
+
+Order: Setup-Master-Pi, then create a user on the web interface, then
+Make-Employee-Kit, copy the folder to the employee Pi (USB stick is fine),
+then Setup-Employee-Pi there. The sections below are the same steps typed
+by hand.
+
 **Before you start, give each Pi its own host name.** Both Pis are called
 `raspberrypi` out of the box, and then the employee Pi can't find the master
 by name. On each Pi:
