@@ -16,6 +16,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -278,15 +279,15 @@ func (s *Server) handleChallenge(w http.ResponseWriter, r *http.Request, body []
 		return err
 	}
 	resp := ChallengeResponse{Time: password.Default.Time, MemoryKiB: password.Default.MemoryKiB, Threads: password.Default.Threads, KeyLen: 32}
-	u, err := domain.GetUserByUsername(ctx, s.App.Store.DB(), req.Username)
+	verifier, _, err := s.activationVerifier(ctx, req.Username)
 	switch {
-	case err == nil && u.MustChangePassword:
-		v, err := password.Parse(u.Verifier)
+	case err == nil:
+		v, err := password.Parse(verifier)
 		if err != nil {
 			return err
 		}
 		resp.Salt, resp.Time, resp.MemoryKiB, resp.Threads, resp.KeyLen = v.Salt, v.Params.Time, v.Params.MemoryKiB, v.Params.Threads, len(v.Key)
-	case err == nil || errors.Is(err, domain.ErrNotFound):
+	case errors.Is(err, errNoActivation):
 		// Don't reveal whether the account exists or is awaiting activation.
 		if resp.Salt, err = s.fakeSalt(ctx, req.Username); err != nil {
 			return err
@@ -340,14 +341,14 @@ func (s *Server) handleActivate(w http.ResponseWriter, r *http.Request, body []b
 	if consumed != 1 {
 		return errActivationFailed
 	}
-	u, err := domain.GetUserByUsername(ctx, s.App.Store.DB(), req.Username)
-	if errors.Is(err, domain.ErrNotFound) || (err == nil && !u.MustChangePassword) {
+	verifier, who, err := s.activationVerifier(ctx, req.Username)
+	if errors.Is(err, errNoActivation) {
 		return errActivationFailed
 	}
 	if err != nil {
 		return err
 	}
-	v, err := password.Parse(u.Verifier)
+	v, err := password.Parse(verifier)
 	if err != nil {
 		return err
 	}
@@ -359,16 +360,22 @@ func (s *Server) handleActivate(w http.ResponseWriter, r *http.Request, body []b
 	if err != nil {
 		return errActivationFailed
 	}
+	activated := domain.NodeActivated{Mode: "personal", UserID: who, PendingVerifier: pending}
+	if kioskName, ok := strings.CutPrefix(req.Username, domain.KioskPrefix); ok {
+		k, err := domain.GetKioskByName(ctx, s.App.Store.DB(), kioskName)
+		if err != nil {
+			return err
+		}
+		activated = domain.NodeActivated{Mode: "kiosk", KioskID: k.ID}
+	}
 	evPub, err1 := hex.DecodeString(req.EventPublicKey)
 	trPub, err2 := hex.DecodeString(req.TransportPublicKey)
 	if err1 != nil || err2 != nil {
 		return fail(http.StatusBadRequest, "public keys must be hex")
 	}
 	words := pairing.Words(evPub, trPub)
-	err = s.App.RecordActivation(ctx, req.NodeID, domain.NodeActivated{
-		UserID: u.ID, Mode: "personal", EventPublicKey: req.EventPublicKey, TransportPublicKey: req.TransportPublicKey,
-		PairingWords: words, PendingVerifier: pending,
-	})
+	activated.EventPublicKey, activated.TransportPublicKey, activated.PairingWords = req.EventPublicKey, req.TransportPublicKey, words
+	err = s.App.RecordActivation(ctx, req.NodeID, activated)
 	var rej *store.Rejection
 	if errors.As(err, &rej) {
 		return fail(http.StatusConflict, "activation refused: %s", rej.Detail)
@@ -381,9 +388,29 @@ func (s *Server) handleActivate(w http.ResponseWriter, r *http.Request, body []b
 		CentralNodeID: s.App.Author.NodeID, CentralEventPub: hex.EncodeToString(s.CentralKey.Public().(ed25519.PublicKey)),
 	}
 	resp.MAC = responseMAC(macKey, req.Nonce, &resp)
-	s.logf("sync: Pi %s activated for %s, awaiting super-user confirmation (words: %s)", req.NodeID, u.Username, words)
+	s.logf("sync: Pi %s activated for %s, awaiting super-user confirmation (words: %s)", req.NodeID, req.Username, words)
 	writeJSON(w, resp)
 	return nil
+}
+
+var errNoActivation = errors.New("no pending activation")
+
+// activationVerifier returns the one-time activation password verifier
+// for a username, or for "kiosk:<name>" a kiosk's, and the user id (empty
+// for a kiosk).
+func (s *Server) activationVerifier(ctx context.Context, username string) (string, string, error) {
+	if name, ok := strings.CutPrefix(username, domain.KioskPrefix); ok {
+		k, err := domain.GetKioskByName(ctx, s.App.Store.DB(), name)
+		if errors.Is(err, domain.ErrNotFound) || (err == nil && (k.ActivationVerifier == "" || !s.now().Before(k.ActivationExpires))) {
+			return "", "", errNoActivation
+		}
+		return k.ActivationVerifier, "", err
+	}
+	u, err := domain.GetUserByUsername(ctx, s.App.Store.DB(), username)
+	if errors.Is(err, domain.ErrNotFound) || (err == nil && !u.MustChangePassword) {
+		return "", "", errNoActivation
+	}
+	return u.Verifier, u.ID, err
 }
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request, n domain.Node, _ []byte) error {

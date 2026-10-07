@@ -1,6 +1,6 @@
 {{define "content"}}
 {{if .Data}}<table><thead><tr><th>Pi</th><th>Belongs to</th><th>Status</th><th>Activated</th><th>Pairing words</th><th></th></tr></thead><tbody>
-{{range .Data}}<tr><td><code>{{.ID}}</code></td><td>{{.Username}}</td><td>{{label .Status}}{{if .Quarantined}}<br><span class="warn">quarantined after a chain fork</span>{{end}}</td><td>{{.ActivatedAt}}</td><td>{{.PairingWords}}</td><td>
+{{range .Data}}<tr><td><code>{{.ID}}</code></td><td>{{if eq .Mode "kiosk"}}kiosk{{else}}{{.Username}}{{end}}</td><td>{{label .Status}}{{if .Quarantined}}<br><span class="warn">quarantined after a chain fork</span>{{end}}</td><td>{{.ActivatedAt}}</td><td>{{.PairingWords}}</td><td>
   {{if eq .Status "pending_confirmation"}}
   <form method="post" action="/admin/nodes/{{.ID}}/confirm" class="inline">{{template "csrf" $.CSRF}}<label>Words the employee reads out <input name="words" required></label><button>Confirm</button></form>
   <form method="post" action="/admin/nodes/{{.ID}}/reject" class="inline">{{template "csrf" $.CSRF}}<label>Reason <input name="reason" required></label><button class="danger">Reject</button></form>

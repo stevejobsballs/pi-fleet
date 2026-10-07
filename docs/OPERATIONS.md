@@ -118,6 +118,21 @@ Read the six words to your super user. Once they confirm, enable
 
 A Pi 5 RTC battery and full-disk encryption are strongly recommended.
 
+### Kiosk (shared Pi)
+
+A super user creates the kiosk on the master Pi (web *Kiosks* page, or
+`pi-fleet kiosk-create -data /srv/pi-fleet -as <you> -name nyc-shop -site NYC`)
+and adds members. Then on the shared Pi:
+
+```sh
+sudo -u pifleet /opt/pi-fleet/current/pi-fleet activate -data /var/lib/pi-fleet \
+    -central https://fleet.example.org -kiosk nyc-shop
+```
+
+Confirm the six words on the master Pi's *Pis* page, and run it like any
+other Pi. To serve the kiosk to tablets on the site LAN rather than the Pi's
+own screen, put it behind HTTPS (see DESIGN.md §11).
+
 ## Updates (both kinds of Pi)
 
 Releases are signed with an offline key and verified against keys compiled

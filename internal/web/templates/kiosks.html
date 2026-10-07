@@ -1,0 +1,18 @@
+{{define "content"}}
+<p>A kiosk is a shared Pi at a site. Each member signs in on it with their own password, and everything they record is attributed to them. Members can also have their own Pi.</p>
+{{range .Data.Kiosks}}{{$k := .}}
+<section><h2>{{.Name}} · {{.Site}}</h2>
+<p>Pi: {{label .PiStatus}}{{if .ActivationPending}} · activation password issued, not yet used{{end}}</p>
+<ul>{{range .Members}}<li>{{.Label}}
+  <form method="post" action="/admin/kiosks/{{$k.ID}}/members/remove" class="inline">{{template "csrf" $.CSRF}}<input type="hidden" name="user" value="{{.ID}}"><button class="link">remove</button></form></li>
+{{else}}<li>No members yet.</li>{{end}}</ul>
+<form method="post" action="/admin/kiosks/{{.ID}}/members" class="inline">{{template "csrf" $.CSRF}}
+  <label>Add member <select name="user">{{range $.Data.Users}}<option value="{{.ID}}">{{.Label}}</option>{{end}}</select></label><button>Add</button></form>
+<form method="post" action="/admin/kiosks/{{.ID}}/reset" class="inline">{{template "csrf" $.CSRF}}<button>New activation password</button></form>
+</section>{{else}}<p>No kiosks yet.</p>{{end}}
+<section><h2>New kiosk</h2>
+<form method="post" action="/admin/kiosks" class="inline">{{template "csrf" .CSRF}}
+  <label>Site <select name="site">{{range .Data.Sites}}<option value="{{.ID}}">{{.Label}}</option>{{end}}</select></label>
+  <label>Name <input name="name" required pattern="[a-z0-9][a-z0-9-]{2,31}" placeholder="nyc-biomed-shop"></label>
+  <button>Create kiosk</button></form></section>
+{{end}}

@@ -172,6 +172,11 @@ func (s *Server) Handler() (http.Handler, error) {
 		mux.Handle("POST /admin/nodes/{id}/reject", super(s.nodeReject))
 		mux.Handle("POST /admin/nodes/{id}/revoke", super(s.nodeRevoke))
 		mux.Handle("POST /admin/nodes/{id}/unquarantine", super(s.nodeUnquarantine))
+		mux.Handle("GET /admin/kiosks", super(s.kioskList))
+		mux.Handle("POST /admin/kiosks", super(s.kioskCreate))
+		mux.Handle("POST /admin/kiosks/{id}/reset", super(s.kioskReset))
+		mux.Handle("POST /admin/kiosks/{id}/members", super(s.kioskMember(true)))
+		mux.Handle("POST /admin/kiosks/{id}/members/remove", super(s.kioskMember(false)))
 	}
 	return securityHeaders(mux), nil
 }
@@ -275,6 +280,13 @@ func (s *Server) loadSession(r *http.Request) (*session, error) {
 		return nil, nil
 	}
 	if sess.User.Status != domain.UserStatusActive && !(sess.PasswordOnly && sess.User.Status == domain.UserStatusPending) || sess.User.Locked(now) {
+		s.exec(ctx, `DELETE FROM sessions WHERE id_hash = ?`, sess.IDHash)
+		return nil, nil
+	}
+	// On a Pi, central withholds the verifiers of everyone who may not
+	// sign in there (e.g. someone just removed from a kiosk): end their
+	// sessions too.
+	if sess.User.Verifier == "" {
 		s.exec(ctx, `DELETE FROM sessions WHERE id_hash = ?`, sess.IDHash)
 		return nil, nil
 	}

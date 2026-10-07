@@ -42,7 +42,7 @@ per-node authentication, signed releases, and backup/restore.
 | D10 | Three roles: **super user**, **mid-tier** (designated by a super user, can reassign work, resolve conflicts, and review), and **user** (§4.3). |
 | D11 | Passwords **expire every 31 days** (§6.5). |
 | D12 | Working set covers **everything due fleet-wide** in the next 31 days, plus the user's assigned work (§5.6). |
-| D13 | A kiosk group member may **also** have one personal Pi. Like every Pi, it must be activated with the user's credentials **and** confirmed by a super user (§6.3). |
+| D13 | A kiosk member may **also** have one personal Pi. Like every Pi, it must be activated with the user's credentials **and** confirmed by a super user (§6.3). |
 | D14 | Mid-tier users are designated **fleet-wide**, covering every site (§4.3). |
 | D15 | **Every new Pi (personal or kiosk) needs super-user confirmation** before it becomes active (§6.3). |
 
@@ -805,23 +805,32 @@ To move to a replacement Pi, a super user revokes the old node and issues a new
 activation password, and the new Pi goes through the same confirmation. The account and its history are kept, and the old node's
 unsynced events can still be imported (§8.4 B).
 
-**Kiosk mode** (a shared Pi at a site; *not yet implemented*):
+**Kiosk mode** (a shared Pi at a site):
 
-1. A super user creates a **kiosk group** for a site, adds members (existing
-   users), and generates a kiosk activation password.
-2. The super user, or someone they hand the activation password to, activates
-   the kiosk Pi exactly as above, **including super-user confirmation**. The
-   node is bound to the group, not to a person.
-3. Each member logs in on the kiosk with **their own** username and password,
-   because their verifiers are part of the kiosk's working set. Every event
-   carries the member's `actor_user_id` and is signed by the kiosk's node key.
-   Central accepts only actors who were group members at the time of the event.
-4. Membership is managed on central. Removal takes effect at the kiosk's next
-   sync, and is immediate on central for anything synced later.
-5. Kiosk membership doesn't count as owning a Pi (D13). A user may belong to
-   kiosk groups **and** have one personal Pi. The personal Pi still needs its
-   own activation credentials and super-user confirmation, like any other
-   node.
+1. A super user creates a **kiosk** for a site (`kiosk.created`, web
+   *Kiosks* page or `pi-fleet kiosk-create`). This issues a one-time
+   activation password, valid 72 hours, and members are added and removed
+   there too.
+2. The shared Pi activates with `pi-fleet activate -kiosk <name>`, using the
+   same password proof as a personal Pi under the name `kiosk:<name>`. A super
+   user then confirms its pairing words. The activation password is single
+   use, and only one active Pi is allowed per kiosk. A replacement Pi needs a
+   new activation password (`kiosk.activation_reset`).
+3. Each member signs in on the kiosk with **their own** username and password.
+   The kiosk's snapshot carries the verifiers, password history and lockouts
+   of current members only, plus equipment at the kiosk's site. Every event
+   carries the member's `actor_user_id` and is signed by the kiosk's key.
+   Central accepts an actor only if they were a member when the event was made.
+   A removal records its HLC, so work done on the kiosk before the removal
+   still counts when it syncs later (offline grace, as for leases).
+4. A removed member loses their verifier at the kiosk's next sync, and any open
+   session they have there ends at once.
+5. Members may be new users who haven't chosen a password yet. They sign in on
+   the kiosk with their one-time password and must change it there, and the
+   change syncs to central like any other.
+6. Kiosk membership doesn't count as owning a Pi (D13). A user may belong to
+   kiosks **and** have one personal Pi. The personal Pi still needs its own
+   activation credentials and super-user confirmation.
 
 ### 6.4 Rotation, revocation, offboarding
 

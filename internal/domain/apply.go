@@ -64,7 +64,7 @@ var _ store.Applier = (*Projector)(nil)
 // Reset empties every projection table.
 func (p *Projector) Reset(ctx context.Context, tx *sql.Tx) error {
 	for _, t := range []string{
-		"attachments", "signatures", "cal_standards", "cal_points", "calibration_records", "stock_txns", "stock_levels", "stock_locations", "parts",
+		"kiosk_members", "kiosks", "attachments", "signatures", "cal_standards", "cal_points", "calibration_records", "stock_txns", "stock_levels", "stock_locations", "parts",
 		"wo_leases", "work_orders", "pm_schedules", "assets", "locations", "sites",
 		"nodes", "user_lockouts", "user_password_history", "users", "backups", "durable_heads", "flag_resolutions",
 	} {
@@ -178,6 +178,15 @@ func (p *Projector) Apply(ctx context.Context, tx *sql.Tx, e *event.Event) error
 		return ap.attachmentAdded(pl)
 	case *AttachmentDetached:
 		return ap.attachmentDetached(pl)
+	case *KioskCreated:
+		return ap.kioskCreated(pl)
+	case *KioskMember:
+		if e.Type == TypeKioskMemberAdded {
+			return ap.kioskMemberAdded(pl)
+		}
+		return ap.kioskMemberRemoved(pl)
+	case *KioskActivationReset:
+		return ap.kioskActivationReset(pl)
 	}
 	return fmt.Errorf("domain: no handler for %T", v)
 }

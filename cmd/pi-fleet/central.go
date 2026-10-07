@@ -328,3 +328,75 @@ func cmdUserCreate(ctx context.Context, args []string, c *cli) error {
 	c.printf("created %s. Give them this one-time password in person (valid 72 hours):\n\n    %s\n\n", *username, oneTime)
 	return nil
 }
+
+func cmdKioskCreate(ctx context.Context, args []string, c *cli) error {
+	var as, name, site *string
+	_, data, err := parse("kiosk-create", args, func(fs *flag.FlagSet) {
+		as = fs.String("as", "", "your super-user name")
+		name = fs.String("name", "", "kiosk name, e.g. nyc-biomed-shop")
+		site = fs.String("site", "", "site code, e.g. NYC")
+	})
+	if err != nil {
+		return err
+	}
+	n, a, err := openCentral(ctx, *data)
+	if err != nil {
+		return err
+	}
+	defer n.Close()
+	actor, err := superUser(ctx, a, c, *as)
+	if err != nil {
+		return err
+	}
+	s, err := domain.GetSiteByCode(ctx, n.store.DB(), *site)
+	if err != nil {
+		return fmt.Errorf("site %q: %w", *site, err)
+	}
+	_, pw, err := a.CreateKiosk(ctx, actor, s.ID, *name)
+	if err != nil {
+		return err
+	}
+	c.printf("created kiosk %s. One-time activation password (valid 72 hours):\n\n    %s\n\nOn the shared Pi: pi-fleet activate -kiosk %s -central <URL>\n", *name, pw, *name)
+	return nil
+}
+
+func cmdKioskMember(ctx context.Context, args []string, c *cli) error {
+	var as, name, username *string
+	var remove *bool
+	_, data, err := parse("kiosk-member", args, func(fs *flag.FlagSet) {
+		as = fs.String("as", "", "your super-user name")
+		name = fs.String("kiosk", "", "kiosk name")
+		username = fs.String("user", "", "username to add or remove")
+		remove = fs.Bool("remove", false, "remove instead of add")
+	})
+	if err != nil {
+		return err
+	}
+	n, a, err := openCentral(ctx, *data)
+	if err != nil {
+		return err
+	}
+	defer n.Close()
+	actor, err := superUser(ctx, a, c, *as)
+	if err != nil {
+		return err
+	}
+	k, err := domain.GetKioskByName(ctx, n.store.DB(), *name)
+	if err != nil {
+		return fmt.Errorf("kiosk %q: %w", *name, err)
+	}
+	u, err := domain.GetUserByUsername(ctx, n.store.DB(), *username)
+	if err != nil {
+		return fmt.Errorf("user %q: %w", *username, err)
+	}
+	if *remove {
+		err = a.RemoveKioskMember(ctx, actor, k.ID, u.ID)
+	} else {
+		err = a.AddKioskMember(ctx, actor, k.ID, u.ID)
+	}
+	if err != nil {
+		return err
+	}
+	c.printf("done; the kiosk picks this up at its next sync\n")
+	return nil
+}

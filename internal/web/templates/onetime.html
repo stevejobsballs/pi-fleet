@@ -1,7 +1,14 @@
 {{define "content"}}
+{{if eq .Data.What "kiosk"}}
+<p>One-time activation password for kiosk <strong>{{.Data.Username}}</strong>. It is shown only once and works for 72 hours.</p>
+<p class="otp">{{.Data.Password}}</p>
+<p>On the shared Pi run <code>pi-fleet activate -kiosk {{.Data.Username}} -central &lt;master Pi URL&gt;</code>, enter this password, then confirm the six words on the Pis page.</p>
+<p><a href="/admin/kiosks">Back to kiosks</a></p>
+{{else}}
 <p>{{if eq .Data.What "created"}}Created <strong>{{.Data.Username}}</strong>.{{else}}Reset the password for <strong>{{.Data.Username}}</strong>.{{end}}
 Give them this one-time password in person. It is shown only once and works for 72 hours.</p>
 <p class="otp">{{.Data.Password}}</p>
 <p>They use it to activate their Pi (or to sign in here), and choose their own password straight away.</p>
 <p><a href="/admin/users">Back to users</a></p>
+{{end}}
 {{end}}

@@ -10,7 +10,8 @@ Built so far: the signed, append-only event log; users, roles, sites,
 equipment, work orders, calibrations, PM schedules and inventory;
 activation and sync between employee Pis and the master Pi; Part 11-style
 electronic signatures; the web interface; verified, encrypted backups with
-off-site USB rotation; and signed releases with automatic rollback.
+off-site USB rotation; signed releases with automatic rollback;
+attachments (certificates and photos); and kiosk mode for shared Pis.
 Installation and day-to-day operation: [docs/OPERATIONS.md](docs/OPERATIONS.md).
 
 ## Build

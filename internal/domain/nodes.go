@@ -34,18 +34,19 @@ type Node struct {
 	Status         string
 	ActivatedAt    string
 	KeepUnsynced   bool
-	RevokedHLC     int64 // 0 unless revoked
+	RevokedHLC     int64  // 0 unless revoked
+	KioskID        string // kiosk mode; empty for a personal Pi
 	Version        int64
 }
 
 const nodeColumns = `id, mode, bound_user_id, event_pub, transport_pub, transport_key_id, pairing_words,
-	status, activated_at, keep_unsynced, coalesce(revoked_hlc, 0), version`
+	status, activated_at, keep_unsynced, coalesce(revoked_hlc, 0), kiosk_id, version`
 
 func scanNode(row interface{ Scan(...any) error }) (Node, error) {
 	var n Node
 	var ev, tr []byte
 	err := row.Scan(&n.ID, &n.Mode, &n.BoundUserID, &ev, &tr, &n.TransportKeyID, &n.PairingWords,
-		&n.Status, &n.ActivatedAt, &n.KeepUnsynced, &n.RevokedHLC, &n.Version)
+		&n.Status, &n.ActivatedAt, &n.KeepUnsynced, &n.RevokedHLC, &n.KioskID, &n.Version)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Node{}, ErrNotFound
 	}
@@ -101,7 +102,20 @@ func checkNodeBinding(ctx context.Context, tx *sql.Tx, e *event.Event) error {
 	default:
 		return store.Reject(FlagNotAuthorized, "node %s is %s", n.ID, n.Status)
 	}
-	if e.ActorUserID != n.BoundUserID && e.ActorUserID != SystemAuth {
+	if e.ActorUserID == SystemAuth {
+		return nil
+	}
+	if n.Mode == "kiosk" {
+		ok, err := kioskMemberAt(ctx, tx, n.KioskID, e.ActorUserID, e)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return store.Reject(FlagNotAuthorized, "user is not a member of kiosk %s", n.KioskID)
+		}
+		return nil
+	}
+	if e.ActorUserID != n.BoundUserID {
 		return store.Reject(FlagNotAuthorized, "node %s is bound to another user", n.ID)
 	}
 	return nil
@@ -119,22 +133,48 @@ func (ap *applier) nodeActivated(p *NodeActivated) error {
 	if err := ap.newEntity("nodes"); err != nil {
 		return err
 	}
-	if p.Mode != "personal" {
-		return invalid("only personal nodes can be activated so far")
-	}
-	u, err := GetUser(ap.ctx, ap.tx, p.UserID)
-	if errors.Is(err, ErrNotFound) {
-		return invalid("user %s not found", p.UserID)
-	}
-	if err != nil {
-		return err
-	}
-	if u.Status == UserStatusDisabled || !u.MustChangePassword || u.PasswordExpired(ap.e.WallTime) {
-		return store.Reject(FlagNotAuthorized, "user %s has no unexpired one-time password", u.Username)
-	}
-	if ok, err := ap.exists(`SELECT 1 FROM nodes WHERE bound_user_id = ? AND mode = 'personal' AND status IN (?, ?)`,
-		u.ID, NodeStatusPending, NodeStatusActive); err != nil || ok {
-		return orConflict(err, "user %s already has a Pi (one personal Pi per user)", u.Username)
+	var userID string
+	switch p.Mode {
+	case "personal":
+		u, err := GetUser(ap.ctx, ap.tx, p.UserID)
+		if errors.Is(err, ErrNotFound) {
+			return invalid("user %s not found", p.UserID)
+		}
+		if err != nil {
+			return err
+		}
+		if u.Status == UserStatusDisabled || !u.MustChangePassword || u.PasswordExpired(ap.e.WallTime) {
+			return store.Reject(FlagNotAuthorized, "user %s has no unexpired one-time password", u.Username)
+		}
+		if ok, err := ap.exists(`SELECT 1 FROM nodes WHERE bound_user_id = ? AND mode = 'personal' AND status IN (?, ?)`,
+			u.ID, NodeStatusPending, NodeStatusActive); err != nil || ok {
+			return orConflict(err, "user %s already has a Pi (one personal Pi per user)", u.Username)
+		}
+		if _, err := password.Parse(p.PendingVerifier); err != nil {
+			return invalid("pending verifier: %v", err)
+		}
+		userID = u.ID
+	case "kiosk":
+		var verifier, expires string
+		err := ap.tx.QueryRowContext(ap.ctx, `SELECT activation_verifier, activation_expires_at FROM kiosks WHERE id = ?`, p.KioskID).Scan(&verifier, &expires)
+		if errors.Is(err, sql.ErrNoRows) {
+			return invalid("kiosk %s not found", p.KioskID)
+		}
+		if err != nil {
+			return err
+		}
+		exp, _ := time.Parse(time.RFC3339, expires)
+		if verifier == "" || !ap.e.WallTime.Before(exp) {
+			return store.Reject(FlagNotAuthorized, "kiosk has no unexpired one-time activation password")
+		}
+		if ok, err := ap.exists(`SELECT 1 FROM nodes WHERE kiosk_id = ? AND status IN (?, ?)`, p.KioskID, NodeStatusPending, NodeStatusActive); err != nil || ok {
+			return orConflict(err, "this kiosk already has a Pi")
+		}
+		if p.PendingVerifier != "" || p.UserID != "" {
+			return invalid("kiosk activations carry no user or password")
+		}
+	default:
+		return invalid("unknown node mode %q", p.Mode)
 	}
 	evPub, err := decodeKey(p.EventPublicKey)
 	if err != nil {
@@ -150,17 +190,14 @@ func (ap *applier) nodeActivated(p *NodeActivated) error {
 	if p.PairingWords != pairing.Words(evPub, trPub) {
 		return invalid("pairing words do not match the keys")
 	}
-	if _, err := password.Parse(p.PendingVerifier); err != nil {
-		return invalid("pending verifier: %v", err)
-	}
 	trID := event.KeyID(trPub)
 	if ok, err := ap.exists(`SELECT 1 FROM nodes WHERE transport_key_id = ?`, trID); err != nil || ok {
 		return orConflict(err, "transport key already registered")
 	}
-	return ap.exec(`INSERT INTO nodes (id, mode, bound_user_id, event_pub, transport_pub, transport_key_id, pairing_words,
+	return ap.exec(`INSERT INTO nodes (id, mode, bound_user_id, kiosk_id, event_pub, transport_pub, transport_key_id, pairing_words,
 			status, activated_at, confirmed_by, pending_verifier, version, last_event_id)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, 1, ?)`,
-		ap.e.EntityID, p.Mode, u.ID, []byte(evPub), []byte(trPub), trID, p.PairingWords,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, 1, ?)`,
+		ap.e.EntityID, p.Mode, userID, p.KioskID, []byte(evPub), []byte(trPub), trID, p.PairingWords,
 		NodeStatusPending, ap.wall(), p.PendingVerifier, ap.e.EventID)
 }
 
@@ -206,6 +243,10 @@ func (ap *applier) nodeConfirmed(p *NodeConfirmed) error {
 	if _, err := ap.tx.ExecContext(ap.ctx, `INSERT INTO node_keys (node_id, key_id, public_key, added_at)
 		VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING`, n.ID, event.KeyID(n.EventPub), []byte(n.EventPub), ap.wall()); err != nil {
 		return err
+	}
+	if n.Mode == "kiosk" {
+		// The kiosk's activation password is single use.
+		return ap.exec(`UPDATE kiosks SET activation_verifier = '' WHERE id = ?`, n.KioskID)
 	}
 	// The password the employee chose while activating now takes effect.
 	if err := ap.exec(`UPDATE users SET verifier = ?, must_change_password = 0, status = ?, password_changed_at = ?,

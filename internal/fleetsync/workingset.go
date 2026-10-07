@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -51,7 +52,7 @@ type SnapshotFlag struct {
 // snapshotTables lists, in load order, every table a snapshot may carry.
 // A node accepts no others.
 var snapshotTables = []string{
-	"sites", "locations", "users", "user_password_history", "user_lockouts", "nodes",
+	"sites", "locations", "users", "user_password_history", "user_lockouts", "kiosks", "kiosk_members", "nodes",
 	"assets", "pm_schedules", "work_orders", "wo_leases",
 	"calibration_records", "cal_points", "cal_standards", "signatures", "attachments",
 	"parts", "stock_locations", "stock_levels", "flag_resolutions",
@@ -77,6 +78,25 @@ func BuildSnapshot(ctx context.Context, db *sql.DB, centralNodeID string, node d
 		return nil, err
 	}
 
+	// Who uses this Pi, and which sites are "home": its owner and their
+	// home sites, or a kiosk's current members and the kiosk's site.
+	people, sites := `[]`, `[]`
+	if node.Mode == "kiosk" {
+		if people, err = idSet(ctx, tx, `SELECT user_id FROM kiosk_members WHERE kiosk_id = ? AND removed_hlc IS NULL`, node.KioskID); err != nil {
+			return nil, err
+		}
+		if sites, err = idSet(ctx, tx, `SELECT site_id FROM kiosks WHERE id = ?`, node.KioskID); err != nil {
+			return nil, err
+		}
+	} else {
+		people = `["` + node.BoundUserID + `"]`
+		if err := tx.QueryRowContext(ctx, `SELECT home_sites FROM users WHERE id = ?`, node.BoundUserID).Scan(&sites); err != nil {
+			return nil, err
+		}
+	}
+	var members []string
+	json.Unmarshal([]byte(people), &members)
+
 	horizon := now.Add(WorkingSetHorizon).UTC().Format("2006-01-02")
 	// Equipment at the user's home sites is included too, so breakdowns
 	// can be logged offline against equipment that isn't due for anything.
@@ -85,7 +105,7 @@ func BuildSnapshot(ctx context.Context, db *sql.DB, centralNodeID string, node d
 		UNION SELECT asset_id FROM work_orders WHERE status NOT IN ('closed', 'cancelled')
 		UNION SELECT id FROM assets WHERE is_reference_standard = 1
 		UNION SELECT id FROM assets WHERE status != 'retired'
-			AND site_id IN (SELECT value FROM json_each((SELECT home_sites FROM users WHERE id = ?)))`, horizon, node.BoundUserID)
+			AND site_id IN (SELECT value FROM json_each(?))`, horizon, sites)
 	if err != nil {
 		return nil, err
 	}
@@ -118,8 +138,10 @@ func BuildSnapshot(ctx context.Context, db *sql.DB, centralNodeID string, node d
 		{"sites", "1", nil},
 		{"locations", "1", nil},
 		{"users", "1", nil},
-		{"user_password_history", "user_id = ?", []any{node.BoundUserID}},
-		{"user_lockouts", "user_id = ?", []any{node.BoundUserID}},
+		{"user_password_history", in("user_id"), []any{people}},
+		{"user_lockouts", in("user_id"), []any{people}},
+		{"kiosks", "id = ?", []any{node.KioskID}},
+		{"kiosk_members", "kiosk_id = ?", []any{node.KioskID}},
 		{"nodes", "id = ?", []any{node.ID}},
 		{"assets", in("id"), []any{assets}},
 		{"pm_schedules", in("asset_id"), []any{assets}},
@@ -142,10 +164,12 @@ func BuildSnapshot(ctx context.Context, db *sql.DB, centralNodeID string, node d
 			return nil, fmt.Errorf("snapshot %s: %w", sp.name, err)
 		}
 		switch sp.name {
-		case "users": // other users' password verifiers never leave central
-			blankColumnUnless(&t, "verifier", "id", node.BoundUserID)
+		case "users": // only this Pi's users' verifiers leave central
+			blankColumnUnless(&t, "verifier", "id", members...)
 		case "nodes":
-			blankColumnUnless(&t, "pending_verifier", "id", "")
+			blankColumnUnless(&t, "pending_verifier", "id")
+		case "kiosks":
+			blankColumnUnless(&t, "activation_verifier", "id")
 		}
 		snap.Tables = append(snap.Tables, t)
 	}
@@ -216,9 +240,9 @@ func dumpTable(ctx context.Context, tx *sql.Tx, name, where string, args ...any)
 	return t, rows.Err()
 }
 
-// blankColumnUnless empties column col in every row whose keyCol differs
-// from keep.
-func blankColumnUnless(t *SnapshotTable, col, keyCol, keep string) {
+// blankColumnUnless empties column col in every row whose keyCol is not
+// one of keep.
+func blankColumnUnless(t *SnapshotTable, col, keyCol string, keep ...string) {
 	ci, ki := -1, -1
 	for i, c := range t.Columns {
 		switch c {
@@ -229,7 +253,7 @@ func blankColumnUnless(t *SnapshotTable, col, keyCol, keep string) {
 		}
 	}
 	for _, r := range t.Rows {
-		if keep == "" || r[ki] != keep {
+		if !slices.Contains(keep, fmt.Sprint(r[ki])) {
 			r[ci] = ""
 		}
 	}

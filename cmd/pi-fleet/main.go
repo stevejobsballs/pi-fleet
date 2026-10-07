@@ -46,6 +46,8 @@ any Pi:
 master Pi (central):
   bootstrap          create the first super user (prompts for a password)
   user-create        create an account and print its one-time password
+  kiosk-create       create a kiosk (shared Pi) at a site and print its activation password
+  kiosk-member       add a user to a kiosk, or remove them with -remove
   serve              run the web interface and sync API over HTTPS, and the PM scheduler
   nodes              list Pis and their status
   node-confirm       confirm a pending Pi after checking its pairing words
@@ -62,7 +64,7 @@ master Pi (central):
   restore            restore the master Pi's database from a backup
 
 employee Pi (node):
-  activate           activate this Pi with the one-time password from a super user
+  activate           activate this Pi with a one-time password (-username, or -kiosk for a shared Pi)
   activation-status  check whether a super user has confirmed this Pi
   sync               sync with the master Pi once, or repeatedly with -every
   run                serve the web interface on this Pi and sync in the background
@@ -90,7 +92,7 @@ func run(ctx context.Context, args []string, stdin io.Reader, out io.Writer) err
 	cmds := map[string]func(context.Context, []string, *cli) error{
 		"init": cmdInit, "bootstrap": cmdBootstrap, "verify": cmdVerify, "rebuild": cmdRebuild,
 		"serve": cmdServe, "nodes": cmdNodes, "node-confirm": cmdNodeConfirm, "node-reject": cmdNodeReject,
-		"node-revoke": cmdNodeRevoke, "user-create": cmdUserCreate, "run": cmdRun,
+		"node-revoke": cmdNodeRevoke, "user-create": cmdUserCreate, "run": cmdRun, "kiosk-create": cmdKioskCreate, "kiosk-member": cmdKioskMember,
 		"backup-keygen": cmdBackupKeygen, "backup-config": cmdBackupConfig, "backup-now": cmdBackupNow, "backups": cmdBackups,
 		"offsite-register": cmdOffsiteRegister, "offsite-write": cmdOffsiteWrite, "offsite-confirm": cmdOffsiteConfirm, "restore": cmdRestore,
 		"selfcheck": cmdSelfcheck, "verify-export": cmdVerifyExport, "node-unquarantine": cmdNodeUnquarantine, "update": cmdUpdate, "release-keygen": cmdReleaseKeygen, "release-sign": cmdReleaseSign, "activate": cmdActivate, "activation-status": cmdActivationStatus, "sync": cmdSync,

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"pi-fleet/internal/blobs"
+	"pi-fleet/internal/domain"
 	"pi-fleet/internal/event"
 	"pi-fleet/internal/httpsig"
 	"pi-fleet/internal/keys"
@@ -284,6 +285,21 @@ func (c *Client) Activate(ctx context.Context, username, oneTime, chosen string,
 	if chosen == oneTime {
 		return Activation{}, &password.PolicyError{Reason: "must differ from the one-time password"}
 	}
+	newVerifier, err := password.Hash(chosen, params)
+	if err != nil {
+		return Activation{}, err
+	}
+	return c.activate(ctx, username, oneTime, newVerifier.String())
+}
+
+// ActivateKiosk activates this Pi as the shared kiosk with the given
+// name, using the kiosk's one-time activation password. Members sign in
+// with their own passwords once a super user confirms it.
+func (c *Client) ActivateKiosk(ctx context.Context, name, oneTime string) (Activation, error) {
+	return c.activate(ctx, domain.KioskPrefix+name, oneTime, "")
+}
+
+func (c *Client) activate(ctx context.Context, username, oneTime, newVerifier string) (Activation, error) {
 	var ch ChallengeResponse
 	if _, _, err := c.do(ctx, http.MethodPost, PathChallenge, ChallengeRequest{Username: username}, &ch, false); err != nil {
 		return Activation{}, err
@@ -295,11 +311,7 @@ func (c *Client) Activate(ctx context.Context, username, oneTime, chosen string,
 	k.Key = k.Key[:min(len(k.Key), ch.KeyLen)]
 	enc, macKey := activationKeys(k.Key)
 
-	newVerifier, err := password.Hash(chosen, params)
-	if err != nil {
-		return Activation{}, err
-	}
-	sealed, err := sealVerifier(enc, ch.Nonce, newVerifier.String())
+	sealed, err := sealVerifier(enc, ch.Nonce, newVerifier)
 	if err != nil {
 		return Activation{}, err
 	}

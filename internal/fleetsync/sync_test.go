@@ -634,3 +634,112 @@ func sha256hex(b []byte) string {
 	s := sha256.Sum256(b)
 	return hex.EncodeToString(s[:])
 }
+
+func TestKioskMode(t *testing.T) {
+	f := newFleet(t)
+	alice := f.activeCentralUser("alice", domain.RoleUser)
+	bob := f.activeCentralUser("bob", domain.RoleUser)
+	carol := f.activeCentralUser("carol", domain.RoleUser)
+	a := f.asset("A1")
+	kioskID, otp, err := f.app.CreateKiosk(f.ctx, f.super, f.site, "nyc-shop")
+	f.must(err)
+	f.must(f.app.AddKioskMember(f.ctx, f.super, kioskID, alice.UserID))
+	f.must(f.app.AddKioskMember(f.ctx, f.super, kioskID, bob.UserID))
+
+	k := f.newPi()
+	if _, err := k.client.ActivateKiosk(f.ctx, "nyc-shop", "WRONG-WRONG-WRONG-0000"); err == nil {
+		t.Fatal("kiosk activated with the wrong password")
+	}
+	act, err := k.client.ActivateKiosk(f.ctx, "nyc-shop", otp)
+	f.must(err)
+	k.proj.CentralNodeID = act.CentralNodeID
+	if _, err := f.newPi().client.ActivateKiosk(f.ctx, "nyc-shop", otp); err == nil || !strings.Contains(err.Error(), "409") {
+		t.Fatalf("second Pi for the same kiosk: %v", err)
+	}
+	f.must(f.app.ConfirmNode(f.ctx, f.super, k.client.NodeID, act.PairingWords))
+	// The activation password was single use.
+	if _, err := f.newPi().client.ActivateKiosk(f.ctx, "nyc-shop", otp); err == nil {
+		t.Fatal("kiosk activation password reused")
+	}
+	k.sync()
+
+	// Members sign in with their own passwords; others can't.
+	for _, u := range []string{"alice", "bob"} {
+		if _, err := k.app.Authenticate(f.ctx, u, "brass-kettle-orchard-7"); err != nil {
+			t.Fatalf("%s on the kiosk: %v", u, err)
+		}
+	}
+	if _, err := k.app.Authenticate(f.ctx, "carol", "brass-kettle-orchard-7"); !errors.Is(err, app.ErrBadCredentials) {
+		t.Fatalf("non-member on the kiosk: %v", err)
+	}
+
+	// Each member's work is attributed to them.
+	_, _, err = k.app.OpenWorkOrder(f.ctx, alice, app.NewWorkOrder{Type: "corrective", AssetID: a, Priority: "high", Title: "Alice's"})
+	f.must(err)
+	_, _, err = k.app.OpenWorkOrder(f.ctx, bob, app.NewWorkOrder{Type: "corrective", AssetID: a, Priority: "high", Title: "Bob's (before removal)"})
+	f.must(err)
+	if _, _, err := k.app.OpenWorkOrder(f.ctx, carol, app.NewWorkOrder{Type: "corrective", AssetID: a, Priority: "low", Title: "x"}); err == nil {
+		t.Fatal("the kiosk accepted work from a non-member")
+	}
+
+	// Bob is removed on central while the kiosk is offline; the work he
+	// did before still counts (offline grace).
+	f.now = f.now.Add(time.Minute)
+	f.must(f.app.RemoveKioskMember(f.ctx, f.super, kioskID, bob.UserID))
+	if r := k.sync(); r.Pushed != 2 || r.Flagged != 0 {
+		t.Fatalf("kiosk sync = %+v", r)
+	}
+	for title, who := range map[string]string{"Alice's": alice.UserID, "Bob's (before removal)": bob.UserID} {
+		var opener string
+		f.must(f.app.Store.DB().QueryRowContext(f.ctx, `SELECT opened_by FROM work_orders WHERE title = ?`, title).Scan(&opener))
+		if opener != who {
+			t.Fatalf("%q opened by %s", title, opener)
+		}
+	}
+	if _, err := k.app.Authenticate(f.ctx, "bob", "brass-kettle-orchard-7"); !errors.Is(err, app.ErrBadCredentials) {
+		t.Fatalf("removed member still signs in on the kiosk: %v", err)
+	}
+
+	// A brand-new user can start on the kiosk with their one-time
+	// password, choosing their own there.
+	daveID, temp, err := f.app.CreateUser(f.ctx, f.super, app.NewUser{Username: "dave", LegalName: "Dave", Email: "dave@example.org", Role: domain.RoleUser, IdentityVerification: "badge"})
+	f.must(err)
+	f.must(f.app.AddKioskMember(f.ctx, f.super, kioskID, daveID))
+	k.sync()
+	if _, err := k.app.Authenticate(f.ctx, "dave", temp); !errors.Is(err, app.ErrMustChangePassword) {
+		t.Fatalf("new member with one-time password: %v", err)
+	}
+	dave := app.Actor{UserID: daveID, SessionID: "kiosk"}
+	f.must(k.app.ChangePassword(f.ctx, dave, temp, "granite-otter-meadow"))
+	if r := k.sync(); r.Flagged != 0 {
+		t.Fatalf("password change from the kiosk flagged: %+v", r)
+	}
+	if _, err := f.app.Authenticate(f.ctx, "dave", "granite-otter-meadow"); err != nil {
+		t.Fatalf("password chosen on the kiosk not accepted centrally: %v", err)
+	}
+
+	// Kiosk membership doesn't use up a member's own Pi.
+	f.must(f.app.AddKioskMember(f.ctx, f.super, kioskID, carol.UserID))
+	resetCarol, err := f.app.ResetPassword(f.ctx, f.super, carol.UserID, "phone")
+	f.must(err)
+	_, err = f.newPi().client.Activate(f.ctx, "carol", resetCarol, "copper-ladder-sunrise", cheap)
+	f.must(err)
+
+	// Last, because it leaves the kiosk's chain behind central's: a
+	// modified kiosk can't record work as a non-member.
+	outsider := f.activeCentralUser("erin", domain.RoleUser)
+	seq, prev, err := k.app.Store.Head(f.ctx, k.client.ChainID)
+	f.must(err)
+	e, err := event.Seal(event.Draft{ActorUserID: outsider.UserID, ActorSessionID: "x", Type: domain.TypeAssetStatusChanged,
+		EntityType: domain.EntityAsset, EntityID: a, BaseVersion: 1, SchemaVersion: 1, Payload: []byte(`{"status":"missing","reason":"x"}`)},
+		event.Position{NodeID: k.client.NodeID, ChainID: k.client.ChainID, Seq: seq + 1, PrevHash: prev,
+			HLC: k.app.Author.Clock.Now(), WallTime: f.now, ClockState: event.ClockVerified}, k.client.Keys.EventSigner())
+	f.must(err)
+	var resp EventsResponse
+	_, _, err = k.client.do(f.ctx, http.MethodPost, PathEvents, EventsRequest{Events: []WireEvent{ToWire(e)}}, &resp, true)
+	f.must(err)
+	if len(resp.Results) != 1 || !slices.Contains(resp.Results[0].Flags, domain.FlagNotAuthorized) {
+		t.Fatalf("non-member event = %+v", resp)
+	}
+
+}

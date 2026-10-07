@@ -366,12 +366,13 @@ type StockTxnReversed struct {
 // the pairing words. PendingVerifier is the password the employee chose
 // during activation; it takes effect on confirmation.
 type NodeActivated struct {
-	UserID             string `json:"user_id"`
+	UserID             string `json:"user_id,omitempty"`
+	KioskID            string `json:"kiosk_id,omitempty"`
 	Mode               string `json:"mode"`
 	EventPublicKey     string `json:"event_public_key"`     // hex
 	TransportPublicKey string `json:"transport_public_key"` // hex
 	PairingWords       string `json:"pairing_words"`
-	PendingVerifier    string `json:"pending_verifier"`
+	PendingVerifier    string `json:"pending_verifier,omitempty"`
 }
 
 // NodeConfirmed is a super user confirming a pending Pi. PairingWords are

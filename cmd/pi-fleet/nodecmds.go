@@ -71,17 +71,18 @@ func wipe(n *node) error {
 }
 
 func cmdActivate(ctx context.Context, args []string, c *cli) error {
-	var central, username, caFile *string
+	var central, username, caFile, kiosk *string
 	_, data, err := parse("activate", args, func(fs *flag.FlagSet) {
 		central = fs.String("central", "", "master Pi URL, e.g. https://fleet.example.org:8443")
 		username = fs.String("username", "", "your username, from the super user")
+		kiosk = fs.String("kiosk", "", "activate this Pi as the shared kiosk with this name instead")
 		caFile = fs.String("ca", "", "PEM CA certificate, if the master Pi uses a private certificate")
 	})
 	if err != nil {
 		return err
 	}
-	if *central == "" || *username == "" {
-		return errors.New("activate needs -central and -username")
+	if *central == "" || (*username == "") == (*kiosk == "") {
+		return errors.New("activate needs -central and either -username or -kiosk")
 	}
 	n, err := openNode(ctx, *data)
 	if err != nil {
@@ -105,12 +106,17 @@ func cmdActivate(ctx context.Context, args []string, c *cli) error {
 	if err != nil {
 		return err
 	}
-	c.printf("Now choose your own password (at least 12 characters).\n")
-	chosen, err := c.newPassword(*username, "New password: ")
-	if err != nil {
-		return err
+	var act fleetsync.Activation
+	if *kiosk != "" {
+		act, err = cl.ActivateKiosk(ctx, *kiosk, oneTime)
+	} else {
+		c.printf("Now choose your own password (at least 12 characters).\n")
+		chosen, perr := c.newPassword(*username, "New password: ")
+		if perr != nil {
+			return perr
+		}
+		act, err = cl.Activate(ctx, *username, oneTime, chosen, passwordParams)
 	}
-	act, err := cl.Activate(ctx, *username, oneTime, chosen, passwordParams)
 	if err != nil {
 		return err
 	}

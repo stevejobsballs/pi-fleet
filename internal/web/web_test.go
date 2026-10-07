@@ -372,7 +372,7 @@ func TestEveryPageRenders(t *testing.T) {
 	b := e.browser()
 	b.login("admin", "tumbleweed-gasket-42")
 	for _, p := range []string{"/", "/assets", "/assets?q=Fluke", "/assets/new", "/assets/" + asset, "/work-orders", "/work-orders?view=all",
-		"/work-orders/new", "/work-orders/" + wo, "/inventory", "/schedules", "/review", "/admin/users", "/admin/sites", "/admin/nodes", "/password",
+		"/work-orders/new", "/work-orders/" + wo, "/inventory", "/schedules", "/review", "/admin/users", "/admin/sites", "/admin/nodes", "/admin/kiosks", "/password",
 		"/static/style.css"} {
 		if code, _, body := b.get(p); code != http.StatusOK || strings.Contains(body, "something went wrong") {
 			t.Errorf("GET %s: %d", p, code)
@@ -380,5 +380,31 @@ func TestEveryPageRenders(t *testing.T) {
 	}
 	if code, _, _ := b.get("/work-orders/" + uuid.NewString()); code != http.StatusNotFound {
 		t.Errorf("missing work order: %d", code)
+	}
+}
+
+func TestKioskAdminPage(t *testing.T) {
+	e := newEnv(t)
+	tessID := e.user("tess", "Tess Tech", domain.RoleUser)
+	b := e.browser()
+	b.login("admin", "tumbleweed-gasket-42")
+	b.get("/admin/kiosks")
+	_, page := b.post("/admin/kiosks", url.Values{"site": {e.site}, "name": {"nyc-shop"}})
+	if !regexp.MustCompile(`class="otp">[0-9A-Z]{4}(-[0-9A-Z]{4}){3}<`).MatchString(page) || !strings.Contains(page, "pi-fleet activate -kiosk nyc-shop") {
+		t.Fatalf("kiosk creation:\n%s", page)
+	}
+	_, _, page = b.get("/admin/kiosks")
+	id := regexp.MustCompile(`/admin/kiosks/([0-9a-f-]{36})/members`).FindStringSubmatch(page)
+	if id == nil {
+		t.Fatalf("kiosk not listed:\n%s", page)
+	}
+	if _, page = b.post("/admin/kiosks/"+id[1]+"/members", url.Values{"user": {tessID}}); !strings.Contains(page, "Tess Tech (tess)") {
+		t.Fatalf("member not shown:\n%s", page)
+	}
+	if _, page = b.post("/admin/kiosks/"+id[1]+"/members/remove", url.Values{"user": {tessID}}); !strings.Contains(page, "No members yet") {
+		t.Fatalf("member not removed:\n%s", page)
+	}
+	if _, page = b.post("/admin/kiosks", url.Values{"site": {e.site}, "name": {"Bad Name!"}}); !strings.Contains(page, "Not saved") {
+		t.Fatalf("bad kiosk name accepted:\n%s", page)
 	}
 }
