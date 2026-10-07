@@ -10,6 +10,7 @@
 <fieldset><legend>Add the service history of the records being merged (work orders, calibrations, schedules and files) to the kept record's timeline?</legend>
   <label class="check"><input type="radio" name="integrate" value="yes" required> Yes: show it on the kept record, in date order with its own</label>
   <label class="check"><input type="radio" name="integrate" value="no" required> No: keep it on the merged records, linked from the kept record</label>
+  <p class="warn"><strong>If you choose No, this can't be changed later:</strong> the merged records' service history can never be added to the kept record's timeline afterwards. It stays viewable only on the merged records themselves.</p>
 </fieldset>
 <label>Reason <input name="reason" required size="50" placeholder="e.g. PROV-7 is NYC-0001 registered twice"></label>{{template "nophi"}}
 <button>Merge</button>

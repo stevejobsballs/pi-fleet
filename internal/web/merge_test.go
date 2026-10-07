@@ -53,7 +53,7 @@ func TestMergeDuplicatesThroughTheUI(t *testing.T) {
 	if !strings.Contains(page, "NYC-0100") || !strings.Contains(page, "PROV-0100") {
 		t.Fatalf("merge page:\n%s", page)
 	}
-	if !strings.Contains(page, `name="integrate" value="yes" required`) || !strings.Contains(page, "to the kept record's timeline?") {
+	if !strings.Contains(page, "If you choose No, this can't be changed later") || !strings.Contains(page, `name="integrate" value="yes" required`) || !strings.Contains(page, "to the kept record's timeline?") {
 		t.Fatalf("merge page doesn't ask about the service history:\n%s", page)
 	}
 	if _, page = mona.post("/assets/merge", url.Values{"master_id": {"M-77"}, "keep": {keep}, "reason": {""}, "integrate": {"yes"}}); !strings.Contains(page, "Not saved") {
