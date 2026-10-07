@@ -52,6 +52,9 @@ func cmdBootstrap(ctx context.Context, args []string, c *cli) error {
 	if *username == "" || *legalName == "" || *email == "" {
 		return errors.New("bootstrap needs -username, -name and -email")
 	}
+	if err := domain.CheckUsername(*username); err != nil {
+		return err
+	}
 	n, a, err := openCentral(ctx, *data)
 	if err != nil {
 		return err

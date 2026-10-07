@@ -423,8 +423,8 @@ func (ap *applier) userCreated(p *UserCreated) error {
 	if err := ap.newEntity("users"); err != nil {
 		return err
 	}
-	if !usernameRE.MatchString(p.Username) {
-		return invalid("username %q must be 3-32 lowercase letters, digits, '.', '_' or '-', starting with a letter", p.Username)
+	if err := CheckUsername(p.Username); err != nil {
+		return err
 	}
 	if blank(p.LegalName) {
 		return invalid("legal name is required")
@@ -1061,4 +1061,12 @@ func nonNilMap(m map[string]string) map[string]string {
 		return map[string]string{}
 	}
 	return m
+}
+
+// CheckUsername reports whether name is an acceptable username.
+func CheckUsername(name string) error {
+	if !usernameRE.MatchString(name) {
+		return invalid("username %q must be 3-32 lowercase letters, digits, '.', '_' or '-', starting with a letter", name)
+	}
+	return nil
 }

@@ -56,16 +56,42 @@ if [ -f "$DATA/pi-fleet.db" ]; then
   echo "  $DATA/pi-fleet.db exists; keeping it"
 else
   as_pifleet /opt/pi-fleet/current/pi-fleet init -data "$DATA" -role central
+fi
+# The marker records that the first super user exists, so running the
+# script again (for example after a mistyped answer) carries on from here.
+MARK="$DATA/.superuser-created"
+if [ -f "$MARK" ]; then
+  echo "  the first super user exists; keeping it"
+elif [ "$DRY_RUN" -eq 1 ]; then
+  as_pifleet /opt/pi-fleet/current/pi-fleet bootstrap -data "$DATA" -username "<username>" -name "<legal name>" -email "<email>"
+else
   echo
-  echo "Now create the first super user (you). It asks for a password."
-  if [ "$DRY_RUN" -eq 1 ]; then
-    SU_USER="<username>" SU_NAME="<legal name>" SU_EMAIL="<email>"
-  else
-    read -r -p "  username: " SU_USER
-    read -r -p "  legal name (shown on signatures): " SU_NAME
+  echo "Now create the first super user (you)."
+  LOG=$(mktemp)
+  while :; do
+    read -r -p "  username (lowercase, e.g. steve or s.jobs): " SU_USER
+    if ! [[ $SU_USER =~ ^[a-z][a-z0-9._-]{2,31}$ ]]; then
+      echo "  A username is 3-32 lowercase letters, digits, '.', '_' or '-', starting with a letter. Try again."
+      continue
+    fi
+    read -r -p "  legal name (shown on signatures, capitals fine): " SU_NAME
     read -r -p "  work email: " SU_EMAIL
-  fi
-  as_pifleet /opt/pi-fleet/current/pi-fleet bootstrap -data "$DATA" -username "$SU_USER" -name "$SU_NAME" -email "$SU_EMAIL"
+    if [ -z "$SU_NAME" ] || [ -z "$SU_EMAIL" ]; then
+      echo "  The legal name and email are both needed. Try again."
+      continue
+    fi
+    echo "  The password needs at least 12 characters and must not contain the username."
+    set +e
+    sudo -u pifleet /opt/pi-fleet/current/pi-fleet bootstrap -data "$DATA" -username "$SU_USER" -name "$SU_NAME" -email "$SU_EMAIL" 2>&1 | tee "$LOG"
+    STATUS=${PIPESTATUS[0]}
+    set -e
+    if [ "$STATUS" -eq 0 ] || grep -q "users already exist" "$LOG"; then
+      break
+    fi
+    echo "  That didn't work (see the message above). Let's try again."
+  done
+  rm -f "$LOG"
+  sudo -u pifleet touch "$MARK"
 fi
 
 echo "== 4. systemd service"
