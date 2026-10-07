@@ -8,23 +8,18 @@
 </head>
 <body>
 <header class="top">
-  <a class="brand" href="/">pi-fleet</a>
+  <a class="brand" href="/"><span class="mark" aria-hidden="true"></span>pi-fleet</a>
   {{if .User.ID}}
   <nav aria-label="Main">
-    <a href="/">Today</a>
-    <a href="/work-orders">Work orders</a>
-    <a href="/assets">Equipment</a>
-    <a href="/schedules">Schedules</a>
-    <a href="/procedures">Checklists</a>
-    <a href="/inventory">Inventory</a>
-    {{if .IsMid}}<a href="/review">Review</a>{{end}}
-    {{if .IsSuper}}<a href="/admin/users">Users</a><a href="/admin/sites">Sites</a>{{if eq .Role "central"}}<a href="/admin/nodes">Pis</a><a href="/admin/kiosks">Kiosks</a>{{end}}{{end}}
+    <a href="/"{{if .Here "/"}} aria-current="page"{{end}}>Today</a>
+    <a href="/work-orders"{{if .Here "/work-orders"}} aria-current="page"{{end}}>Work orders</a>
+    <a href="/assets"{{if .Here "/assets"}} aria-current="page"{{end}}>Equipment</a>
+    <a href="/schedules"{{if .Here "/schedules"}} aria-current="page"{{end}}>Schedules</a>
+    <a href="/procedures"{{if .Here "/procedures"}} aria-current="page"{{end}}>Checklists</a>
+    <a href="/inventory"{{if .Here "/inventory"}} aria-current="page"{{end}}>Inventory</a>
+    {{if .IsMid}}<a href="/review"{{if .Here "/review"}} aria-current="page"{{end}}>Review</a>{{end}}
+    {{if .IsSuper}}<a href="/admin/users"{{if .Here "/admin/users"}} aria-current="page"{{end}}>Users</a><a href="/admin/sites"{{if .Here "/admin/sites"}} aria-current="page"{{end}}>Sites</a>{{if eq .Role "central"}}<a href="/admin/nodes"{{if .Here "/admin/nodes"}} aria-current="page"{{end}}>Pis</a><a href="/admin/kiosks"{{if .Here "/admin/kiosks"}} aria-current="page"{{end}}>Kiosks</a>{{end}}{{end}}
   </nav>
-  <div class="me">
-    <span>{{.User.LegalName}} · {{label .User.Role}}</span>
-    <a href="/password">Password</a>
-    <form method="post" action="/logout"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="link">Sign out</button></form>
-  </div>
   {{end}}
 </header>
 {{if .User.ID}}
@@ -32,6 +27,11 @@
   <span>{{if eq .Role "central"}}Master Pi{{else}}Employee Pi{{end}}</span>
   {{with .Sync}}<span>Last sync: {{when .LastSync}}</span>{{if gt .Unsynced 0}}<span class="warn">{{.Unsynced}} record{{if ne .Unsynced 1}}s{{end}} not yet synced</span>{{end}}{{end}}
   {{if eq .Clock "unverified"}}<span class="warn">Clock not verified: signatures will be flagged</span>{{end}}
+  <div class="me">
+    <span>{{.User.LegalName}} · {{label .User.Role}}</span>
+    <a href="/password">Password</a>
+    <form method="post" action="/logout"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="link">Sign out</button></form>
+  </div>
 </div>
 {{end}}
 {{if .Insecure}}<p class="insecure" role="alert">This Pi is serving its web interface without HTTPS. Passwords and records can be read by others on this network. Ask a super user to enable HTTPS.</p>{{end}}

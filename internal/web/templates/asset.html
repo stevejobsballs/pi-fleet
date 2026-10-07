@@ -19,7 +19,7 @@
 {{if not $merged}}<section class="actions">
   <a class="button" href="/work-orders/new?asset={{$a.ID}}">New work order</a>
   <form method="post" action="/assets/{{$a.ID}}/status" class="inline">{{template "csrf" .CSRF}}<input type="hidden" name="version" value="{{$a.Version}}">
-    <label>Status <select name="status">{{range .Data.Statuses}}<option {{if eq . $a.Status}}selected{{end}}>{{.}}</option>{{end}}</select></label>
+    <label>Status <select name="status">{{range .Data.Statuses}}<option value="{{.}}" {{if eq . $a.Status}}selected{{end}}>{{label .}}</option>{{end}}</select></label>
     <label>Reason <input name="reason"></label>{{template "nophi"}}<button>Change status</button></form>
   <details><summary>Edit details</summary>
   <form method="post" action="/assets/{{$a.ID}}/edit" class="narrow">{{template "csrf" .CSRF}}<input type="hidden" name="version" value="{{$a.Version}}">

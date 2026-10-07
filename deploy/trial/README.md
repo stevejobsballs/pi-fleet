@@ -26,6 +26,8 @@ choose **Execute** or **Execute in Terminal**; either works.
 | `Setup-Employee-Pi.sh` | employee Pi | from that copied folder: offers to rename the Pi, asks for your username (or kiosk name), runs `node-setup.sh` |
 | `Update-Pi.sh` | either | runs `update.sh` |
 | `Check-Pi.sh` | either | runs `check.sh` |
+| `Sign-And-Install-Release.sh` | development Pi | signs the newest release with the key on the USB stick and installs it on the master |
+| `Preview-Website.sh` | development Pi | runs a practice copy of the website with sample records at http://127.0.0.1:9080, for trying out changes to its look |
 
 Order: Setup-Master-Pi, then create a user on the web interface, then
 Make-Employee-Kit, copy the folder to the employee Pi (USB stick is fine),

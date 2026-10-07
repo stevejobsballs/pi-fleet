@@ -25,11 +25,20 @@ type page struct {
 	PHIWarning bool
 	Notices    []string
 	Insecure   bool
+	Path       string // the page's URL path, to mark the current menu item
 	Data       any
 }
 
 func (p page) IsMid() bool   { return roleRank[p.User.Role] >= roleRank[domain.RoleMidTier] }
 func (p page) IsSuper() bool { return p.User.Role == domain.RoleSuperUser }
+
+// Here reports whether the page is in the menu section at prefix.
+func (p page) Here(prefix string) bool {
+	if prefix == "/" {
+		return p.Path == "/"
+	}
+	return p.Path == prefix || strings.HasPrefix(p.Path, prefix+"/")
+}
 
 var funcs = template.FuncMap{
 	"when": func(t time.Time) string {
@@ -106,7 +115,10 @@ func templateNames() ([]string, error) {
 
 // render writes a page. sess may be nil (login page).
 func (s *Server) render(w http.ResponseWriter, r *http.Request, sess *session, name, title string, data any) error {
-	p := page{Title: title, Role: s.Role, Data: data, PHIWarning: true, Insecure: s.InsecureLAN}
+	p := page{Title: title, Role: s.Role, Data: data, PHIWarning: true, Insecure: s.InsecureLAN, Path: r.URL.Path}
+	if strings.HasPrefix(p.Path, "/fleet/assets") {
+		p.Path = "/assets" // the whole-fleet search is part of Equipment
+	}
 	if sess != nil {
 		p.User, p.CSRF, p.Flash = sess.User, sess.CSRF, s.takeFlash(sess)
 		p.Clock = string(s.App.ClockState())

@@ -26,7 +26,7 @@ fi
 rm -rf "$OUT"
 mkdir -p "$OUT"
 cp "$KIT"/*.sh "$KIT/README.md" "$OUT/"
-rm -f "$OUT/Sign-And-Install-Release.sh"   # only for the master
+rm -f "$OUT/Sign-And-Install-Release.sh" "$OUT/Preview-Website.sh"   # only for the development Pi
 cp "$BIN" "$OUT/"
 cp "$CERT" "$OUT/cert.pem"
 echo "$URL" > "$OUT/master-url.txt"
