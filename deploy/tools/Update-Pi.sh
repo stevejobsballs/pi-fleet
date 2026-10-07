@@ -3,7 +3,7 @@
 # (master or employee) and checks the result.
 set -euo pipefail
 KIT=$(dirname "$(readlink -f "$0")")
-. "$KIT/click-lib.sh"
+. "$KIT/../click-lib.sh"
 open_terminal "$(readlink -f "$0")" "$@"
 
 echo "=== Update pi-fleet on this Pi ==="

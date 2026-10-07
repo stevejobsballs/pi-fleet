@@ -67,6 +67,13 @@ Running setup again on an installed Pi offers to update it to the file's
 version, through the verified update with rollback. `-dry-run` shows what
 setup would do without changing anything.
 
+## Tools
+
+`deploy/tools` has double-click tools for an installed Pi: **Check-Pi**
+(status and integrity check) and **Update-Pi** (install the newest signed
+release). `deploy/maintainer` has the release maintainer's tools for
+signing releases and previewing changes to the web interface.
+
 ## Build
 
 Requires Go 1.27+.

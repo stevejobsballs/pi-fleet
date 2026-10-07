@@ -5,7 +5,7 @@ set -uo pipefail
 . "$(dirname "$0")/lib.sh"
 [ "${1:-}" = "--dry-run" ] && DRY_RUN=1
 need_root
-if [ -f /srv/pi-fleet/pi-fleet.db ]; then DATA=/srv/pi-fleet; ROLE=master; else DATA=/var/lib/pi-fleet; ROLE=employee; fi
+if is_master; then DATA=/srv/pi-fleet; ROLE=master; else DATA=/var/lib/pi-fleet; ROLE=employee; fi
 PF=/opt/pi-fleet/current/pi-fleet
 echo "role:     $ROLE ($DATA)"
 echo "version:  $($PF version 2>/dev/null)"

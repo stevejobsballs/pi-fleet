@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# Double-click launcher, on the development Pi that is also the master:
-# signs the newest release built with "make release" using the key on the
-# USB stick (read in place, never copied), then installs it on this master
-# and puts it in the master's release folder for the employee Pis.
+# Double-click launcher for the release maintainer: signs the newest
+# release built with "make release" in this repository, using the release
+# key on its USB stick (read in place, never copied). If this Pi is also a
+# master Pi, it then offers to install the release and put it in the
+# master's release folder for the employee Pis.
 set -euo pipefail
 KIT=$(dirname "$(readlink -f "$0")")
-. "$KIT/click-lib.sh"
+. "$KIT/../click-lib.sh"
 open_terminal "$(readlink -f "$0")" "$@"
 REPO=$(cd "$KIT/../.." && pwd)
 
@@ -21,18 +22,21 @@ echo "Newest release: $VER ($DIR)"
 if [ -f "$DIR/manifest.json.minisig" ]; then
   echo "It is already signed."
 else
-  KEY=""
-  while :; do
-    KEY=$(ls /media/"$(id -un)"/*/"pi-fleet release keys"/pi-fleet-release.key 2>/dev/null | head -n 1 || true)
+  # The encrypted release key, read in place on its USB stick: set
+  # PIFLEET_RELEASE_KEY to its path, or keep it on a stick as
+  # pi-fleet-release.key (any folder up to two levels down).
+  KEY=${PIFLEET_RELEASE_KEY:-}
+  while [ -z "$KEY" ] || [ ! -f "$KEY" ]; do
+    KEY=$(find /media/"$(id -un)" -maxdepth 4 -name pi-fleet-release.key -type f 2>/dev/null | head -n 1)
     [ -n "$KEY" ] && break
-    read -r -p "Plug in the USB stick with the release key, wait a few seconds, then press Enter. " _
+    read -r -p "Plug in the USB stick with the release key (pi-fleet-release.key), wait a few seconds, then press Enter. " _
   done
   echo "Release key: $KEY"
   echo "Type the release key's passphrase when asked (it isn't shown as you type)."
   echo
   "$BIN" release-sign -key "$KEY" -dir "$DIR" -version "$VER"
   echo
-  echo "Signed. You can take the USB stick out now and put it away."
+  echo "Signed. Eject the USB stick in the File Manager, then unplug it and put it away."
 fi
 
 echo

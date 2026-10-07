@@ -2,7 +2,7 @@
 # Double-click launcher: shows the state of pi-fleet on this Pi.
 set -euo pipefail
 KIT=$(dirname "$(readlink -f "$0")")
-. "$KIT/click-lib.sh"
+. "$KIT/../click-lib.sh"
 open_terminal "$(readlink -f "$0")" "$@"
 
 echo "=== pi-fleet on $(hostname) ==="

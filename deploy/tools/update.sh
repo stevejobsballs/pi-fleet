@@ -15,7 +15,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 need_root
-if [ -d /srv/pi-fleet ] && [ -f /srv/pi-fleet/pi-fleet.db ]; then
+if is_master; then
   DATA=/srv/pi-fleet
   [ -n "$FROM" ] || FROM=/srv/pi-fleet/releases
 else

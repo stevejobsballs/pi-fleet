@@ -12,7 +12,7 @@ import (
 )
 
 // TestPreview serves a practice copy of the web interface, full of sample
-// records, for trying out changes to its look (deploy/trial/Preview-Website.sh).
+// records, for trying out changes to its look (deploy/maintainer/Preview-Website.sh).
 // It runs only when PIFLEET_PREVIEW is set to an address such as
 // 127.0.0.1:9080, and serves until interrupted. Nothing is kept.
 //

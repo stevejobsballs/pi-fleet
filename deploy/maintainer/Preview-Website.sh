@@ -6,7 +6,7 @@
 # not touched.
 set -euo pipefail
 KIT=$(dirname "$(readlink -f "$0")")
-. "$KIT/click-lib.sh"
+. "$KIT/../click-lib.sh"
 open_terminal "$(readlink -f "$0")" "$@"
 REPO=$(cd "$KIT/../.." && pwd)
 export PATH="$HOME/.local/go/bin:/usr/local/go/bin:$PATH"
