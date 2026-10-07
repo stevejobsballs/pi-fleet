@@ -64,9 +64,9 @@ var _ store.Applier = (*Projector)(nil)
 // Reset empties every projection table.
 func (p *Projector) Reset(ctx context.Context, tx *sql.Tx) error {
 	for _, t := range []string{
-		"kiosk_members", "kiosks", "attachments", "signatures", "cal_standards", "cal_points", "calibration_records", "stock_txns", "stock_levels", "stock_locations", "parts",
+		"labor_entries", "checklist_results", "kiosk_members", "kiosks", "attachments", "signatures", "cal_standards", "cal_points", "calibration_records", "stock_txns", "stock_levels", "stock_locations", "parts",
 		"wo_leases", "work_orders", "pm_schedules", "assets", "locations", "sites",
-		"nodes", "user_lockouts", "user_password_history", "users", "backups", "durable_heads", "flag_resolutions",
+		"nodes", "user_lockouts", "user_password_history", "users", "backups", "durable_heads", "flag_resolutions", "procedures",
 	} {
 		if _, err := tx.ExecContext(ctx, `DELETE FROM `+t); err != nil {
 			return err
@@ -187,6 +187,18 @@ func (p *Projector) Apply(ctx context.Context, tx *sql.Tx, e *event.Event) error
 		return ap.kioskMemberRemoved(pl)
 	case *KioskActivationReset:
 		return ap.kioskActivationReset(pl)
+	case *ProcedurePublished:
+		return ap.procedurePublished(pl)
+	case *ProcedureRetired:
+		return ap.procedureRetired(pl)
+	case *WorkOrderProcedureSet:
+		return ap.workOrderProcedureSet(pl)
+	case *WorkOrderStepRecorded:
+		return ap.workOrderStepRecorded(pl)
+	case *LaborLogged:
+		return ap.laborLogged(pl)
+	case *LaborReversed:
+		return ap.laborReversed(pl)
 	}
 	return fmt.Errorf("domain: no handler for %T", v)
 }
@@ -792,11 +804,16 @@ func (ap *applier) workOrderOpened(p *WorkOrderOpened) error {
 			return err
 		}
 	}
+	if p.ProcedureID != "" {
+		if err := ap.activeProcedure(p.ProcedureID); err != nil {
+			return err
+		}
+	}
 	return ap.exec(`INSERT INTO work_orders (id, number, type, asset_id, priority, status, title, problem, due_at,
-			opened_by, assigned_to, lease_id, schedule_id, version, last_event_id)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', '', ?, 1, ?)`,
+			opened_by, assigned_to, lease_id, schedule_id, procedure_id, version, last_event_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', '', ?, ?, 1, ?)`,
 		ap.e.EntityID, p.Number, p.Type, p.AssetID, p.Priority, WOOpen, p.Title, p.Problem, p.DueAt,
-		ap.actor.id, p.ScheduleID, ap.e.EventID)
+		ap.actor.id, p.ScheduleID, p.ProcedureID, ap.e.EventID)
 }
 
 func parseDue(s string) (time.Time, error) {

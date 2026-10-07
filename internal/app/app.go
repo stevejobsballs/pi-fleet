@@ -379,6 +379,8 @@ type NewWorkOrder struct {
 	Problem  string
 	DueAt    string
 
+	ProcedureID string // checklist version, optional
+
 	scheduleID string // set by the scheduler
 }
 
@@ -408,7 +410,7 @@ func (a *App) OpenWorkOrder(ctx context.Context, actor Actor, w NewWorkOrder) (i
 		number = fmt.Sprintf("%s%05d", prefix, n+1)
 		return a.emit(ctx, tx, actor, domain.TypeWorkOrderOpened, domain.EntityWorkOrder, id, 0, "", domain.WorkOrderOpened{
 			Number: number, Type: w.Type, AssetID: w.AssetID, Priority: w.Priority,
-			Title: w.Title, Problem: w.Problem, DueAt: w.DueAt, ScheduleID: w.scheduleID,
+			Title: w.Title, Problem: w.Problem, DueAt: w.DueAt, ScheduleID: w.scheduleID, ProcedureID: w.ProcedureID,
 		})
 	})
 	return id, number, err

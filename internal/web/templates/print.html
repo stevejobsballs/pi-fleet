@@ -23,6 +23,12 @@ As found: <strong>{{.AsFound}}</strong> · As left: <strong>{{.AsLeft}}</strong>
 {{range .Points}}<tr><td>{{.Parameter}} ({{.Unit}})</td><td>{{.Nominal}}</td><td>{{.Lower}} – {{.Upper}}</td><td>{{.AsFound}} {{if .FoundPass}}pass{{else}}FAIL{{end}}</td><td>{{.AsLeft}} {{if .LeftPass}}pass{{else}}FAIL{{end}}</td></tr>{{end}}
 </tbody></table>
 {{end}}
+{{with .Procedure}}<h2>Checklist: {{.Name}} v{{.Version}}</h2>
+<table><thead><tr><th>Step</th><th>Result</th><th>Recorded</th><th>Note</th></tr></thead><tbody>
+{{range $.WO.Steps}}<tr><td>{{.Text}}{{if .Required}} (required){{end}}</td><td>{{if .Recorded}}{{.Value}} {{if eq .Kind "number"}}{{.Unit}}{{end}}{{if eq .Outcome "pass"}} pass{{else if eq .Outcome "fail"}} FAIL{{end}}{{else}}not recorded{{end}}</td>
+  <td>{{if .Recorded}}{{.RecordedBy}} {{when .RecordedAt}}{{end}}</td><td>{{.Note}}</td></tr>{{end}}</tbody></table>{{end}}
+<h2>Labour ({{hhmm .LaborTotal}} total)</h2>
+{{range .Labor}}<p>{{.Date}} · {{.User}} · {{hhmm .Minutes}}{{if .Note}} · {{.Note}}{{end}}{{if eq .Status "reversed"}} · reversed: {{.ReverseReason}}{{end}}</p>{{else}}<p>None.</p>{{end}}
 <h2>Files</h2>
 {{range .Attachments}}<p>{{.Filename}} ({{.MIME}}, {{kib .Size}}) added by {{.AddedBy}} {{when .AddedAt}}{{if ne .Status "attached"}} · {{.Status}}: {{.DetachReason}}{{end}}<br><small>sha256 {{.SHA256}}</small></p>{{else}}<p>None.</p>{{end}}
 <h2>Electronic signatures</h2>

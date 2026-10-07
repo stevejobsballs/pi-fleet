@@ -114,7 +114,7 @@ func (a *App) GenerateDueWorkOrders(ctx context.Context, horizon time.Duration) 
 		_, number, err := a.OpenWorkOrder(ctx, Scheduler, NewWorkOrder{
 			Type: s.WOType, AssetID: s.AssetID, Priority: "normal", Title: s.Title,
 			Problem: fmt.Sprintf("Scheduled every %d days. Procedure: %s", s.IntervalDays, s.Procedure),
-			DueAt:   s.NextDue, scheduleID: s.ID,
+			DueAt:   s.NextDue, scheduleID: s.ID, ProcedureID: s.ProcedureID,
 		})
 		if err != nil {
 			return numbers, fmt.Errorf("app: schedule %s: %w", s.ID, err)

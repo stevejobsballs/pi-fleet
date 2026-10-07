@@ -57,7 +57,8 @@ const workOrderCond = `entity_id = ?1
 	OR event_id IN (SELECT id FROM signatures WHERE target_id = ?1)
 	OR entity_id IN (SELECT id FROM signatures WHERE target_id = ?1)
 	OR entity_id IN (SELECT txn_id FROM stock_txns WHERE wo_id = ?1)
-	OR entity_id IN (SELECT id FROM attachments WHERE target_type = 'work_order' AND target_id = ?1)`
+	OR entity_id IN (SELECT id FROM attachments WHERE target_type = 'work_order' AND target_id = ?1)
+	OR entity_id IN (SELECT id FROM labor_entries WHERE wo_id = ?1)`
 
 // An asset's record: its own events, its schedules, and the full record
 // of each of its work orders and calibrations.

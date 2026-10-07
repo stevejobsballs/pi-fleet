@@ -1,0 +1,19 @@
+{{define "content"}}
+<p>A checklist is a list of steps a work order follows. Versions never change: to change a checklist, publish its next version. Work already using an older version keeps it.</p>
+{{if .Data.Rows}}<table><thead><tr><th>Checklist</th><th>Version</th><th>Steps</th><th>Published</th><th>Status</th></tr></thead><tbody>
+{{range .Data.Rows}}<tr class="{{if ne .Status "active"}}old{{end}}"><td><a href="/procedures/{{.ID}}">{{.Name}}</a></td><td>v{{.Version}}</td><td>{{.Steps}}</td><td>{{.PublishedAt}}</td><td>{{.Status}}</td></tr>{{end}}
+</tbody></table>{{else}}<p>No checklists yet.</p>{{end}}
+{{if .IsMid}}<section><h2>Publish a checklist</h2>
+<p class="hint">Use an existing name to publish its next version. Number steps can have limits; a reading outside them is shown as a fail.</p>
+<form method="post" action="/procedures">{{template "csrf" .CSRF}}
+  <label>Name <input name="name" value="{{.Data.Name}}" required maxlength="120"></label>
+  <div class="scroll"><table class="points"><thead><tr><th>Step</th><th>Kind</th><th>Unit</th><th>Lower</th><th>Upper</th><th>Required</th></tr></thead><tbody>
+  {{range seq .Data.FormRows}}<tr><td><input name="text" aria-label="Step text" size="40"></td>
+    <td><select name="kind" aria-label="Kind"><option value="check">pass/fail</option><option value="number">reading</option><option value="text">text</option></select></td>
+    <td><input name="unit" size="5" aria-label="Unit"></td><td><input name="lower" size="7" inputmode="decimal" aria-label="Lower limit"></td><td><input name="upper" size="7" inputmode="decimal" aria-label="Upper limit"></td>
+    <td><select name="required" aria-label="Required"><option value="yes">yes</option><option value="no">no</option></select></td></tr>{{end}}
+  </tbody></table></div>
+  <p><a href="/procedures?rows={{add .Data.FormRows 6}}">More rows</a></p>
+  <button>Publish</button>
+</form></section>{{end}}
+{{end}}

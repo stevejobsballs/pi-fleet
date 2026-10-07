@@ -461,7 +461,8 @@ func snapshot(t *testing.T, db *sql.DB) map[string][]string {
 	out := map[string][]string{}
 	for _, table := range []string{"users", "user_password_history", "user_lockouts", "sites", "locations", "assets",
 		"work_orders", "wo_leases", "pm_schedules", "calibration_records", "cal_points", "cal_standards",
-		"parts", "stock_locations", "stock_txns", "stock_levels", "event_flags"} {
+		"parts", "stock_locations", "stock_txns", "stock_levels", "event_flags",
+		"procedures", "checklist_results", "labor_entries", "attachments"} {
 		rows, err := db.Query(`SELECT * FROM ` + table + ` ORDER BY 1, 2`)
 		if err != nil {
 			t.Fatal(err)
@@ -546,6 +547,20 @@ func (e *env) TestScenario() {
 	txn := e.must2(e.app.RecordStock(e.ctx, tech, domain.StockTxnRecorded{Kind: domain.StockIssue, PartID: part, StockLocationID: shop, Quantity: 2, WorkOrderID: woID}))
 	e.must2(e.app.RecordStock(e.ctx, tech, domain.StockTxnRecorded{Kind: domain.StockCount, PartID: part, StockLocationID: shop, ObservedQty: ptr[int64](2)}))
 	e.must(e.app.ReverseStock(e.ctx, mid, txn, "wrong part"))
+
+	// A checklist, recorded steps (one re-recorded) and labour.
+	proc, _, err := e.app.PublishProcedure(e.ctx, mid, "PM", pmSteps)
+	e.must(err)
+	clWO, _, err := e.app.OpenWorkOrder(e.ctx, mid, NewWorkOrder{Type: "pm", AssetID: id, Priority: "low", Title: "PM", ProcedureID: proc})
+	e.must(err)
+	_, err = e.app.AssignWorkOrder(e.ctx, mid, clWO, tech.UserID)
+	e.must(err)
+	e.must(e.app.ChangeWorkOrderStatus(e.ctx, tech, clWO, domain.WOInProgress, ""))
+	e.must(e.app.RecordStep(e.ctx, tech, clWO, "leak", "400", ""))
+	e.must(e.app.RecordStep(e.ctx, tech, clWO, "leak", "100", "re-measured"))
+	labor, err := e.app.LogLabor(e.ctx, tech, clWO, 30, "2026-10-06", "")
+	e.must(err)
+	e.must(e.app.ReverseLabor(e.ctx, mid, labor, "duplicate"))
 
 	// A lockout.
 	for i := 0; i < MaxFailedLogins; i++ {

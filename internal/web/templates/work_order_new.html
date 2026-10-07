@@ -8,6 +8,7 @@
   <label>Title <input name="title" required maxlength="200"></label>
   <label>Problem <textarea name="problem" rows="4" maxlength="4000"></textarea></label>
   <label>Due date <input name="due_at" type="date"></label>
+  {{if .IsMid}}<label>Checklist <select name="procedure"><option value="">none</option>{{range .Data.Procedures}}<option value="{{.ID}}">{{.Label}}</option>{{end}}</select></label>{{end}}
   {{template "nophi"}}
   <button>Open work order</button>
 </form>

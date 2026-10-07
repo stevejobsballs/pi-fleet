@@ -169,30 +169,31 @@ func GetAsset(ctx context.Context, q Querier, id string) (Asset, error) {
 
 // WorkOrder is the projected state of a work order.
 type WorkOrder struct {
-	ID         string
-	Number     string
-	Type       string
-	AssetID    string
-	Priority   string
-	Status     string
-	Title      string
-	Problem    string
-	DueAt      string
-	OpenedBy   string
-	AssignedTo string
-	LeaseID    string
-	ScheduleID string
-	SignRound  int64
-	Version    int64
+	ID          string
+	Number      string
+	Type        string
+	AssetID     string
+	Priority    string
+	Status      string
+	Title       string
+	Problem     string
+	DueAt       string
+	OpenedBy    string
+	AssignedTo  string
+	LeaseID     string
+	ScheduleID  string
+	SignRound   int64
+	ProcedureID string
+	Version     int64
 }
 
 // GetWorkOrder returns a work order by id.
 func GetWorkOrder(ctx context.Context, q Querier, id string) (WorkOrder, error) {
 	var w WorkOrder
 	err := q.QueryRowContext(ctx, `SELECT id, number, type, asset_id, priority, status, title, problem, due_at,
-		opened_by, assigned_to, lease_id, schedule_id, sign_round, version FROM work_orders WHERE id = ?`, id).
+		opened_by, assigned_to, lease_id, schedule_id, sign_round, procedure_id, version FROM work_orders WHERE id = ?`, id).
 		Scan(&w.ID, &w.Number, &w.Type, &w.AssetID, &w.Priority, &w.Status, &w.Title, &w.Problem, &w.DueAt,
-			&w.OpenedBy, &w.AssignedTo, &w.LeaseID, &w.ScheduleID, &w.SignRound, &w.Version)
+			&w.OpenedBy, &w.AssignedTo, &w.LeaseID, &w.ScheduleID, &w.SignRound, &w.ProcedureID, &w.Version)
 	if errors.Is(err, sql.ErrNoRows) {
 		return WorkOrder{}, ErrNotFound
 	}

@@ -372,7 +372,7 @@ func TestEveryPageRenders(t *testing.T) {
 	b := e.browser()
 	b.login("admin", "tumbleweed-gasket-42")
 	for _, p := range []string{"/", "/assets", "/assets?q=Fluke", "/assets/new", "/assets/" + asset, "/work-orders", "/work-orders?view=all",
-		"/work-orders/new", "/work-orders/" + wo, "/inventory", "/schedules", "/review", "/admin/users", "/admin/sites", "/admin/nodes", "/admin/kiosks", "/password",
+		"/work-orders/new", "/work-orders/" + wo, "/inventory", "/schedules", "/review", "/admin/users", "/admin/sites", "/admin/nodes", "/admin/kiosks", "/procedures", "/password",
 		"/static/style.css"} {
 		if code, _, body := b.get(p); code != http.StatusOK || strings.Contains(body, "something went wrong") {
 			t.Errorf("GET %s: %d", p, code)

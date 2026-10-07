@@ -376,15 +376,16 @@ erDiagram
 | `location` | C | id, site_id, parent_id, name, kind | Tree |
 | `manufacturer`, `model` | C | | Shared catalog |
 | `asset` | C | id, tag (the physical asset tag, unique fleet-wide; a duplicate is a conflict), manufacturer and model (text in v1; a shared `model` catalog comes later), serial, location_id (implies site), status (`in_service`, `out_of_service`, `retired`, `missing`), risk_class, is_reference_standard, custom fields (schema-checked JSON) | Field edits from nodes are merged by central (§5.4). Moving an asset to another site is a relocation. No two-phase transfer is needed because central holds authority. |
-| `procedure_version` | C | title, steps[] (check / numeric-with-limits / text / photo), published_at | Immutable once published |
+| `procedure_version` (checklist) | C (mid-tier) | name, version, steps[] (pass/fail check, number with optional decimal limits, text; each optionally required), status (active/retired) | Immutable once published. Changing a checklist publishes the next version. Schedules and work orders name the version they follow; retired versions can't be chosen for new work. |
 | `pm_schedule` | C | asset_id, wo_type (pm / calibration / inspection), procedure, interval_days, grace_days, next_due (projection), open_wo_id | Central's `system:scheduler` opens a WO for each schedule due within 31 days that has none outstanding. Completing it sets next_due = completion date (site time zone) + interval; cancelling it lets the scheduler regenerate. Meter-based triggers come later. |
 | `work_order` | C to create/assign, **L** to perform | id, number, type (`pm`, `corrective`, `calibration`, `inspection`, `install`, `retire`), asset_id, priority, status, problem, findings, resolution, due_at, assigned_to | §4.5 |
 | `wo_lease` | C | wo_id, node_id, user_id, granted_at, ended_at, end_reason | One active lease per WO (§5.4) |
-| `checklist_result` | A (under lease) | wo_id, step_id, value, pass/fail, recorded_by | |
+| `checklist_result` | A (under lease) | wo_id, step_id, value, pass/fail (exact decimals), note, recorded_by | Latest result per step; re-recording keeps earlier values in the audit trail. Recorded only while in progress. Completion needs every required step. Results are part of the signature content hash. |
 | `calibration_record` | A (under lease) | wo_id, asset_id, procedure_version_id, environmental conditions, as_found / as_left result, adjusted, overall pass/fail, standards_used[] (asset id, its cal record id, due date at time of use), certificate attachment | Using an out-of-date standard → warning/block per policy. **Central recomputes pass/fail.** |
 | `cal_point` | A | parameter, unit, nominal, tolerance (abs / % / limits), as_found, as_left, uncertainty?, pass/fail (computed and stored) | |
 | `signature` | A | §7.3 | |
-| `labor_entry`, `meter_reading` | Ledger | | |
+| `labor_entry` | Ledger | wo_id, user, minutes, date, note | Users log their own time; reversed (with a reason) by themselves or mid-tier. Not part of the signed record. |
+| `meter_reading` | Ledger | | *Later*, with meter-based PM triggers. |
 | `part` | C | part_no, description, unit, compatible models | |
 | `stock_location` | C (shared stockrooms) / A (an employee's personal van or kit, owned by their node) | | |
 | `stock_txn` | Ledger | part_id, stock_location_id, delta, kind (`receive`, `issue`, `return`, `adjust`, `transfer_out`, `transfer_in`, `count`), wo_id?, reason | A `count` stores observed and computed quantities. **Counts on shared locations require an online connection** (§5.4). |
@@ -407,7 +408,8 @@ history.
 - `signature.applied`, `signature.withdrawn` (withdrawal is a new event, and
   the original stays visible)
 - `pm_schedule.created`, `pm_schedule.changed`, `pm_schedule.ended`
-- `procedure.published`, `procedure.retired`
+- `procedure.published`, `procedure.retired`, `workorder.procedure_set`,
+  `workorder.step_recorded`
 - `part.created`, `stock_location.created`, `stock.txn_recorded`, `stock.txn_reversed`, `meter.read`, `labor.logged`,
   `labor.reversed`
 - `attachment.added`, `attachment.detached`
@@ -931,7 +933,8 @@ status change unless a valid signature by the same user, in the current
 order starts a new round, so earlier signatures stay visible but no longer
 count.
 
-The content hash covers the work order's descriptive fields and every
+The content hash covers the work order's descriptive fields, its checklist
+version and every recorded step, its attached files, and every
 valid calibration record with all its readings and standards. It excludes
 status and assignment, which signing itself changes. Nodes and central
 compute it from identical state, so central re-checks it.

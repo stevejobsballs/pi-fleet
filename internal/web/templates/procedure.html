@@ -1,0 +1,5 @@
+{{define "content"}}
+<p>Status: {{.Data.Status}} · published {{when .Data.PublishedAt}} · <a href="/procedures?name={{urlquery .Data.Name}}">publish the next version</a></p>
+<ol>{{range .Data.Steps}}<li>{{.Text}}{{if .Required}} <span class="tag">required</span>{{end}} — {{if eq .Kind "check"}}pass/fail{{else if eq .Kind "number"}}reading{{if .Unit}} in {{.Unit}}{{end}}{{if or .Lower .Upper}}, {{if .Lower}}{{.Lower}}{{else}}…{{end}} to {{if .Upper}}{{.Upper}}{{else}}…{{end}}{{end}}{{else}}text{{end}}</li>{{end}}</ol>
+{{if and .IsMid (eq .Data.Status "active")}}<form method="post" action="/procedures/{{.Data.ID}}/retire" class="inline">{{template "csrf" .CSRF}}<label>Reason <input name="reason" required></label><button class="danger">Retire this version</button></form>{{end}}
+{{end}}

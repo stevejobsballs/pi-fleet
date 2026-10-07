@@ -18,6 +18,7 @@
   <label>Every (days) <input name="interval" inputmode="numeric" required></label>
   <label>Grace (days) <input name="grace" inputmode="numeric" value="0"></label>
   <label>First due <input name="first_due" type="date" required></label>
+  <label>Checklist for generated work <select name="procedure_id"><option value="">none</option>{{range .Data.Procedures}}<option value="{{.ID}}">{{.Label}}</option>{{end}}</select></label>
   <button>Create schedule</button>
 </form></section>{{end}}
 {{end}}

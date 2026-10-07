@@ -62,6 +62,38 @@
 </section>
 {{end}}
 
+<section id="checklist">
+  <h2>Checklist</h2>
+  {{with $d.Procedure}}<p><a href="/procedures/{{.ID}}">{{.Name}} v{{.Version}}</a></p>
+  <table class="checklist"><thead><tr><th>Step</th><th>Result</th><th>Note</th>{{if and $d.Holder (eq $w.Status "in_progress")}}<th>Record</th>{{end}}</tr></thead><tbody>
+  {{range $d.Steps}}<tr>
+    <td>{{.Text}}{{if .Required}} <span class="tag">required</span>{{end}}{{if eq .Kind "number"}}<br><small>{{if .Lower}}{{.Lower}}{{else}}…{{end}} to {{if .Upper}}{{.Upper}}{{else}}…{{end}} {{.Unit}}</small>{{end}}</td>
+    <td class="{{.Outcome}}">{{if .Recorded}}{{.Value}} {{if eq .Kind "number"}}{{.Unit}}{{end}}<br><small>{{.RecordedBy}} {{when .RecordedAt}}</small>{{else}}—{{end}}</td>
+    <td>{{.Note}}</td>
+    {{if and $d.Holder (eq $w.Status "in_progress")}}<td><form method="post" action="/work-orders/{{$w.ID}}/steps" class="inline">{{template "csrf" $.CSRF}}<input type="hidden" name="step" value="{{.ID}}">
+      {{if eq .Kind "check"}}<button name="value" value="pass">Pass</button><button name="value" value="fail" class="danger">Fail</button>{{if not .Required}}<button name="value" value="n/a">N/A</button>{{end}}
+      {{else}}<input name="value" {{if eq .Kind "number"}}inputmode="decimal" size="8"{{end}} aria-label="Value" required><button>Record</button>{{end}}
+      <input name="note" placeholder="note" aria-label="Note" size="14"></form></td>{{end}}
+  </tr>{{end}}</tbody></table>
+  {{else}}<p>No checklist.</p>
+  {{if $d.Procedures}}<form method="post" action="/work-orders/{{$w.ID}}/procedure" class="inline">{{template "csrf" .CSRF}}
+    <label>Use checklist <select name="procedure">{{range $d.Procedures}}<option value="{{.ID}}">{{.Label}}</option>{{end}}</select></label><button>Set</button></form>{{end}}
+  {{end}}
+</section>
+
+<section id="labour">
+  <h2>Labour <small>({{hhmm $d.LaborTotal}} total)</small></h2>
+  {{if $d.Labor}}<table><thead><tr><th>Date</th><th>Who</th><th>Time</th><th>Note</th><th></th></tr></thead><tbody>
+  {{range $d.Labor}}<tr class="{{if eq .Status "reversed"}}old{{end}}"><td>{{.Date}}</td><td>{{.User}}</td><td>{{hhmm .Minutes}}</td>
+    <td>{{.Note}}{{if eq .Status "reversed"}} <span class="warn">reversed: {{.ReverseReason}}</span>{{end}}</td>
+    <td>{{if and (eq .Status "logged") (or $.IsMid (eq .UserID $.User.ID))}}<details><summary>Reverse</summary><form method="post" action="/labor/{{.ID}}/reverse">{{template "csrf" $.CSRF}}<label>Reason <input name="reason" required></label><button class="danger">Reverse</button></form></details>{{end}}</td></tr>{{end}}
+  </tbody></table>{{end}}
+  {{if ne $w.Status "cancelled"}}<form method="post" action="/work-orders/{{$w.ID}}/labor" class="inline">{{template "csrf" .CSRF}}
+    <label>Time <input name="time" placeholder="45, 1:30 or 1.5h" size="10" required></label>
+    <label>Date <input name="date" type="date" value="{{$d.Today}}" required></label>
+    <label>Note <input name="note"></label><button>Log my time</button></form>{{end}}
+</section>
+
 <section>
   <h2>Files</h2>
   {{template "attachments" (files $d.Attachments .CSRF $d.CanAttach .IsMid (printf "/work-orders/%s/attachments" $w.ID))}}

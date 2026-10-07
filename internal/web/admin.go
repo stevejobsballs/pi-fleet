@@ -78,8 +78,9 @@ func (s *Server) stockLocationCreate(w http.ResponseWriter, r *http.Request, ses
 // --- schedules ---
 
 type schedulesData struct {
-	Rows   []scheduleRow
-	Assets []assetRow
+	Rows       []scheduleRow
+	Assets     []assetRow
+	Procedures []option
 }
 
 func (s *Server) scheduleList(w http.ResponseWriter, r *http.Request, sess *session) error {
@@ -92,7 +93,11 @@ func (s *Server) scheduleList(w http.ResponseWriter, r *http.Request, sess *sess
 	if err != nil {
 		return err
 	}
-	return s.render(w, r, sess, "schedules", "PM schedules", schedulesData{Rows: rows, Assets: assets})
+	procs, err := procedureOptions(r, s)
+	if err != nil {
+		return err
+	}
+	return s.render(w, r, sess, "schedules", "PM schedules", schedulesData{Rows: rows, Assets: assets, Procedures: procs})
 }
 
 func (s *Server) scheduleCreate(w http.ResponseWriter, r *http.Request, sess *session) error {
@@ -101,7 +106,7 @@ func (s *Server) scheduleCreate(w http.ResponseWriter, r *http.Request, sess *se
 	grace, _ := strconv.Atoi(f("grace"))
 	if _, err := s.App.CreateSchedule(r.Context(), s.actor(sess), domain.PMScheduleCreated{
 		AssetID: f("asset"), WOType: f("type"), Title: strings.TrimSpace(f("title")), Procedure: strings.TrimSpace(f("procedure")),
-		IntervalDays: interval, GraceDays: grace, FirstDue: f("first_due"),
+		IntervalDays: interval, GraceDays: grace, FirstDue: f("first_due"), ProcedureID: f("procedure_id"),
 	}); err != nil {
 		return s.failed(w, r, sess, "/schedules", err)
 	}

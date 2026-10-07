@@ -252,9 +252,10 @@ func (s *Server) workOrderList(w http.ResponseWriter, r *http.Request, sess *ses
 }
 
 type woNewData struct {
-	Assets []assetRow
-	Asset  string
-	Types  []string
+	Assets     []assetRow
+	Asset      string
+	Types      []string
+	Procedures []option
 }
 
 func (s *Server) workOrderNew(w http.ResponseWriter, r *http.Request, sess *session) error {
@@ -266,7 +267,11 @@ func (s *Server) workOrderNew(w http.ResponseWriter, r *http.Request, sess *sess
 	if roleRank[sess.User.Role] >= roleRank[domain.RoleMidTier] {
 		types = append(types, "pm", "calibration", "install", "retire")
 	}
-	return s.render(w, r, sess, "work_order_new", "New work order", woNewData{Assets: assets, Asset: r.URL.Query().Get("asset"), Types: types})
+	procs, err := procedureOptions(r, s)
+	if err != nil {
+		return err
+	}
+	return s.render(w, r, sess, "work_order_new", "New work order", woNewData{Assets: assets, Asset: r.URL.Query().Get("asset"), Types: types, Procedures: procs})
 }
 
 func (s *Server) workOrderCreate(w http.ResponseWriter, r *http.Request, sess *session) error {
@@ -277,6 +282,7 @@ func (s *Server) workOrderCreate(w http.ResponseWriter, r *http.Request, sess *s
 	}
 	id, number, err := s.App.OpenWorkOrder(r.Context(), s.actor(sess), app.NewWorkOrder{
 		Type: f("type"), AssetID: f("asset"), Priority: f("priority"), Title: title, Problem: problem, DueAt: f("due_at"),
+		ProcedureID: f("procedure"),
 	})
 	if err != nil {
 		return s.failed(w, r, sess, "/work-orders/new?asset="+f("asset"), err)
@@ -298,6 +304,12 @@ type woData struct {
 	Rows         int
 	Attachments  []domain.Attachment
 	CanAttach    bool
+	Procedure    *domain.Procedure
+	Steps        []domain.StepResult
+	Procedures   []option
+	Labor        []domain.LaborEntry
+	LaborTotal   int
+	Today        string
 	// SignAs is the meaning the current user may sign with now, if any.
 	SignAs    string
 	Performer bool
@@ -342,7 +354,19 @@ func (s *Server) loadWorkOrder(r *http.Request, sess *session, id string) (woDat
 	if d.Attachments, err = domain.ListAttachments(ctx, q, domain.EntityWorkOrder, wo.ID); err != nil {
 		return d, err
 	}
+	if d.Procedure, d.Steps, err = domain.Checklist(ctx, q, wo); err != nil {
+		return d, err
+	}
+	if d.Labor, d.LaborTotal, err = domain.Labor(ctx, q, wo.ID); err != nil {
+		return d, err
+	}
+	d.Today = today(s.now())
 	isMid := roleRank[sess.User.Role] >= roleRank[domain.RoleMidTier]
+	if isMid && d.Procedure == nil && (wo.Status == domain.WOOpen || wo.Status == domain.WOAssigned) {
+		if d.Procedures, err = procedureOptions(r, s); err != nil {
+			return d, err
+		}
+	}
 	open := wo.Status != domain.WOClosed && wo.Status != domain.WOCancelled
 	d.CanAttach = open && (isMid || (d.Holder && wo.Status == domain.WOInProgress))
 	if isMid {

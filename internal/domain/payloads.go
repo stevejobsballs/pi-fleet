@@ -228,6 +228,8 @@ type WorkOrderOpened struct {
 	DueAt    string `json:"due_at,omitempty"` // RFC 3339 date or time
 	// ScheduleID links a work order generated from a PM schedule.
 	ScheduleID string `json:"schedule_id,omitempty"`
+	// ProcedureID is the checklist version to follow, if any.
+	ProcedureID string `json:"procedure_id,omitempty"`
 }
 
 // WorkOrderAssigned grants a new lease to the assignee and ends any
@@ -302,6 +304,8 @@ type PMScheduleCreated struct {
 	IntervalDays int    `json:"interval_days"`
 	GraceDays    int    `json:"grace_days"`
 	FirstDue     string `json:"first_due"` // YYYY-MM-DD
+	// ProcedureID is the checklist generated work orders follow.
+	ProcedureID string `json:"procedure_id,omitempty"`
 }
 
 type PMScheduleChanged struct {
@@ -310,6 +314,7 @@ type PMScheduleChanged struct {
 	IntervalDays *int    `json:"interval_days,omitempty"`
 	GraceDays    *int    `json:"grace_days,omitempty"`
 	NextDue      *string `json:"next_due,omitempty"`
+	ProcedureID  *string `json:"procedure_id,omitempty"`
 	Reason       string  `json:"reason"`
 }
 

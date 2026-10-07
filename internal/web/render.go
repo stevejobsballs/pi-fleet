@@ -55,6 +55,7 @@ var funcs = template.FuncMap{
 	"dict2":       func(a, b any) struct{ A, B any } { return struct{ A, B any }{a, b} },
 	"dict3":       func(a, b, c, d any) struct{ A, B, C, D any } { return struct{ A, B, C, D any }{a, b, c, d} },
 	"slice3":      func(a ...string) []string { return a },
+	"hhmm":        hhmm,
 	"kib": func(n int64) string {
 		if n < 1<<20 {
 			return fmt.Sprintf("%.0f KiB", float64(n)/1024)

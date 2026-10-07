@@ -344,6 +344,9 @@ func (ap *applier) calibrationVoided(p *CalibrationVoided) error {
 
 // checkCompletion enforces what a work order needs before completion.
 func (ap *applier) checkCompletion(w WorkOrder) error {
+	if err := ap.checkChecklist(w); err != nil {
+		return err
+	}
 	if w.Type != "calibration" {
 		return nil
 	}
@@ -410,10 +413,15 @@ func (ap *applier) scheduleCreated(p *PMScheduleCreated) error {
 	if _, err := time.Parse(dateLayout, p.FirstDue); err != nil {
 		return invalid("first_due %q must be YYYY-MM-DD", p.FirstDue)
 	}
+	if p.ProcedureID != "" {
+		if err := ap.activeProcedure(p.ProcedureID); err != nil {
+			return err
+		}
+	}
 	return ap.exec(`INSERT INTO pm_schedules (id, asset_id, wo_type, title, procedure, interval_days, grace_days,
-			next_due, status, open_wo_id, version, last_event_id)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', '', 1, ?)`,
-		ap.e.EntityID, p.AssetID, p.WOType, p.Title, p.Procedure, p.IntervalDays, p.GraceDays, p.FirstDue, ap.e.EventID)
+			next_due, status, open_wo_id, procedure_id, version, last_event_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', '', ?, 1, ?)`,
+		ap.e.EntityID, p.AssetID, p.WOType, p.Title, p.Procedure, p.IntervalDays, p.GraceDays, p.FirstDue, p.ProcedureID, ap.e.EventID)
 }
 
 // Schedule is a projected PM schedule.
@@ -421,6 +429,7 @@ type Schedule struct {
 	ID, AssetID, WOType, Title, Procedure string
 	IntervalDays, GraceDays               int
 	NextDue, Status, OpenWorkOrderID      string
+	ProcedureID                           string
 	Version                               int64
 }
 
@@ -428,9 +437,9 @@ type Schedule struct {
 func GetSchedule(ctx context.Context, q Querier, id string) (Schedule, error) {
 	var s Schedule
 	err := q.QueryRowContext(ctx, `SELECT id, asset_id, wo_type, title, procedure, interval_days, grace_days,
-		next_due, status, open_wo_id, version FROM pm_schedules WHERE id = ?`, id).
+		next_due, status, open_wo_id, procedure_id, version FROM pm_schedules WHERE id = ?`, id).
 		Scan(&s.ID, &s.AssetID, &s.WOType, &s.Title, &s.Procedure, &s.IntervalDays, &s.GraceDays,
-			&s.NextDue, &s.Status, &s.OpenWorkOrderID, &s.Version)
+			&s.NextDue, &s.Status, &s.OpenWorkOrderID, &s.ProcedureID, &s.Version)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Schedule{}, ErrNotFound
 	}
@@ -488,8 +497,16 @@ func (ap *applier) scheduleChanged(p *PMScheduleChanged) error {
 		}
 		s.NextDue = *p.NextDue
 	}
-	return ap.bumpSchedule(s.ID, `title = ?, procedure = ?, interval_days = ?, grace_days = ?, next_due = ?`,
-		s.Title, s.Procedure, s.IntervalDays, s.GraceDays, s.NextDue)
+	if p.ProcedureID != nil {
+		if *p.ProcedureID != "" {
+			if err := ap.activeProcedure(*p.ProcedureID); err != nil {
+				return err
+			}
+		}
+		s.ProcedureID = *p.ProcedureID
+	}
+	return ap.bumpSchedule(s.ID, `title = ?, procedure = ?, interval_days = ?, grace_days = ?, next_due = ?, procedure_id = ?`,
+		s.Title, s.Procedure, s.IntervalDays, s.GraceDays, s.NextDue, s.ProcedureID)
 }
 
 func (ap *applier) scheduleEnded(p *PMScheduleEnded) error {
