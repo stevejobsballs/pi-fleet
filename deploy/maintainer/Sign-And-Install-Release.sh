@@ -52,6 +52,6 @@ fi
 confirm "Install $VER on this master Pi now (it has ${INSTALLED:-no version})?" y || exit 0
 echo "You'll be asked for your sudo password."
 sudo install -o pifleet -g pifleet -m 0644 "$DIR"/* /srv/pi-fleet/releases/
-sudo bash "$KIT/update.sh"
+sudo bash "$KIT/../tools/update.sh"
 echo
 echo "Employee Pis can now install $VER with Update-Pi.sh."
