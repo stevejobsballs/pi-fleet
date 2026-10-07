@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"pi-fleet/internal/app"
+	"pi-fleet/internal/backup"
 	"pi-fleet/internal/domain"
 	"pi-fleet/internal/fleetsync"
 	"pi-fleet/internal/password"
@@ -159,6 +160,13 @@ func TestBackupCommands(t *testing.T) {
 	if out := runOK(t, "", "backup-now", "-data", dir); !strings.Contains(out, "verified snapshot") {
 		t.Errorf("backup-now: %s", out)
 	}
+	// Backup drive unplugged: its mark is gone from the empty mount point,
+	// and nothing is written there.
+	os.Rename(filepath.Join(backupDisk, backup.DriveMarker), filepath.Join(backupDisk, "away"))
+	if _, err := runCmd(t, "", "backup-now", "-data", dir); err == nil || !strings.Contains(err.Error(), "backup drive isn't connected") {
+		t.Errorf("backup without the drive: %v", err)
+	}
+	os.Rename(filepath.Join(backupDisk, "away"), filepath.Join(backupDisk, backup.DriveMarker))
 	if out := runOK(t, "", "backups", "-data", dir); !strings.Contains(out, "no off-site backup has been confirmed yet") {
 		t.Errorf("backups should warn: %s", out)
 	}

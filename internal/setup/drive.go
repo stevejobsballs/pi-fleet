@@ -21,7 +21,10 @@ func partitionPath(disk string) string {
 
 // EraseAndFormat wipes a disk and makes one ext4 partition labelled
 // DataLabel on it, returning the partition and its UUID.
-func EraseAndFormat(sys Sys, d Disk) (Part, error) {
+func EraseAndFormat(sys Sys, d Disk) (Part, error) { return EraseAndFormatAs(sys, d, DataLabel) }
+
+// EraseAndFormatAs is EraseAndFormat with another label.
+func EraseAndFormatAs(sys Sys, d Disk, label string) (Part, error) {
 	for _, p := range d.Parts {
 		for _, m := range p.Mounts {
 			if err := sys.Run("umount", m); err != nil {
@@ -41,14 +44,14 @@ func EraseAndFormat(sys Sys, d Disk) (Part, error) {
 		}
 	}
 	part := partitionPath(d.Path)
-	if err := sys.Run("mkfs.ext4", "-q", "-F", "-L", DataLabel, "-m", "1", part); err != nil {
+	if err := sys.Run("mkfs.ext4", "-q", "-F", "-L", label, "-m", "1", part); err != nil {
 		return Part{}, err
 	}
 	uuid, err := blkidUUID(sys, part)
 	if err != nil {
 		return Part{}, err
 	}
-	return Part{Path: part, FSType: "ext4", Label: DataLabel, UUID: uuid}, nil
+	return Part{Path: part, FSType: "ext4", Label: label, UUID: uuid}, nil
 }
 
 func blkidUUID(sys Sys, part string) (string, error) {
@@ -77,6 +80,10 @@ func FstabLine(uuid, dir string) string {
 // UpdateFstab returns fstab with dir mounted from uuid, replacing (as a
 // comment, so nothing is lost) any earlier line for dir.
 func UpdateFstab(fstab, uuid, dir string) string {
+	return replaceFstab(fstab, dir, "# pi-fleet master Pi data drive", FstabLine(uuid, dir))
+}
+
+func replaceFstab(fstab, dir, comment, line string) string {
 	var out []string
 	for _, l := range strings.Split(strings.TrimRight(fstab, "\n"), "\n") {
 		f := strings.Fields(l)
@@ -85,18 +92,23 @@ func UpdateFstab(fstab, uuid, dir string) string {
 		}
 		out = append(out, l)
 	}
-	out = append(out, "# pi-fleet master Pi data drive", FstabLine(uuid, dir))
+	out = append(out, comment, line)
 	return strings.Join(out, "\n") + "\n"
 }
 
 // MountData adds the drive to /etc/fstab and mounts it at dir.
 func MountData(sys Sys, uuid, dir string) error {
+	return mountWith(sys, dir, "# pi-fleet master Pi data drive", FstabLine(uuid, dir), true)
+}
+
+// mountWith puts line in /etc/fstab for dir and, if mount, mounts it.
+func mountWith(sys Sys, dir, comment, line string, mount bool) error {
 	fstab, err := sys.ReadFile("/etc/fstab")
 	if err != nil {
 		return err
 	}
-	if !strings.Contains(string(fstab), FstabLine(uuid, dir)) {
-		if err := sys.WriteFile("/etc/fstab", []byte(UpdateFstab(string(fstab), uuid, dir)), 0o644); err != nil {
+	if !strings.Contains(string(fstab), line) {
+		if err := sys.WriteFile("/etc/fstab", []byte(replaceFstab(string(fstab), dir, comment, line)), 0o644); err != nil {
 			return err
 		}
 	}
@@ -106,7 +118,7 @@ func MountData(sys Sys, uuid, dir string) error {
 	if err := sys.Run("systemctl", "daemon-reload"); err != nil { // fstab changes become mount units
 		return err
 	}
-	if isMountpoint(sys, dir) {
+	if !mount || isMountpoint(sys, dir) {
 		return nil
 	}
 	return sys.Run("mount", dir)

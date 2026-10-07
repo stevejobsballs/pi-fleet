@@ -45,6 +45,13 @@ escrow the directory again after that.
 
 ### 3. Backups
 
+Setup does all of this (run it on the master Pi and choose **Set up
+backups**): it prepares the backup drive (ext4 labelled `PIFLEET-BACKUP`,
+mounted at `/srv/pi-fleet-backup` by UUID), makes the backup keys and saves
+each to a USB stick as a standard age key file, configures and tests the
+first backup, prepares and registers the off-site disks, and installs the
+automatic off-site write below. By hand:
+
 ```sh
 pi-fleet backup-keygen      # once per super user, plus one escrow identity; keep identities offline
 sudo -u pifleet /opt/pi-fleet/current/pi-fleet backup-config -data /srv/pi-fleet \
@@ -59,8 +66,17 @@ sudo -u pifleet /opt/pi-fleet/current/pi-fleet offsite-register -data /srv/pi-fl
     -disk /media/OFFSITE-A -label OFFSITE-A
 ```
 
+`backup-config` marks the directory with `.pi-fleet-backup-drive`. If the
+mark is missing (the backup drive is unplugged and only its empty mount
+point is left), no backup is written and the web interface warns.
+
 To have central write automatically when a registered disk is plugged in,
 mount off-site disks by label and trigger a unit:
+
+```
+# /etc/fstab, one line per off-site disk
+LABEL=OFFSITE-A  /media/OFFSITE-A  ext4  noauto,nofail,noatime,x-gvfs-hide,x-systemd.device-timeout=10s  0  0
+```
 
 ```
 # /etc/udev/rules.d/90-pi-fleet-offsite.rules
@@ -71,15 +87,19 @@ ACTION=="add", SUBSYSTEM=="block", ENV{ID_FS_LABEL}=="OFFSITE-*", \
 ```ini
 # /etc/systemd/system/pi-fleet-offsite@.service
 [Unit]
-Description=Write a verified pi-fleet snapshot to off-site disk %i
-Requires=media-%i.mount
-After=media-%i.mount
+Description=Write a verified pi-fleet backup to off-site disk %i
+RequiresMountsFor=/media/%i
 
 [Service]
 Type=oneshot
 User=pifleet
 ExecStart=/opt/pi-fleet/current/pi-fleet offsite-write -data /srv/pi-fleet -disk /media/%i
+ExecStopPost=+/usr/bin/umount /media/%i
 ```
+
+(`%i`, not `%I`: unescaping would turn the dash in `OFFSITE-A` into a
+slash. The disk is closed afterwards, so it can be unplugged once it
+disappears.)
 
 When the disk reaches the other building:
 `pi-fleet offsite-confirm -data /srv/pi-fleet -label OFFSITE-A -as <you>`.

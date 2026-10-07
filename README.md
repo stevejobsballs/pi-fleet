@@ -41,7 +41,11 @@ Setup installs whatever else the Pi needs, names the Pi, and then:
   (showing what is on it and asking you to type ERASE first) and mounts it
   so that all records, files and keys live on it. pi-fleet will not start
   without it, so nothing is ever written to the SD card. It makes the HTTPS
-  certificate and the first super user, and starts pi-fleet. If the Pi
+  certificate and the first super user, and starts pi-fleet. Then it sets
+  up backups: a second drive that receives a verified, encrypted backup
+  every night and new records every 5 minutes; backup keys saved to a USB
+  stick you keep elsewhere; and off-site disks that receive a backup by
+  themselves whenever one is plugged in, for rotating to another building. If the Pi
   fails, plug the drive into a new Pi and run setup there: it finds the
   drive and carries on. A master set up before the drive step existed is
   offered a move of its records onto a drive (copied, checked, then

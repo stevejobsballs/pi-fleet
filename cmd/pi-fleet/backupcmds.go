@@ -26,6 +26,9 @@ const (
 	configLastNightly      = "backup_last_nightly"
 )
 
+// errNoBackupDrive means backups are configured but their drive is missing.
+var errNoBackupDrive = errors.New("no backup drive")
+
 type stringList []string
 
 func (s *stringList) String() string     { return strings.Join(*s, ",") }
@@ -44,6 +47,9 @@ func runner(ctx context.Context, n *node, a *app.App) (*backup.Runner, error) {
 	recipients, err := backup.ParseRecipients(strings.Fields(keys))
 	if err != nil {
 		return nil, err
+	}
+	if _, err := os.Stat(filepath.Join(dir, backup.DriveMarker)); err != nil {
+		return nil, fmt.Errorf("%w: the backup drive isn't connected (no %s in %s)", errNoBackupDrive, backup.DriveMarker, dir)
 	}
 	return &backup.Runner{App: a, Dir: dir, Recipients: recipients, Version: version, Blobs: n.blobs()}, nil
 }
@@ -110,6 +116,11 @@ func cmdBackupConfig(ctx context.Context, args []string, c *cli) error {
 	}
 	defer n.Close()
 	abs, _ := filepath.Abs(*dir)
+	// Mark the directory as the backup target: when its drive is unplugged
+	// the empty mount point has no mark, and no backup is written there.
+	if err := os.WriteFile(filepath.Join(abs, backup.DriveMarker), []byte("pi-fleet backups are written here\n"), 0o644); err != nil {
+		return err
+	}
 	if err := n.store.SetConfig(ctx, configBackupDir, abs); err != nil {
 		return err
 	}

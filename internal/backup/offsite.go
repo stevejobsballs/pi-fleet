@@ -23,6 +23,11 @@ import (
 
 // Off-site USB disk rotation (DESIGN.md §8.2, decision D9).
 
+// DriveMarker is written at the top of the master Pi's backup drive by
+// setup. If it is missing, the drive isn't connected and backups would go
+// to the SD card's empty mount point, so none are made.
+const DriveMarker = ".pi-fleet-backup-drive"
+
 const (
 	markerFile = ".pi-fleet-disk.json"
 	// keepOnDisk is how many snapshots an off-site disk keeps.

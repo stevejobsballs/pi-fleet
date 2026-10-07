@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
+	"filippo.io/age"
 	"fmt"
 	"io/fs"
 	"net"
@@ -269,6 +270,7 @@ func TestNewMasterOnAnErasedDrive(t *testing.T) {
 		"2", "ERASE", // the SSD
 		"Jsmith", // not lowercase
 		"jsmith", "Jo Smith", "jo at example", "jo@example.org",
+		"n", // backups later
 	)
 	if err := w.Run(); err != nil {
 		t.Fatalf("%v\n%s", err, out)
@@ -318,7 +320,7 @@ func TestNewMasterReusesADataDrive(t *testing.T) {
 		"runuser -u pifleet -- /opt/pi-fleet/current/pi-fleet bootstrap -data /srv/pi-fleet -check": "this master Pi has a super user\n"})
 	sys.exists["/srv/pi-fleet/pi-fleet.db"] = true // on the drive, once mounted
 	sys.files["/srv/pi-fleet/tls/cert.pem"], _, _ = NewCertificate([]string{"fleet-master.local"}, nil, time.Now())
-	w, out := wizard(sys, "1", "", "", "2", "y")
+	w, out := wizard(sys, "1", "", "", "2", "y", "n")
 	if err := w.Run(); err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
@@ -453,7 +455,7 @@ func TestUpdateAnExistingMasterUsesTheVerifiedUpdate(t *testing.T) {
 	sys := newFake()
 	sys.files[UnitPath] = []byte("ExecStart=/opt/pi-fleet/current/pi-fleet serve -data /srv/pi-fleet -listen :443\n")
 	sys.mounts[DataDir] = true
-	w, out := wizard(sys, "2")
+	w, out := wizard(sys, "3")
 	w.Self = "/home/pi/Downloads/v1.0.0/pi-fleet_v1.0.0_linux_arm64"
 	// Without the signature files next to it: nothing happens.
 	if err := w.Run(); !errors.Is(err, ErrCancelled) || sys.ran("systemctl stop") {
@@ -462,7 +464,7 @@ func TestUpdateAnExistingMasterUsesTheVerifiedUpdate(t *testing.T) {
 	for _, f := range []string{"manifest.json", "manifest.json.minisig"} {
 		sys.files["/home/pi/Downloads/v1.0.0/"+f] = []byte("x")
 	}
-	w, out = wizard(sys, "2")
+	w, out = wizard(sys, "3")
 	w.Self = "/home/pi/Downloads/v1.0.0/pi-fleet_v1.0.0_linux_arm64"
 	w.ReadDir = func(string) ([]os.DirEntry, error) {
 		return []os.DirEntry{entry("manifest.json"), entry("manifest.json.minisig"), entry("pi-fleet_v1.0.0_linux_arm64"), entry("notes.txt")}, nil
@@ -499,7 +501,7 @@ func TestNothingToUpdateWhenTheVersionIsInstalled(t *testing.T) {
 	}
 	// On a drive already: only a move to another drive, or stop.
 	sys.mounts[DataDir] = true
-	w, out = wizard(sys, "2")
+	w, out = wizard(sys, "3")
 	if err := w.Run(); err != nil || !strings.Contains(out.String(), "1) Move the records to a different drive") || strings.Contains(out.String(), "Update to") || sys.ran("systemctl") {
 		t.Fatalf("err %v\n%s", err, out)
 	}
@@ -585,5 +587,142 @@ func TestDriveMoveStopsSafelyIfTheCopyFailsItsCheck(t *testing.T) {
 	}
 	if !sys.ran("systemctl start pi-fleet") {
 		t.Fatal("pi-fleet left stopped")
+	}
+}
+
+// The records are on sda; sdb becomes the backup drive; sdc is a USB stick
+// for the keys; sdd and sde become the off-site disks.
+const backupDisks = `{"blockdevices": [
+ {"name":"sda","path":"/dev/sda","type":"disk","size":1000204886016,"model":"Data SSD","tran":"usb","fstype":null,"mountpoints":[],
+  "children":[{"name":"sda1","path":"/dev/sda1","type":"part","size":1000203837440,"fstype":"ext4","label":"PIFLEET-DATA","uuid":"data-uuid","mountpoints":["/srv/pi-fleet"]}]},
+ {"name":"sdb","path":"/dev/sdb","type":"disk","size":1000204886016,"model":"Samsung SSD T7","tran":"usb","fstype":null,"mountpoints":[],
+  "children":[{"name":"sdb1","path":"/dev/sdb1","type":"part","size":1000203837440,"fstype":"exfat","label":"T7","uuid":"1234-ABCD","mountpoints":[null]}]},
+ {"name":"sdc","path":"/dev/sdc","type":"disk","size":31037849600,"model":"Key Stick","tran":"usb","rm":true,"fstype":null,"mountpoints":[],
+  "children":[{"name":"sdc1","path":"/dev/sdc1","type":"part","size":31036801024,"fstype":"vfat","label":"KEYS","uuid":"K-1","mountpoints":["/media/clooney/KEYS"]}]},
+ {"name":"sdd","path":"/dev/sdd","type":"disk","size":500107862016,"model":"Offsite One","tran":"usb","fstype":null,"mountpoints":[],"children":[]},
+ {"name":"sde","path":"/dev/sde","type":"disk","size":500107862016,"model":"Offsite Two","tran":"usb","fstype":null,"mountpoints":[],"children":[]},
+ {"name":"mmcblk0","path":"/dev/mmcblk0","type":"disk","size":127865454592,"tran":"mmc","fstype":null,"mountpoints":[],
+  "children":[{"name":"mmcblk0p2","path":"/dev/mmcblk0p2","type":"part","size":127328583680,"fstype":"ext4","label":"rootfs","uuid":"y","mountpoints":["/"]}]}
+]}`
+
+func TestSetUpBackupsOnAnExistingMaster(t *testing.T) {
+	sys := newFake()
+	sys.files[UnitPath] = []byte("ExecStart=/opt/pi-fleet/current/pi-fleet serve -data /srv/pi-fleet -listen :8443 (trial)\n")
+	sys.mounts[DataDir] = true
+	outputs(sys, map[string]string{"lsblk": backupDisks, "blkid": "new-uuid\n", "/opt/pi-fleet/current/pi-fleet version": "pi-fleet v1.0.0\n"})
+	w, out := wizard(sys,
+		"2",              // set up backups
+		"", "1", "ERASE", // backup drive: the T7
+		"1", "1", // your key: new, saved on the key stick
+		"1", "1", // escrow key: new, on the key stick
+		"n",              // no more key holders
+		"2",              // two off-site disks
+		"", "3", "ERASE", // OFFSITE-A: Offsite One
+		"", "4", "ERASE", // OFFSITE-B: Offsite Two
+	)
+	if err := w.Run(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	for _, d := range []string{"sda", "sdc"} {
+		if sys.ran("wipefs --all --quiet /dev/"+d) || sys.ran("mkfs.ext4 -q -F -L PIFLEET-BACKUP -m 1 /dev/"+d) {
+			t.Fatalf("erased %s:\n%s", d, strings.Join(sys.calls, "\n"))
+		}
+	}
+	for _, want := range []string{
+		"mkfs.ext4 -q -F -L PIFLEET-BACKUP -m 1 /dev/sdb1",
+		"mount /srv/pi-fleet-backup",
+		"chown pifleet:pifleet /srv/pi-fleet-backup",
+		"runuser -u pifleet -- /opt/pi-fleet/current/pi-fleet backup-config -data /srv/pi-fleet -dir /srv/pi-fleet-backup -recipient age1",
+		"runuser -u pifleet -- /opt/pi-fleet/current/pi-fleet backup-now -data /srv/pi-fleet",
+		"rm -f " + OffsiteRulePath,
+		"mkfs.ext4 -q -F -L OFFSITE-A -m 1 /dev/sdd1",
+		"mount /media/OFFSITE-A",
+		"runuser -u pifleet -- /opt/pi-fleet/current/pi-fleet offsite-register -data /srv/pi-fleet -disk /media/OFFSITE-A -label OFFSITE-A",
+		"runuser -u pifleet -- /opt/pi-fleet/current/pi-fleet offsite-write -data /srv/pi-fleet -disk /media/OFFSITE-A",
+		"umount /media/OFFSITE-A",
+		"mkfs.ext4 -q -F -L OFFSITE-B -m 1 /dev/sde1",
+		"udevadm control --reload-rules",
+		"systemctl restart pi-fleet",
+	} {
+		if !sys.ran(want) {
+			t.Errorf("didn't run %q", want)
+		}
+	}
+	// Both keys are on the stick, and the backups are encrypted to them.
+	var config string
+	for _, c := range sys.calls {
+		if strings.Contains(c, " backup-config ") {
+			config = c
+		}
+	}
+	for _, f := range []string{"/media/clooney/KEYS/pi-fleet-backup-key-you.txt", "/media/clooney/KEYS/pi-fleet-backup-key-the-sealed-envelope-escrow.txt"} {
+		key := string(sys.files[f])
+		if !strings.Contains(key, "AGE-SECRET-KEY-1") {
+			t.Fatalf("%s:\n%s", f, key)
+		}
+		// The file is a standard key file: it decrypts what is encrypted
+		// to the recipient given to backup-config.
+		ids, err := age.ParseIdentities(strings.NewReader(key))
+		if err != nil || len(ids) != 1 {
+			t.Fatalf("%s isn't a usable key file: %v", f, err)
+		}
+		pub := ids[0].(*age.X25519Identity).Recipient().String()
+		if !strings.Contains(config, "-recipient "+pub) || !strings.Contains(key, "# public key: "+pub) {
+			t.Errorf("backups aren't encrypted to the key in %s", f)
+		}
+		var sealed bytes.Buffer
+		wr, _ := age.Encrypt(&sealed, ids[0].(*age.X25519Identity).Recipient())
+		wr.Write([]byte("backup"))
+		wr.Close()
+		if r, err := age.Decrypt(&sealed, ids...); err != nil || r == nil {
+			t.Fatalf("key from %s can't decrypt: %v", f, err)
+		}
+	}
+	if strings.Count(config, "-recipient") != 2 {
+		t.Errorf("backup-config: %s", config)
+	}
+	fstab := string(sys.files["/etc/fstab"])
+	for _, want := range []string{FstabLine("new-uuid", BackupDir), OffsiteFstabLine("OFFSITE-A"), OffsiteFstabLine("OFFSITE-B")} {
+		if !strings.Contains(fstab, want) {
+			t.Errorf("fstab lacks %q:\n%s", want, fstab)
+		}
+	}
+	unit := string(sys.files[OffsiteUnitPath])
+	if !strings.Contains(unit, "RequiresMountsFor=/media/%i") || !strings.Contains(unit, "-disk /media/%i") || strings.Contains(unit, "%I") {
+		t.Errorf("off-site unit:\n%s", unit)
+	}
+	if !strings.Contains(string(sys.files[OffsiteRulePath]), `ENV{ID_FS_LABEL}=="OFFSITE-*"`) {
+		t.Error("no udev rule")
+	}
+	if !strings.Contains(string(sys.files[UnitPath]), "ReadWritePaths=/srv/pi-fleet -/srv/pi-fleet-backup") {
+		t.Errorf("service can't write backups:\n%s", sys.files[UnitPath])
+	}
+	if !strings.Contains(out.String(), "offsite-confirm") {
+		t.Error("no rotation instructions")
+	}
+}
+
+func TestSlug(t *testing.T) {
+	if got := slug("The sealed envelope (escrow)"); got != "the-sealed-envelope-escrow" {
+		t.Fatal(got)
+	}
+}
+
+func TestAddOffsiteDisksLater(t *testing.T) {
+	sys := newFake()
+	sys.files[UnitPath] = []byte(MasterUnit(443))
+	sys.files[BackupDir+"/.pi-fleet-backup-drive"] = []byte("x")
+	sys.files["/etc/fstab"] = []byte(OffsiteFstabLine("OFFSITE-A") + "\n" + OffsiteFstabLine("OFFSITE-B") + "\n")
+	sys.mounts[DataDir], sys.mounts[BackupDir] = true, true
+	outputs(sys, map[string]string{"lsblk": backupDisks, "blkid": "new-uuid\n", "/opt/pi-fleet/current/pi-fleet version": "pi-fleet v1.0.0\n"})
+	w, out := wizard(sys, "2", "1", "", "4", "ERASE")
+	if err := w.Run(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	if sys.ran("runuser -u pifleet -- /opt/pi-fleet/current/pi-fleet backup-config") || !sys.ran("mkfs.ext4 -q -F -L OFFSITE-C -m 1 /dev/sde1") {
+		t.Fatalf("ran:\n%s", strings.Join(sys.calls, "\n"))
+	}
+	if !sys.ran("udevadm control --reload-rules") || sys.files[OffsiteRulePath] == nil {
+		t.Fatal("automatic write not reinstalled")
 	}
 }

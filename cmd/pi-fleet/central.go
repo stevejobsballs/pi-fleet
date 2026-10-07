@@ -269,7 +269,10 @@ func cmdServe(ctx context.Context, args []string, c *cli) error {
 	ui, err := (&web.Server{App: a, Role: "central", Secure: true, PHIPatterns: web.DefaultPHIPatterns, CertFingerprint: fingerprint,
 		Notices: func(ctx context.Context) []string {
 			if _, err := n.store.Config(ctx, configBackupDir); err != nil {
-				return []string{"Backups are not configured. Run pi-fleet backup-config on the master Pi."}
+				return []string{"Backups are not configured. Run setup on the master Pi and choose Set up backups."}
+			}
+			if _, err := runner(ctx, n, a); errors.Is(err, errNoBackupDrive) {
+				return []string{"The backup drive isn't connected, so no backups are being made. Plug it back into the master Pi."}
 			}
 			last, err := domain.LastOffsiteConfirmed(ctx, n.store.DB())
 			if msg := offsiteWarning(last, time.Now()); err == nil && msg != "" {

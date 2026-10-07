@@ -158,7 +158,17 @@ func (w *Wizard) newMaster() error {
 	if err := w.startService(MasterUnit(port), fmt.Sprintf("https://127.0.0.1:%d/login", port)); err != nil {
 		return err
 	}
-	w.masterDone(host, port, fp)
+	u.Say("")
+	now, err := u.Confirm("Set up backups now? (Recommended. You can also run setup again later.)", true)
+	if err != nil {
+		return err
+	}
+	if now {
+		if err := w.backups(port); err != nil {
+			return err
+		}
+	}
+	w.masterDone(host, port, fp, now)
 	return nil
 }
 
@@ -178,7 +188,7 @@ func (w *Wizard) dataDrive() (bool, error) {
 			return false, err
 		}
 		w.Sleep(2 * time.Second) // let the system notice it
-		disk, err := w.pickDisk()
+		disk, err := w.pickDisk("Which drive should hold pi-fleet's data?")
 		if err != nil {
 			return false, err
 		}
@@ -223,7 +233,7 @@ func (w *Wizard) dataDrive() (bool, error) {
 }
 
 // pickDisk lists the drives and asks which to use; nil means look again.
-func (w *Wizard) pickDisk() (*Disk, error) {
+func (w *Wizard) pickDisk(question string) (*Disk, error) {
 	u := w.UI
 	out, err := w.Sys.Output("lsblk", LsblkArgs...)
 	if err != nil {
@@ -235,7 +245,7 @@ func (w *Wizard) pickDisk() (*Disk, error) {
 	}
 	var usable []Disk
 	for _, d := range disks {
-		if d.Size >= MinDataDrive && !d.holds(DataDir) {
+		if d.Size >= MinDataDrive && !d.holds(DataDir) && !d.holds(BackupDir) {
 			usable = append(usable, d)
 		}
 	}
@@ -251,7 +261,7 @@ func (w *Wizard) pickDisk() (*Disk, error) {
 	}
 	opts = append(opts, "None of these: look again")
 	u.Say("")
-	i, err := u.Choose("Which drive should hold pi-fleet's data?", opts)
+	i, err := u.Choose(question, opts)
 	if err != nil || i == len(usable) {
 		return nil, err
 	}
@@ -381,7 +391,7 @@ func (w *Wizard) records(reused bool) error {
 	}
 }
 
-func (w *Wizard) masterDone(host string, port int, fingerprint string) {
+func (w *Wizard) masterDone(host string, port int, fingerprint string, backups bool) {
 	u := w.UI
 	addr := "https://" + host + ".local"
 	if port != 443 {
@@ -407,7 +417,9 @@ func (w *Wizard) masterDone(host string, port int, fingerprint string) {
 	u.Say("")
 	u.Say("The records are on the external drive. Keep it plugged in: pi-fleet")
 	u.Say("won't start without it, so nothing is ever written to the SD card.")
-	u.Say("Set up backups next: see docs/OPERATIONS.md, \"Backups\".")
+	if !backups {
+		u.Say("Backups aren't set up yet: run setup again and choose Set up backups.")
+	}
 }
 
 // --- an existing master Pi ---
@@ -433,6 +445,15 @@ func (w *Wizard) existingMaster(unit string) error {
 	} else {
 		u.Say("Its records are on the SD card, not on an external drive.")
 		choices = append(choices, choice{"Move the records to an external drive (recommended)", func() error { return w.moveToDrive(port, false) }})
+	}
+	if onDrive {
+		if w.Sys.Exists(BackupDir + "/.pi-fleet-backup-drive") {
+			choices = append(choices,
+				choice{"Add off-site disks", func() error { u.Step("Backups"); return w.offsiteDisks() }},
+				choice{"Set up backups again (a new backup drive or new backup keys)", func() error { return w.backups(port) }})
+		} else {
+			choices = append(choices, choice{"Set up backups (backup drive, backup keys, off-site disks)", func() error { return w.backups(port) }})
+		}
 	}
 	if w.newerThanInstalled() {
 		choices = append(choices, choice{fmt.Sprintf("Update to this version (%s)", w.Version), func() error {
@@ -536,7 +557,7 @@ func (w *Wizard) moveToDrive(port int, fromDrive bool) error {
 			return err
 		}
 		w.Sleep(2 * time.Second)
-		d, err := w.pickDisk()
+		d, err := w.pickDisk("Which drive should hold pi-fleet's data?")
 		if err != nil {
 			return err
 		}
