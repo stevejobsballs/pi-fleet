@@ -47,6 +47,17 @@ pi-fleet activate -data /var/lib/pi-fleet -central https://fleet.example.org:844
 pi-fleet run -data /var/lib/pi-fleet     # web interface at http://127.0.0.1:8080, syncs every 5 minutes
 ```
 
+## Release signing key
+
+Releases are signed with this minisign key, which every build trusts (see
+`release-keys.txt`). Check a release yourself with
+`minisign -Vm manifest.json -P RWQAisnE7wGQwd/uCF+DUmXqqMY3QC3F2TPYRxyIBqZJGgvB4xR+U5XM`.
+
+```
+untrusted comment: minisign public key C19001EFC4C98A00
+RWQAisnE7wGQwd/uCF+DUmXqqMY3QC3F2TPYRxyIBqZJGgvB4xR+U5XM
+```
+
 ## License
 
 Apache-2.0. See [LICENSE](LICENSE).

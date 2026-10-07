@@ -95,7 +95,10 @@ func cmdReleaseKeygen(ctx context.Context, args []string, c *cli) error {
 	if err := f.Close(); err != nil {
 		return err
 	}
-	c.printf("Secret key written to %s. Keep it on offline media only.\n\nPublic key (minisign format; publish it in the README and build it in with\nmake RELEASE_KEYS=%s):\n\n%s", *out, pub.String(), pub.File())
+	if err := os.WriteFile(*out+".pub", []byte(pub.File()), 0o644); err != nil {
+		return err
+	}
+	c.printf("Secret key written to %s. Keep it on offline media only.\nPublic key written to %s.pub (copy it into the repo as release-keys.txt).\n\n%s", *out, *out, pub.File())
 	return nil
 }
 
