@@ -41,14 +41,19 @@ run chown pifleet: "$DATA" "$DATA/releases"
 run chmod 0700 "$DATA"
 
 echo "== 2. HTTPS certificate for $NAME ($IP)"
-if [ -f /etc/pi-fleet/tls/cert.pem ]; then
+# The certificate uses ECDSA P-256: web browsers (Firefox, Chrome) don't
+# accept Ed25519 certificates, which earlier versions of this script made.
+CERT_CHANGED=0
+if [ -f /etc/pi-fleet/tls/cert.pem ] && ! openssl x509 -in /etc/pi-fleet/tls/cert.pem -noout -text | grep -q "Public Key Algorithm: ED25519"; then
   echo "  /etc/pi-fleet/tls/cert.pem exists; keeping it"
 else
-  run openssl req -x509 -newkey ed25519 -nodes -days 365 -subj "/CN=$NAME" \
+  [ -f /etc/pi-fleet/tls/cert.pem ] && echo "  replacing the Ed25519 certificate, which web browsers can't use"
+  run openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 365 -subj "/CN=$NAME" \
     -addext "subjectAltName=DNS:$NAME,IP:$IP" \
     -keyout /etc/pi-fleet/tls/key.pem -out /etc/pi-fleet/tls/cert.pem
   run chown pifleet: /etc/pi-fleet/tls/key.pem
   run chmod 0600 /etc/pi-fleet/tls/key.pem
+  CERT_CHANGED=1
 fi
 
 echo "== 3. database"
@@ -116,6 +121,8 @@ WantedBy=multi-user.target
 UNIT
 run systemctl daemon-reload
 run systemctl enable --now pi-fleet
+# A running service only reads its certificate at start.
+[ "$CERT_CHANGED" -eq 0 ] || run systemctl restart pi-fleet
 
 cat <<DONE
 
