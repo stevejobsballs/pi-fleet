@@ -3,6 +3,14 @@
 How to install and run pi-fleet on the master Pi and on employee Pis. The
 design and its reasons are in [DESIGN.md](DESIGN.md).
 
+**The easy way:** run the release file itself; it is a guided installer
+(`pi-fleet setup`, see the README's *Install*). It does sections 1, 2 and 4
+below for a master Pi, with its data on the external drive mounted at
+`/srv/pi-fleet` (TLS certificate in `/srv/pi-fleet/tls`, port 443), and the
+employee and kiosk Pi sections. Backups (section 3) are still set up by
+hand. The rest of this document is what setup does, step by step, for
+anyone who wants to do it themselves or needs to repair an installation.
+
 ## Master Pi
 
 ### 1. Disks

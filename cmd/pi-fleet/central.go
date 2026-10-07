@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"os/signal"
 	"path/filepath"
 	"syscall"
@@ -19,6 +20,7 @@ import (
 	"pi-fleet/internal/domain"
 	"pi-fleet/internal/fleetca"
 	"pi-fleet/internal/fleetsync"
+	"pi-fleet/internal/setup"
 	"pi-fleet/internal/web"
 )
 
@@ -41,13 +43,32 @@ func openCentral(ctx context.Context, dir string) (*node, *app.App, error) {
 
 func cmdBootstrap(ctx context.Context, args []string, c *cli) error {
 	var username, legalName, email *string
+	var check *bool
 	_, data, err := parse("bootstrap", args, func(fs *flag.FlagSet) {
 		username = fs.String("username", "", "username for the first super user")
 		legalName = fs.String("name", "", "legal name, shown on e-signatures")
 		email = fs.String("email", "", "work email")
+		check = fs.Bool("check", false, "only report whether a super user exists (used by setup)")
 	})
 	if err != nil {
 		return err
+	}
+	if *check {
+		n, _, err := openCentral(ctx, *data)
+		if err != nil {
+			return err
+		}
+		defer n.Close()
+		var users int
+		if err := n.store.DB().QueryRowContext(ctx, `SELECT count(*) FROM users`).Scan(&users); err != nil {
+			return err
+		}
+		if users > 0 {
+			c.printf("this master Pi has a super user\n")
+		} else {
+			c.printf("no users yet\n")
+		}
+		return nil
 	}
 	if *username == "" || *legalName == "" || *email == "" {
 		return errors.New("bootstrap needs -username, -name and -email")
@@ -241,7 +262,11 @@ func cmdServe(ctx context.Context, args []string, c *cli) error {
 	go runScheduler(ctx, a)
 	go runBackups(ctx, n, a)
 
-	ui, err := (&web.Server{App: a, Role: "central", Secure: true, PHIPatterns: web.DefaultPHIPatterns,
+	var fingerprint string
+	if pemBytes, err := os.ReadFile(*certFile); err == nil {
+		fingerprint, _ = setup.Fingerprint(pemBytes)
+	}
+	ui, err := (&web.Server{App: a, Role: "central", Secure: true, PHIPatterns: web.DefaultPHIPatterns, CertFingerprint: fingerprint,
 		Notices: func(ctx context.Context) []string {
 			if _, err := n.store.Config(ctx, configBackupDir); err != nil {
 				return []string{"Backups are not configured. Run pi-fleet backup-config on the master Pi."}

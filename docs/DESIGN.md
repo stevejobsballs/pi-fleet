@@ -1145,10 +1145,17 @@ employee Pis are wiped on contact (§6.4).
 
 ### 9.3 Install and update
 
-1. **First install (employee Pi):** a documented one-liner fetches the release
-   *and* the minisign public key from the project's published location.
-   Instructions say to compare the key fingerprint against the README in
-   the repo. After that, the embedded keys take over.
+1. **First install (any Pi):** the release binary is its own installer
+   (`pi-fleet setup`, also what runs when the downloaded file is started
+   without a command). Users fetch the release from the project's published
+   location and can check `manifest.json.minisig` with the public key in the
+   README. Setup installs missing OS packages with apt, names the Pi, and
+   for a master Pi prepares an external drive (ext4 labelled `PIFLEET-DATA`,
+   mounted at `/srv/pi-fleet` by UUID, the service refusing to start unless
+   it is mounted) that holds all records, files, keys and the TLS
+   certificate, so the Pi is replaceable. An employee Pi trusts the master's
+   self-signed certificate only after the user compares its fingerprint with
+   the one on the master's Pis page. After that, the embedded keys take over.
 2. **Updates:** central mirrors approved releases (a super user approves each
    release; canary ring optional). Nodes fetch from central, then verify the
    signature against embedded keys, the artifact hash, and **anti-rollback**

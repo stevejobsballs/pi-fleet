@@ -34,6 +34,10 @@ var version = "dev"
 
 const usage = `usage: pi-fleet <command> [flags]
 
+start here:
+  setup              guided installation of a master, employee or kiosk Pi (the default
+                     for a downloaded file; -dry-run shows what it would do)
+
 any Pi:
   version            print the version
   init               create keys, database and chain: -role central (master Pi) or -role node
@@ -86,6 +90,9 @@ func main() {
 
 func run(ctx context.Context, args []string, stdin io.Reader, out io.Writer) error {
 	if len(args) == 0 {
+		if !installed() { // a downloaded file, started (or double-clicked) to install
+			return cmdSetup(ctx, nil, &cli{stdin: stdin, out: out})
+		}
 		fmt.Fprint(out, usage)
 		return errors.New("no command given")
 	}
@@ -95,7 +102,7 @@ func run(ctx context.Context, args []string, stdin io.Reader, out io.Writer) err
 		"node-revoke": cmdNodeRevoke, "user-create": cmdUserCreate, "run": cmdRun, "kiosk-create": cmdKioskCreate, "kiosk-member": cmdKioskMember,
 		"backup-keygen": cmdBackupKeygen, "backup-config": cmdBackupConfig, "backup-now": cmdBackupNow, "backups": cmdBackups,
 		"offsite-register": cmdOffsiteRegister, "offsite-write": cmdOffsiteWrite, "offsite-confirm": cmdOffsiteConfirm, "restore": cmdRestore,
-		"selfcheck": cmdSelfcheck, "verify-export": cmdVerifyExport, "node-unquarantine": cmdNodeUnquarantine, "update": cmdUpdate, "release-keygen": cmdReleaseKeygen, "release-sign": cmdReleaseSign, "activate": cmdActivate, "activation-status": cmdActivationStatus, "sync": cmdSync,
+		"selfcheck": cmdSelfcheck, "verify-export": cmdVerifyExport, "node-unquarantine": cmdNodeUnquarantine, "update": cmdUpdate, "release-keygen": cmdReleaseKeygen, "release-sign": cmdReleaseSign, "activate": cmdActivate, "activation-status": cmdActivationStatus, "sync": cmdSync, "setup": cmdSetup,
 	}
 	c := &cli{stdin: stdin, out: out}
 	switch cmd := args[0]; cmd {

@@ -61,6 +61,9 @@ type Server struct {
 	Role string
 	// Secure marks cookies Secure; set when served over HTTPS.
 	Secure bool
+	// CertFingerprint is the master Pi's HTTPS certificate fingerprint,
+	// shown on the Pis page so a new Pi's setup can be checked against it.
+	CertFingerprint string
 	// InsecureLAN shows a warning on every page: plain HTTP is being
 	// served beyond localhost.
 	InsecureLAN bool

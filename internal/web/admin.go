@@ -250,6 +250,11 @@ type nodeRow struct {
 	Quarantined bool
 }
 
+type nodesData struct {
+	Rows        []nodeRow
+	Fingerprint string
+}
+
 func (s *Server) nodeList(w http.ResponseWriter, r *http.Request, sess *session) error {
 	ctx, q := r.Context(), s.App.Store.DB()
 	nodes, err := domain.ListNodes(ctx, q, "")
@@ -264,7 +269,7 @@ func (s *Server) nodeList(w http.ResponseWriter, r *http.Request, sess *session)
 		}
 		rows[i].Quarantined = s.App.Quarantined(ctx, n.ID)
 	}
-	return s.render(w, r, sess, "nodes", "Pis", rows)
+	return s.render(w, r, sess, "nodes", "Pis", nodesData{Rows: rows, Fingerprint: s.CertFingerprint})
 }
 
 func (s *Server) nodeConfirm(w http.ResponseWriter, r *http.Request, sess *session) error {
