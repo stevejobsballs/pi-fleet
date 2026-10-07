@@ -200,7 +200,7 @@ func securityHeaders(h http.Handler) http.Handler {
 		hd.Set("Content-Security-Policy", "default-src 'none'; style-src 'self'; img-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
 		hd.Set("X-Content-Type-Options", "nosniff")
 		hd.Set("X-Frame-Options", "DENY")
-		hd.Set("Referrer-Policy", "no-referrer")
+		hd.Set("Referrer-Policy", "same-origin")
 		hd.Set("Cache-Control", "no-store")
 		if r.Method == http.MethodPost && !sameOrigin(r) {
 			http.Error(w, "cross-origin request refused", http.StatusForbidden)
@@ -210,8 +210,18 @@ func securityHeaders(h http.Handler) http.Handler {
 	})
 }
 
-// sameOrigin refuses POSTs whose Origin (or Referer) is another site.
+// sameOrigin refuses POSTs that a browser says came from another site.
+// Sec-Fetch-Site is the browser's own verdict and is checked first. Older
+// browsers fall back to Origin, then Referer. A browser sends "Origin: null"
+// for a page served with Referrer-Policy: no-referrer, even to its own site,
+// so pages use same-origin instead.
 func sameOrigin(r *http.Request) bool {
+	switch r.Header.Get("Sec-Fetch-Site") {
+	case "same-origin", "none":
+		return true
+	case "same-site", "cross-site":
+		return false
+	}
 	origin := r.Header.Get("Origin")
 	if origin == "" || origin == "null" {
 		ref := r.Header.Get("Referer")

@@ -203,6 +203,33 @@ func TestLoginCSRFAndOrigin(t *testing.T) {
 	}
 }
 
+func TestSameOrigin(t *testing.T) {
+	cases := []struct {
+		name string
+		hdr  map[string]string
+		want bool
+	}{
+		{"firefox form post", map[string]string{"Sec-Fetch-Site": "same-origin", "Origin": "null"}, true},
+		{"typed in address bar", map[string]string{"Sec-Fetch-Site": "none"}, true},
+		{"other site", map[string]string{"Sec-Fetch-Site": "cross-site", "Origin": "https://evil.example"}, false},
+		{"sibling host", map[string]string{"Sec-Fetch-Site": "same-site", "Origin": "https://other.local:8443"}, false},
+		{"old browser, own origin", map[string]string{"Origin": "https://fleet-master.local:8443"}, true},
+		{"old browser, other origin", map[string]string{"Origin": "https://evil.example"}, false},
+		{"old browser, own referer", map[string]string{"Origin": "null", "Referer": "https://fleet-master.local:8443/login"}, true},
+		{"null origin, nothing else", map[string]string{"Origin": "null"}, false},
+		{"no headers (tools)", nil, true},
+	}
+	for _, c := range cases {
+		r := httptest.NewRequest("POST", "https://fleet-master.local:8443/login", nil)
+		for k, v := range c.hdr {
+			r.Header.Set(k, v)
+		}
+		if got := sameOrigin(r); got != c.want {
+			t.Errorf("%s: sameOrigin = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
 func mustURL(s string) *url.URL { u, _ := url.Parse(s); return u }
 
 func TestNewUserMustChangePassword(t *testing.T) {
