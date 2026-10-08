@@ -8,10 +8,18 @@
 #
 #     bash /media/$USER/*/<folder>/Set-up-this-Pi.sh
 #
-# (bash runs it even from a stick.) Any options are passed to setup, such
-# as -dry-run.
+# (bash runs it even from a stick.) Or drag the folder onto the Pi's
+# desktop, allow this file to run (right-click, Properties, Permissions)
+# and double-click it. Any options are passed to setup, such as -dry-run.
 set -euo pipefail
-SRC=$(dirname "$(readlink -f "$0")")
+SELF=$(readlink -f "$0")
+# Double-clicked: there is no terminal to show messages in, so open one.
+if [ ! -t 0 ] && [ -z "${PIFLEET_IN_TERMINAL:-}" ] && { [ -n "${DISPLAY:-}" ] || [ -n "${WAYLAND_DISPLAY:-}" ]; }; then
+  PIFLEET_IN_TERMINAL=1 exec x-terminal-emulator -t "pi-fleet setup" -e "$(printf '%q ' bash "$SELF" "$@")"
+fi
+# Keep the window open if something goes wrong, so the message can be read.
+trap 'status=$?; if [ $status -ne 0 ]; then echo; read -r -p "Press Enter to close this window. " _ || true; fi' EXIT
+SRC=$(dirname "$SELF")
 DEST="$HOME/pi-fleet-install"
 
 if [ "$(uname -m)" != aarch64 ]; then
@@ -37,4 +45,8 @@ fi
 chmod +x "$DEST/$(basename "$BIN")"
 [ -d "$DEST/tools" ] && chmod +x "$DEST"/tools/*.sh
 echo
+trap - EXIT
+if [ -n "${PIFLEET_IN_TERMINAL:-}" ]; then
+  set -- -pause "$@" # this script opened the window: keep it open at the end
+fi
 exec "$DEST/$(basename "$BIN")" setup "$@"

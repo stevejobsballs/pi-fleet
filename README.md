@@ -48,7 +48,9 @@ bash /media/$USER/*/<your folder>/Set-up-this-Pi.sh
 ```
 
 It checks the Pi runs 64-bit Raspberry Pi OS, copies the release onto the
-Pi, makes it runnable and starts setup. Eject the stick before unplugging
+Pi, makes it runnable and starts setup. To avoid typing, drag the folder
+onto the Pi's desktop instead, allow `Set-up-this-Pi.sh` to run
+(right-click, **Properties → Permissions**) and double-click it. Eject the stick before unplugging
 it (File Manager, eject symbol): a stick pulled out without ejecting can
 arrive with files missing.
 
@@ -61,6 +63,7 @@ arrive with files missing.
 | *Exec format error* / *cannot execute binary file* | the Pi runs the 32-bit Raspberry Pi OS | install Raspberry Pi OS (64-bit) with Raspberry Pi Imager (`uname -m` must say `aarch64`) |
 | The folder on the Pi is empty or files are missing | the stick was unplugged before the copy finished | on the computer you copied from, copy again, eject the stick, then plug it into the Pi |
 | *udisksctl: command not found* when opening a stick | Raspberry Pi OS Lite, without the desktop | `sudo mkdir -p /mnt/usb && sudo mount /dev/sda1 /mnt/usb` (check the name with `lsblk`), then `bash /mnt/usb/<your folder>/Set-up-this-Pi.sh` |
+| The Pis are joined only by a switch, and the employee Pi gets no network address | nothing on the switch hands out addresses | double-click `deploy/tools/Share-Wired-Network.sh` on the master Pi |
 | Setup can't reach the master Pi | different network, or the master is off or missing its data drive | see [docs/NETWORK.md](docs/NETWORK.md); on the master, Check-Pi (`deploy/tools`) says what's wrong |
 
 Setup installs whatever else the Pi needs, names the Pi, and then:

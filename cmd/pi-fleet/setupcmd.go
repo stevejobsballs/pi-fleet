@@ -33,10 +33,11 @@ func cmdSetup(ctx context.Context, args []string, c *cli) error {
 	in, isFile := c.stdin.(*os.File)
 	interactive := isFile && term.IsTerminal(int(in.Fd()))
 	// Double-clicked: there is no terminal to ask questions in, so open one.
-	if !interactive && (os.Getenv("DISPLAY") != "" || os.Getenv("WAYLAND_DISPLAY") != "") {
+	// (Only once: PIFLEET_IN_TERMINAL marks a window already opened for it.)
+	if !interactive && os.Getenv("PIFLEET_IN_TERMINAL") == "" && (os.Getenv("DISPLAY") != "" || os.Getenv("WAYLAND_DISPLAY") != "") {
 		if t, err := exec.LookPath("x-terminal-emulator"); err == nil {
 			cmd := shellQuote(append([]string{self, "setup", "-pause"}, args...))
-			return syscall.Exec(t, []string{t, "-t", "pi-fleet setup", "-e", cmd}, os.Environ())
+			return syscall.Exec(t, []string{t, "-t", "pi-fleet setup", "-e", cmd}, append(os.Environ(), "PIFLEET_IN_TERMINAL=1"))
 		}
 	}
 	// Setup changes the system, so it needs administrator rights.
