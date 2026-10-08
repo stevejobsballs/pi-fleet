@@ -15,6 +15,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 need_root
+if data_drive_missing; then die "$DATA_DRIVE_HELP"; fi
 if is_master; then
   DATA=/srv/pi-fleet
   [ -n "$FROM" ] || FROM=/srv/pi-fleet/releases

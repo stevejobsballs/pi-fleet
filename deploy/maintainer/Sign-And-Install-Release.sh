@@ -44,6 +44,12 @@ if [ ! -f /etc/systemd/system/pi-fleet.service ] || ! grep -q -- "-releases /srv
   echo "This Pi isn't set up as the master, so the release was only signed."
   exit 0
 fi
+. "$KIT/../tools/lib.sh"
+if data_drive_missing; then
+  echo "$DATA_DRIVE_HELP"
+  echo "(The release is signed; nothing was installed.)"
+  exit 1
+fi
 INSTALLED=$(/opt/pi-fleet/current/pi-fleet version 2>/dev/null | awk '{print $2}')
 if [ "$INSTALLED" = "$VER" ]; then
   echo "$VER is already installed on this master Pi; there is nothing more to do."
