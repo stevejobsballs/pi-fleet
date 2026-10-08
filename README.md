@@ -71,6 +71,10 @@ Pis at other buildings or sites: give your IT department
 [docs/NETWORK.md](docs/NETWORK.md) before installing the master Pi. It
 needs a DNS name, and setup asks for it.
 
+**Larger text and buttons:** anyone who finds the screens hard to read
+can choose **Larger text and buttons** at the top right of any page,
+including the sign-in page. Each browser remembers its own choice.
+
 ## Tools
 
 `deploy/tools` has double-click tools for an installed Pi: **Check-Pi**

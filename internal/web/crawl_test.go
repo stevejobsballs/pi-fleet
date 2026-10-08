@@ -108,7 +108,7 @@ func (b *browser) crawl(who string, limit int) int {
 			if i := strings.IndexByte(link, '#'); i >= 0 {
 				link = link[:i]
 			}
-			if !strings.HasPrefix(link, "/") || strings.HasPrefix(link, "//") || link == "/logout" || seen[link] {
+			if !strings.HasPrefix(link, "/") || strings.HasPrefix(link, "//") || link == "/logout" || strings.HasPrefix(link, "/display/") || seen[link] {
 				continue
 			}
 			seen[link] = true

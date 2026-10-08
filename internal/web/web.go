@@ -121,6 +121,7 @@ func (s *Server) Handler() (http.Handler, error) {
 	mux := http.NewServeMux()
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(static)))
 	mux.HandleFunc("GET /login", s.loginPage)
+	mux.HandleFunc("GET /display/{mode}", s.display)
 	mux.HandleFunc("POST /login", s.login)
 	mux.HandleFunc("POST /logout", s.logout)
 	mux.Handle("GET /password", s.auth(domain.RoleUser, true, s.passwordPage))
@@ -463,4 +464,30 @@ func (s *Server) phiCheck(r *http.Request, texts ...string) error {
 		}
 	}
 	return nil
+}
+
+// displayCookie keeps a browser's choice of larger text and buttons.
+const displayCookie = "pf_display"
+
+func largeDisplay(r *http.Request) bool {
+	c, err := r.Cookie(displayCookie)
+	return err == nil && c.Value == "large"
+}
+
+// display switches this browser between standard and larger text and
+// buttons, then goes back to the page it came from.
+func (s *Server) display(w http.ResponseWriter, r *http.Request) {
+	mode := r.PathValue("mode")
+	if mode != "large" && mode != "standard" {
+		http.NotFound(w, r)
+		return
+	}
+	http.SetCookie(w, &http.Cookie{Name: displayCookie, Value: mode, Path: "/", MaxAge: 5 * 365 * 24 * 3600,
+		HttpOnly: true, Secure: s.Secure, SameSite: http.SameSiteStrictMode})
+	back := r.URL.Query().Get("back")
+	// Only back to a page on this site.
+	if !strings.HasPrefix(back, "/") || strings.HasPrefix(back, "//") || strings.HasPrefix(back, "/\\") || strings.HasPrefix(back, "/display/") {
+		back = "/"
+	}
+	http.Redirect(w, r, back, http.StatusSeeOther)
 }

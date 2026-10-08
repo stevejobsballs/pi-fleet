@@ -37,6 +37,8 @@ header nav { display: flex; flex-wrap: wrap; align-self: stretch; }
 header nav a { display: flex; align-items: center; padding: .7rem .7rem .55rem; border-bottom: 3px solid transparent; margin-bottom: -3px; font-size: 14px; color: var(--bar-muted); }
 header nav a:hover { color: #fff; background: rgba(255, 255, 255, .06); }
 header nav a[aria-current="page"] { color: #fff; border-bottom-color: var(--raspberry); font-weight: 600; }
+header.top .display { margin-left: auto; font-size: 13px; color: var(--bar-muted); text-decoration: underline; text-underline-offset: 3px; }
+header.top .display:hover { color: #fff; }
 .status { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem 1.5rem; padding: .3rem 1rem; font: 12px var(--mono); color: var(--muted);
   background: var(--panel); border-bottom: 1px solid var(--line); }
 .me { margin-left: auto; display: flex; gap: 1rem; align-items: center; font: 13px system-ui, sans-serif; }

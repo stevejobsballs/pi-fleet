@@ -5,22 +5,24 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{.Title}} · pi-fleet</title>
 <link rel="stylesheet" href="/static/style.css">
+{{if .Large}}<link rel="stylesheet" href="/static/large.css">{{end}}
 </head>
 <body>
 <header class="top">
   <a class="brand" href="/"><span class="mark" aria-hidden="true"></span>pi-fleet</a>
   {{if .User.ID}}
   <nav aria-label="Main">
-    <a href="/"{{if .Here "/"}} aria-current="page"{{end}}>Today</a>
-    <a href="/work-orders"{{if .Here "/work-orders"}} aria-current="page"{{end}}>Work orders</a>
-    <a href="/assets"{{if .Here "/assets"}} aria-current="page"{{end}}>Equipment</a>
-    <a href="/schedules"{{if .Here "/schedules"}} aria-current="page"{{end}}>Schedules</a>
-    <a href="/procedures"{{if .Here "/procedures"}} aria-current="page"{{end}}>Checklists</a>
-    <a href="/inventory"{{if .Here "/inventory"}} aria-current="page"{{end}}>Inventory</a>
-    {{if .IsMid}}<a href="/review"{{if .Here "/review"}} aria-current="page"{{end}}>Review</a>{{end}}
-    {{if .IsSuper}}<a href="/admin/users"{{if .Here "/admin/users"}} aria-current="page"{{end}}>Users</a><a href="/admin/sites"{{if .Here "/admin/sites"}} aria-current="page"{{end}}>Sites</a>{{if eq .Role "central"}}<a href="/admin/nodes"{{if .Here "/admin/nodes"}} aria-current="page"{{end}}>Pis</a><a href="/admin/kiosks"{{if .Here "/admin/kiosks"}} aria-current="page"{{end}}>Kiosks</a>{{end}}{{end}}
+    <a href="/"{{if .In "/"}} aria-current="page"{{end}}>Today</a>
+    <a href="/work-orders"{{if .In "/work-orders"}} aria-current="page"{{end}}>Work orders</a>
+    <a href="/assets"{{if .In "/assets"}} aria-current="page"{{end}}>Equipment</a>
+    <a href="/schedules"{{if .In "/schedules"}} aria-current="page"{{end}}>Schedules</a>
+    <a href="/procedures"{{if .In "/procedures"}} aria-current="page"{{end}}>Checklists</a>
+    <a href="/inventory"{{if .In "/inventory"}} aria-current="page"{{end}}>Inventory</a>
+    {{if .IsMid}}<a href="/review"{{if .In "/review"}} aria-current="page"{{end}}>Review</a>{{end}}
+    {{if .IsSuper}}<a href="/admin/users"{{if .In "/admin/users"}} aria-current="page"{{end}}>Users</a><a href="/admin/sites"{{if .In "/admin/sites"}} aria-current="page"{{end}}>Sites</a>{{if eq .Role "central"}}<a href="/admin/nodes"{{if .In "/admin/nodes"}} aria-current="page"{{end}}>Pis</a><a href="/admin/kiosks"{{if .In "/admin/kiosks"}} aria-current="page"{{end}}>Kiosks</a>{{end}}{{end}}
   </nav>
   {{end}}
+  <a class="display" href="/display/{{if .Large}}standard{{else}}large{{end}}?back={{urlquery .Here}}">{{if .Large}}Standard text{{else}}Larger text and buttons{{end}}</a>
 </header>
 {{if .User.ID}}
 <div class="status">

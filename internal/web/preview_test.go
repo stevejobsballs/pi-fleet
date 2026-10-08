@@ -68,6 +68,24 @@ func snapshotPages(t *testing.T, e *env, dir string) {
 	pages := map[string]string{"dashboard": "/", "assets": "/assets", "work-orders": "/work-orders?view=all", "review": "/review",
 		"schedules": "/schedules", "new-asset": "/assets/new", "merge": "/assets/merge?master_id=M-2", "asset": assetPage}
 	os.MkdirAll(dir, 0o755)
+	large, _ := filepath.Abs("static/large.css")
+	save := func(name, path string) {
+		resp, err := b.c.Get(e.srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		page := strings.ReplaceAll(string(body), `href="/static/style.css"`, `href="file://`+css+`"`)
+		page = strings.ReplaceAll(page, `href="/static/large.css"`, `href="file://`+large+`"`)
+		os.WriteFile(filepath.Join(dir, name+".html"), []byte(page), 0o644)
+	}
+	defer func() { // the same pages with larger text and buttons
+		b.get("/display/large")
+		for name, path := range pages {
+			save(name+"-large", path)
+		}
+	}()
 	for name, path := range pages {
 		resp, err := b.c.Get(e.srv.URL + path)
 		if err != nil {

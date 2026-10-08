@@ -27,6 +27,8 @@ type page struct {
 	Notices    []string
 	Insecure   bool
 	Trial      bool
+	Large      bool   // larger text and buttons, chosen in this browser
+	Here       string // this page's path and query, to come back to
 	Path       string // the page's URL path, to mark the current menu item
 	Data       any
 }
@@ -35,7 +37,7 @@ func (p page) IsMid() bool   { return roleRank[p.User.Role] >= roleRank[domain.R
 func (p page) IsSuper() bool { return p.User.Role == domain.RoleSuperUser }
 
 // Here reports whether the page is in the menu section at prefix.
-func (p page) Here(prefix string) bool {
+func (p page) In(prefix string) bool {
 	if prefix == "/" {
 		return p.Path == "/"
 	}
@@ -117,7 +119,8 @@ func templateNames() ([]string, error) {
 
 // render writes a page. sess may be nil (login page).
 func (s *Server) render(w http.ResponseWriter, r *http.Request, sess *session, name, title string, data any) error {
-	p := page{Title: title, Role: s.Role, Data: data, PHIWarning: true, Insecure: s.InsecureLAN, Trial: s.Trial, Path: r.URL.Path}
+	p := page{Title: title, Role: s.Role, Data: data, PHIWarning: true, Insecure: s.InsecureLAN, Trial: s.Trial, Path: r.URL.Path,
+		Large: largeDisplay(r), Here: r.URL.RequestURI()}
 	if strings.HasPrefix(p.Path, "/fleet/assets") {
 		p.Path = "/assets" // the whole-fleet search is part of Equipment
 	}

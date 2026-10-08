@@ -1,0 +1,94 @@
+/* Larger text and buttons: the same Raspberry Pi colours, made for people
+   who find small text and small targets hard (often older users). Loaded
+   after style.css when chosen with the switch in the top bar. Everything
+   is bigger, plainer and higher in contrast; every control is at least
+   56 px tall, and the current place is a solid block, not a thin line. */
+:root {
+  --muted: #3a3f45; --line: #b9bec3; --line-strong: #6b7177; --tint: #fdf1f4;
+  --bar-muted: #d5d9dd;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --muted: #c9ced3; --line: #4a5158; --line-strong: #8a9299; --tint: #2a1820; }
+}
+
+body { font-size: 20px; line-height: 1.6; }
+main { max-width: 64rem; padding: 1.75rem 1.25rem 3rem; }
+a { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 4px; }
+:focus-visible { outline: 4px solid var(--accent); outline-offset: 3px; }
+p { margin: .8rem 0; }
+
+/* Top bar: big menu buttons; the current page is a solid raspberry block. */
+header.top { gap: .6rem 1rem; padding: .6rem 1rem .75rem; min-height: 4.5rem; border-bottom-width: 6px; }
+/* Logo and the text-size switch on the first line, the menu below at full width. */
+header.top .brand { order: 1; }
+header.top .display { order: 2; }
+header.top nav { order: 3; flex-basis: 100%; }
+.brand { font-size: 1.4rem; gap: .65rem; }
+.brand .mark { width: 1.1rem; height: 1.35rem; border-top-width: .32rem; }
+header nav { gap: .4rem; }
+header nav a { min-height: 3.5rem; padding: .5rem .8rem; margin: 0; border: 2px solid transparent; border-radius: 6px;
+  font-size: 1.05rem; font-weight: 600; color: #fff; text-decoration: none; }
+header nav a:hover { background: rgba(255, 255, 255, .12); border-color: rgba(255, 255, 255, .35); }
+header nav a[aria-current="page"] { background: var(--raspberry); border-color: var(--raspberry); }
+header.top .display { margin-left: auto; min-height: 3rem; display: inline-flex; align-items: center; padding: .35rem 1rem;
+  border: 2px solid #fff; border-radius: 6px; font-size: 1rem; font-weight: 700; color: #fff; text-decoration: none; }
+header.top .display:hover { background: #fff; color: var(--bar); }
+
+/* Who is signed in, and the sync line: plain text, not small print. */
+.status { font: 1.1rem/1.5 system-ui, sans-serif; color: var(--fg); padding: .6rem 1.25rem; gap: .5rem 1.75rem; }
+.me { font-size: 1.1rem; gap: 1.25rem; }
+.me button.link { font-size: 1.1rem; }
+.trial, .insecure { font-size: 1.05rem; padding: .9rem 1.25rem; }
+
+/* Headings in plain, larger words. */
+h1 { font-size: 2.1rem; font-weight: 700; margin: .5rem 0 1.25rem; }
+h2 { font-size: 1.45rem; font-weight: 700; text-transform: none; letter-spacing: 0; color: var(--fg);
+  margin: 2.25rem 0 .9rem; padding-bottom: .5rem; border-bottom: 3px solid var(--line); }
+h2::before { width: .8rem; height: .8rem; margin-right: .6rem; }
+footer { font-size: 1.1rem; padding: 1.5rem; }
+
+/* Buttons: large, bold, unmistakable. */
+button, .button { min-height: 3.5rem; padding: .75rem 1.5rem; font-size: 1.25rem; font-weight: 700; border-width: 2px; border-radius: 8px; }
+button.danger { border-width: 3px; }
+button.link { min-height: 0; padding: 0; font-weight: 600; font-size: 1em; }
+.actions { gap: 1rem; padding: 1.25rem; }
+form.inline { gap: .9rem; margin: .5rem .9rem .5rem 0; }
+form.narrow { max-width: 40rem; gap: 1.25rem; }
+
+/* Fields: large text, clear labels, big tick boxes. */
+label { font-size: 1.15rem; font-weight: 700; color: var(--fg); gap: .35rem; }
+label.check { font-size: 1.15rem; font-weight: 500; gap: .75rem; min-height: 3rem; }
+input, select, textarea { min-height: 3.5rem; font-size: 1.25rem; padding: .6rem .8rem; border-width: 2px; border-radius: 6px; }
+input[type="checkbox"], input[type="radio"] { width: 1.75rem; height: 1.75rem; min-height: 0; }
+input:focus, select:focus, textarea:focus { outline-width: 4px; }
+fieldset { padding: 1rem 1.25rem; border-width: 2px; }
+legend { font-size: 1.15rem; }
+details { margin: 1rem 0; }
+summary { font-size: 1.15rem; padding: .5rem 0; text-decoration: underline; text-underline-offset: 4px; }
+
+/* Tables: bigger rows, striped so a line is easy to follow across. */
+table { border-width: 2px; }
+th, td { padding: .85rem .9rem; border-bottom-width: 2px; }
+th { font-size: 1.05rem; text-transform: none; letter-spacing: 0; color: var(--fg); }
+tbody tr:nth-child(even) { background: var(--bg); }
+td:first-child a { font-size: 1.05rem; }
+.tag { font-size: .85rem; padding: .1rem .5rem; }
+.hint { font-size: 1.1rem; color: var(--muted); }
+.records { font-size: 1.05rem; line-height: 2.2; }
+
+/* Messages stand out. */
+.flash, p.warn, .error { font-size: 1.1rem; padding: 1rem 1.25rem; border-left-width: 8px; }
+.flash { border-left-color: var(--leaf); }
+
+/* Facts about a record: label above value, easy to scan. */
+dl.facts { grid-template-columns: max-content 1fr; gap: .75rem 1.75rem; padding: 1.25rem 1.5rem; }
+dl.facts dt { font-size: 1.05rem; text-transform: none; letter-spacing: 0; font-weight: 700; color: var(--muted); }
+.s-in_service::before, .s-out_of_service::before, .s-missing::before, .s-retired::before { font-size: 1em; }
+.otp { font-size: 2.2rem; }
+
+@media (max-width: 48rem) {
+  dl.facts { grid-template-columns: 1fr; gap: .2rem; }
+  dl.facts dd { margin-bottom: .6rem; }
+}
+/* A status reads as one phrase. */
+.s-in_service, .s-out_of_service, .s-missing, .s-retired { white-space: nowrap; }
