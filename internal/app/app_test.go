@@ -618,3 +618,22 @@ func withAsLeft(p domain.CalPoint, asLeft string) domain.CalPoint {
 	p.AsLeft = asLeft
 	return p
 }
+
+func TestChooseFirstPasswordOnlyWhenOneMustBeChosen(t *testing.T) {
+	e := newEnv(t)
+	tess := e.activeUser("tess", domain.RoleUser)
+	if err := e.app.ChooseFirstPassword(e.ctx, tess, "quietly-amber-ferns-71"); !errors.Is(err, ErrBadCredentials) {
+		t.Fatalf("err = %v", err)
+	}
+	id, _, err := e.app.CreateUser(e.ctx, e.super, NewUser{Username: "mona", LegalName: "Mona", Email: "mona@example.org",
+		Role: domain.RoleUser, HomeSites: []string{e.site}, IdentityVerification: "badge"})
+	e.must(err)
+	mona := Actor{UserID: id, SessionID: newID()}
+	if err := e.app.ChooseFirstPassword(e.ctx, mona, "short"); err == nil {
+		t.Fatal("weak password accepted")
+	}
+	e.must(e.app.ChooseFirstPassword(e.ctx, mona, "quietly-amber-ferns-71"))
+	if _, err := e.app.Authenticate(e.ctx, "mona", "quietly-amber-ferns-71"); err != nil {
+		t.Fatal(err)
+	}
+}

@@ -211,6 +211,25 @@ func (a *App) ChangePassword(ctx context.Context, actor Actor, current, next str
 	if err := a.checkPassword(u, current); err != nil && !errors.Is(err, ErrMustChangePassword) {
 		return err
 	}
+	return a.setPassword(ctx, actor, u, next)
+}
+
+// ChooseFirstPassword sets the password of someone who has just signed in
+// with a one-time (or expired) password, which they had to type to get
+// here, so it isn't asked for again. Anyone else changes their password
+// with ChangePassword, giving the current one.
+func (a *App) ChooseFirstPassword(ctx context.Context, actor Actor, next string) error {
+	u, err := domain.GetUser(ctx, a.Store.DB(), actor.UserID)
+	if err != nil {
+		return err
+	}
+	if !u.MustChangePassword && !u.PasswordExpired(a.now()) {
+		return ErrBadCredentials
+	}
+	return a.setPassword(ctx, actor, u, next)
+}
+
+func (a *App) setPassword(ctx context.Context, actor Actor, u domain.User, next string) error {
 	if err := password.CheckPolicy(next, u.Username); err != nil {
 		return err
 	}

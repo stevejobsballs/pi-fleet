@@ -266,14 +266,24 @@ func TestNewUserMustChangePassword(t *testing.T) {
 	if code, loc, _ := tess.get("/work-orders"); code != http.StatusSeeOther || loc != "/password" {
 		t.Fatalf("before changing password: %d %s", code, loc)
 	}
-	tess.get("/password")
-	_, page = tess.post("/password", url.Values{"current": {otp[1]}, "new": {"short"}, "confirm": {"short"}})
-	if !strings.Contains(page, "at least 12 characters") {
-		t.Fatalf("weak password accepted:\n%s", page)
+	// Having just typed the one-time password, Tess isn't asked for it again.
+	if _, _, page = tess.get("/password"); strings.Contains(page, `name="current"`) || !strings.Contains(page, "choose your own password") {
+		t.Fatalf("one-time password asked for again:\n%s", page)
 	}
-	_, page = tess.post("/password", url.Values{"current": {otp[1]}, "new": {"copper-ladder-sunrise"}, "confirm": {"copper-ladder-sunrise"}})
+	_, page = tess.post("/password", url.Values{"new": {"short"}, "confirm": {"short"}})
+	if !strings.Contains(page, "at least 12 characters") || strings.Contains(page, `name="current"`) {
+		t.Fatalf("weak password accepted, or the form changed:\n%s", page)
+	}
+	_, page = tess.post("/password", url.Values{"new": {"copper-ladder-sunrise"}, "confirm": {"copper-ladder-sunrise"}})
 	if !strings.Contains(page, "Password changed") {
 		t.Fatalf("change password:\n%s", page)
+	}
+	// Changing it again by choice asks for the current password.
+	if _, _, page = tess.get("/password"); !strings.Contains(page, `name="current"`) {
+		t.Fatalf("current password not asked for:\n%s", page)
+	}
+	if _, page = tess.post("/password", url.Values{"new": {"quietly-amber-ferns-71"}, "confirm": {"quietly-amber-ferns-71"}}); strings.Contains(page, "Password changed") {
+		t.Fatal("changed without the current password")
 	}
 	if code, _, _ := tess.get("/work-orders"); code != http.StatusOK {
 		t.Fatalf("after changing password: %d", code)
@@ -482,5 +492,32 @@ func TestLargerTextIsTheDefaultWithACompactOption(t *testing.T) {
 	}
 	if code, _, _ := b.get("/display/huge"); code != http.StatusNotFound {
 		t.Errorf("unknown mode: %d", code)
+	}
+}
+
+// A password that expires while someone is signed in restricts the
+// session, but choosing a new one still needs the current password: the
+// person at the screen may not be the one who signed in.
+func TestPasswordExpiringMidSessionStillAsksForIt(t *testing.T) {
+	e := newEnv(t)
+	e.user("tess", "Tess Tech", domain.RoleUser)
+	b := e.browser()
+	b.login("tess", "brass-kettle-orchard-7")
+	// The password expires while the session is open.
+	if err := e.app.Store.Update(e.ctx, func(tx *store.Tx) error {
+		_, err := tx.ExecContext(e.ctx, `UPDATE users SET password_expires_at = ? WHERE username = 'tess'`, e.now.Add(-time.Minute).UTC().Format(time.RFC3339))
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if code, loc, _ := b.get("/work-orders"); code != http.StatusSeeOther || loc != "/password" {
+		t.Fatalf("expired password: %d %s", code, loc)
+	}
+	_, _, page := b.get("/password")
+	if !strings.Contains(page, `name="current"`) {
+		t.Fatalf("current password not asked for after expiry mid-session:\n%s", page)
+	}
+	if _, page = b.post("/password", url.Values{"new": {"quietly-amber-ferns-71"}, "confirm": {"quietly-amber-ferns-71"}}); strings.Contains(page, "Password changed") {
+		t.Fatal("changed without the current password")
 	}
 }

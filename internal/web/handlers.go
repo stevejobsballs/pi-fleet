@@ -64,12 +64,13 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 
 type passwordData struct {
 	Forced  bool
+	First   bool // just signed in with it: don't ask for it again
 	Expires time.Time
 	Error   string
 }
 
 func (s *Server) passwordPage(w http.ResponseWriter, r *http.Request, sess *session) error {
-	return s.render(w, r, sess, "password", "Change password", passwordData{Forced: sess.PasswordOnly, Expires: sess.User.PasswordExpiresAt})
+	return s.render(w, r, sess, "password", "Change password", passwordData{Forced: sess.PasswordOnly, First: sess.FirstPassword, Expires: sess.User.PasswordExpiresAt})
 }
 
 func (s *Server) changePassword(w http.ResponseWriter, r *http.Request, sess *session) error {
@@ -78,14 +79,18 @@ func (s *Server) changePassword(w http.ResponseWriter, r *http.Request, sess *se
 	if next != r.PostFormValue("confirm") {
 		err = userErr("the new passwords do not match")
 	} else {
-		err = s.App.ChangePassword(r.Context(), s.actor(sess), r.PostFormValue("current"), next)
+		if sess.FirstPassword {
+			err = s.App.ChooseFirstPassword(r.Context(), s.actor(sess), next)
+		} else {
+			err = s.App.ChangePassword(r.Context(), s.actor(sess), r.PostFormValue("current"), next)
+		}
 	}
 	if err != nil {
 		msg := message(err)
 		if msg == "" {
 			return err
 		}
-		return s.render(w, r, sess, "password", "Change password", passwordData{Forced: sess.PasswordOnly, Error: msg})
+		return s.render(w, r, sess, "password", "Change password", passwordData{Forced: sess.PasswordOnly, First: sess.FirstPassword, Error: msg})
 	}
 	if err := s.exec(r.Context(), `UPDATE sessions SET password_only = 0 WHERE id_hash = ?`, sess.IDHash); err != nil {
 		return err

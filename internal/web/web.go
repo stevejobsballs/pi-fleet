@@ -259,6 +259,11 @@ type session struct {
 	User         domain.User
 	CSRF         string
 	PasswordOnly bool
+	// FirstPassword: the session began by signing in with a one-time or
+	// expired password, so choosing a new one needn't ask for it again.
+	// (A password that expires during a session restricts it, but the
+	// current password is still asked for.)
+	FirstPassword bool
 }
 
 func (s *Server) actor(sess *session) app.Actor {
@@ -330,6 +335,7 @@ func (s *Server) loadSession(r *http.Request) (*session, error) {
 		s.exec(ctx, `DELETE FROM sessions WHERE id_hash = ?`, sess.IDHash)
 		return nil, nil
 	}
+	sess.FirstPassword = sess.PasswordOnly // as recorded when signing in
 	// A password that expired mid-session restricts the session.
 	if sess.User.MustChangePassword || sess.User.PasswordExpired(now) {
 		sess.PasswordOnly = true
