@@ -135,6 +135,11 @@ WantedBy=multi-user.target
 Pis at other sites need the master Pi reachable by a DNS name that is in
 its certificate: see [NETWORK.md](NETWORK.md), the guide for IT.
 
+Bringing the release on a USB stick: programs can't run straight from a
+FAT stick, so run `bash .../Set-up-this-Pi.sh` from it (`deploy/`), which
+copies the release onto the Pi first. More in the README, *If setup won't
+start*.
+
 
 ```sh
 sudo useradd --system --home /var/lib/pi-fleet --shell /usr/sbin/nologin pifleet
