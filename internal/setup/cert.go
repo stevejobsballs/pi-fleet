@@ -16,6 +16,8 @@ import (
 	"net"
 	"strings"
 	"time"
+
+	"pi-fleet/internal/localnames"
 )
 
 // NewCertificate makes the master Pi's self-signed HTTPS certificate:
@@ -89,9 +91,15 @@ func browsersAccept(certPEM []byte) bool {
 // it presents, unverified: the user checks the fingerprint against the
 // one the master Pi shows before it is trusted.
 func FetchCertificate(hostport string, timeout time.Duration) ([]byte, error) {
-	d := &net.Dialer{Timeout: timeout}
-	conn, err := tls.DialWithDialer(d, "tcp", hostport, &tls.Config{InsecureSkipVerify: true}) // checked by the user's eyes
+	d := &localnames.Dialer{Dialer: net.Dialer{Timeout: timeout}}
+	raw, err := d.Dial("tcp", hostport)
 	if err != nil {
+		return nil, err
+	}
+	conn := tls.Client(raw, &tls.Config{InsecureSkipVerify: true}) // checked by the user's eyes
+	conn.SetDeadline(time.Now().Add(timeout))
+	if err := conn.Handshake(); err != nil {
+		conn.Close()
 		return nil, err
 	}
 	defer conn.Close()

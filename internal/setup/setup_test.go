@@ -235,6 +235,7 @@ func (f *fakeSys) ran(prefix string) bool {
 func wizard(sys *fakeSys, answers ...string) (*Wizard, *bytes.Buffer) {
 	var out bytes.Buffer
 	lookPath = func(string) (string, error) { return "/usr/bin/x", nil }
+	fileExists = func(string) bool { return true }
 	w := &Wizard{
 		UI: NewUI(strings.NewReader(strings.Join(answers, "\n")+"\n"), &out), Sys: sys,
 		Self: "/home/pi/Downloads/pi-fleet_v1.0.0_linux_arm64", Version: "v1.0.0",

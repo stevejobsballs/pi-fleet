@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"pi-fleet/internal/fleetsync"
+	"pi-fleet/internal/localnames"
 	"pi-fleet/internal/web"
 )
 
@@ -45,13 +46,17 @@ func (n *node) client(ctx context.Context, baseURL string) (*fleetsync.Client, e
 			return nil, fmt.Errorf("this Pi is not activated: %w", err)
 		}
 	}
-	httpc := &http.Client{Timeout: 60 * time.Second}
+	// The master Pi is often reached by its .local name, which the system
+	// resolves (mDNS) but a static program's own resolver doesn't.
+	dial := &localnames.Dialer{Dialer: net.Dialer{Timeout: 10 * time.Second}}
+	tr := &http.Transport{DialContext: dial.DialContext, TLSHandshakeTimeout: 10 * time.Second}
+	httpc := &http.Client{Timeout: 60 * time.Second, Transport: tr}
 	if pem, err := n.store.Config(ctx, configCentralCA); err == nil && pem != "" { // "" means none
 		pool := x509.NewCertPool()
 		if !pool.AppendCertsFromPEM([]byte(pem)) {
 			return nil, errors.New("stored central CA is not valid PEM")
 		}
-		httpc.Transport = &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}}
+		tr.TLSClientConfig = &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}
 	}
 	return &fleetsync.Client{
 		BaseURL: baseURL, HTTP: httpc, Store: n.store, Keys: n.keys,
