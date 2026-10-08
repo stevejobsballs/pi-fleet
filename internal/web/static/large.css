@@ -51,7 +51,16 @@ footer { font-size: 1.1rem; padding: 1.5rem; }
 button, .button { min-height: 3.5rem; padding: .75rem 1.5rem; font-size: 1.25rem; font-weight: 700; border-width: 2px; border-radius: 8px; }
 button.danger { border-width: 3px; }
 button.link { min-height: 0; padding: 0; font-weight: 600; font-size: 1em; }
-.actions { gap: 1rem; padding: 1.25rem; }
+/* Each action is its own card: a plain heading, its fields one above the
+   other, and its button underneath, so it is clear what belongs together. */
+.actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr)); align-items: start; gap: 1rem; padding: 0; background: none; border: 0; }
+.act { display: flex; flex-direction: column; align-items: stretch; gap: .75rem; margin: 0; padding: 1.1rem 1.25rem;
+  background: var(--panel); border: 2px solid var(--line); border-radius: 8px; }
+.act h3 { font-size: 1.3rem; text-transform: none; letter-spacing: 0; color: var(--fg); }
+.act > button, .act > .button { align-self: flex-start; }
+.act label { width: 100%; }
+.act label input:not([type="checkbox"]), .act label select, table.stack form label input:not([type="checkbox"]), table.stack form label select { width: 100%; }
+.act-wide { grid-column: 1 / -1; }
 form.inline { gap: .9rem; margin: .5rem .9rem .5rem 0; }
 form.narrow { max-width: 40rem; gap: 1.25rem; }
 
@@ -59,7 +68,7 @@ form.narrow { max-width: 40rem; gap: 1.25rem; }
 label { font-size: 1.15rem; font-weight: 700; color: var(--fg); gap: .35rem; }
 label.check { font-size: 1.15rem; font-weight: 500; gap: .75rem; min-height: 3rem; }
 input, select, textarea { min-height: 3.5rem; font-size: 1.25rem; padding: .6rem .8rem; border-width: 2px; border-radius: 6px; }
-input[type="checkbox"], input[type="radio"] { width: 1.75rem; height: 1.75rem; min-height: 0; }
+input[type="checkbox"], input[type="radio"] { width: 1.75rem; height: 1.75rem; min-height: 0; flex: none; }
 input:focus, select:focus, textarea:focus { outline-width: 4px; }
 fieldset { padding: 1rem 1.25rem; border-width: 2px; }
 legend { font-size: 1.15rem; }
@@ -92,3 +101,16 @@ dl.facts dt { font-size: 1.05rem; text-transform: none; letter-spacing: 0; font-
 }
 /* A status reads as one phrase. */
 .s-in_service, .s-out_of_service, .s-missing, .s-retired { white-space: nowrap; }
+
+/* Busy tables become one card per row, every value labelled, so nothing
+   runs off the side of the screen. */
+table.stack, table.stack tbody, table.stack tr, table.stack td { display: block; width: 100%; }
+table.stack { border: 0; background: none; }
+table.stack thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+table.stack tr { margin-bottom: 1rem; padding: .75rem 1.25rem; background: var(--panel); border: 2px solid var(--line); border-radius: 8px; }
+table.stack tbody tr:nth-child(even) { background: var(--panel); }
+table.stack tr.more { margin-top: -1.25rem; border-top: 0; border-radius: 0 0 8px 8px; }
+table.stack td { padding: .35rem 0; border: 0; }
+table.stack td[data-label]::before { content: attr(data-label); display: block; font-size: 1rem; font-weight: 700; color: var(--muted); }
+table.stack form { display: flex; flex-direction: column; align-items: flex-start; gap: .75rem; margin: .5rem 0; }
+table.stack form label { width: 100%; max-width: 32rem; }

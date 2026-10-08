@@ -71,9 +71,11 @@ Pis at other buildings or sites: give your IT department
 [docs/NETWORK.md](docs/NETWORK.md) before installing the master Pi. It
 needs a DNS name, and setup asks for it.
 
-**Larger text and buttons:** anyone who finds the screens hard to read
-can choose **Larger text and buttons** at the top right of any page,
-including the sign-in page. Each browser remembers its own choice.
+**Larger text and buttons** are the default: big, plainly labelled
+controls, each action in its own box, for people who find small screens
+hard (often older users). Anyone who prefers more on the screen can choose
+**Compact layout** at the top right of any page, including the sign-in
+page; each browser remembers its own choice.
 
 ## Tools
 

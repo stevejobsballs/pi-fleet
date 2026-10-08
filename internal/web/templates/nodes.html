@@ -1,9 +1,9 @@
 {{define "content"}}
 <p class="hint">Devices that use a Pi's web interface over HTTPS (for example tablets with a kiosk) need the <a href="/v1/fleet-ca.pem">fleet CA certificate</a> installed once.</p>
 {{with .Data.Fingerprint}}<p>This master Pi's certificate fingerprint, for checking during a new Pi's setup:<br><code>{{.}}</code></p>{{end}}
-{{if .Data.Rows}}<table><thead><tr><th>Pi</th><th>Belongs to</th><th>Status</th><th>Version</th><th>Activated</th><th>Pairing words</th><th></th></tr></thead><tbody>
-{{range .Data.Rows}}<tr><td><code>{{.ID}}</code></td><td>{{if eq .Mode "kiosk"}}kiosk{{else}}{{.Username}}{{end}}</td><td>{{label .Status}}{{if .Quarantined}}<br><span class="warn">quarantined after a chain fork</span>{{end}}</td>
-  <td>{{if .Version}}{{.Version}}{{else}}not seen yet{{end}}{{if .Outdated}}<br><span class="warn">needs updating</span>{{end}}</td><td>{{.ActivatedAt}}</td><td>{{.PairingWords}}</td><td>
+{{if .Data.Rows}}<table class="stack"><thead><tr><th>Pi</th><th>Belongs to</th><th>Status</th><th>Version</th><th>Activated</th><th>Pairing words</th><th></th></tr></thead><tbody>
+{{range .Data.Rows}}<tr><td data-label="Pi"><code>{{.ID}}</code></td><td data-label="Belongs to">{{if eq .Mode "kiosk"}}kiosk{{else}}{{.Username}}{{end}}</td><td data-label="Status">{{label .Status}}{{if .Quarantined}}<br><span class="warn">quarantined after a chain fork</span>{{end}}</td>
+  <td data-label="Version">{{if .Version}}{{.Version}}{{else}}not seen yet{{end}}{{if .Outdated}}<br><span class="warn">needs updating</span>{{end}}</td><td data-label="Activated">{{.ActivatedAt}}</td><td data-label="Pairing words">{{.PairingWords}}</td><td>
   {{if eq .Status "pending_confirmation"}}
   <form method="post" action="/admin/nodes/{{.ID}}/confirm" class="inline">{{template "csrf" $.CSRF}}<label>Words the employee reads out <input name="words" required></label><button>Confirm</button></form>
   <form method="post" action="/admin/nodes/{{.ID}}/reject" class="inline">{{template "csrf" $.CSRF}}<label>Reason <input name="reason" required></label><button class="danger">Reject</button></form>

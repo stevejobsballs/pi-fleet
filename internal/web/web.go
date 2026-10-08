@@ -466,19 +466,23 @@ func (s *Server) phiCheck(r *http.Request, texts ...string) error {
 	return nil
 }
 
-// displayCookie keeps a browser's choice of larger text and buttons.
+// displayCookie keeps a browser's choice of the compact layout; larger
+// text and buttons are the default.
 const displayCookie = "pf_display"
 
 func largeDisplay(r *http.Request) bool {
 	c, err := r.Cookie(displayCookie)
-	return err == nil && c.Value == "large"
+	return err != nil || c.Value != "compact"
 }
 
-// display switches this browser between standard and larger text and
-// buttons, then goes back to the page it came from.
+// display switches this browser between larger text and buttons and the
+// compact layout, then goes back to the page it came from.
 func (s *Server) display(w http.ResponseWriter, r *http.Request) {
 	mode := r.PathValue("mode")
-	if mode != "large" && mode != "standard" {
+	if mode == "standard" { // the earlier name
+		mode = "compact"
+	}
+	if mode != "large" && mode != "compact" {
 		http.NotFound(w, r)
 		return
 	}

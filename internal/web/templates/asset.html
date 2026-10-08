@@ -17,11 +17,15 @@
 {{with .Data.Merged}}<p>Merged into this record, with their service history in this record's timeline: {{range $i, $o := .}}{{if $i}}, {{end}}<a href="/assets/{{$o.ID}}">{{$o.Label}}</a>{{end}}. Their work orders, calibrations, schedules and files are listed below.</p>{{end}}
 {{with .Data.Separate}}<p>Also merged into this record, with their service history kept separate: {{range $i, $o := .}}{{if $i}}, {{end}}<a href="/assets/{{$o.ID}}">{{$o.Label}}</a>{{end}}.</p>{{end}}
 {{if not $merged}}<section class="actions">
-  <a class="button" href="/work-orders/new?asset={{$a.ID}}">New work order</a>
-  <form method="post" action="/assets/{{$a.ID}}/status" class="inline">{{template "csrf" .CSRF}}<input type="hidden" name="version" value="{{$a.Version}}">
+  <div class="act"><h3>Work on it</h3><a class="button" href="/work-orders/new?asset={{$a.ID}}">New work order</a></div>
+  <form method="post" action="/assets/{{$a.ID}}/status" class="act">{{template "csrf" .CSRF}}<input type="hidden" name="version" value="{{$a.Version}}">
+    <h3>Change its status</h3>
     <label>Status <select name="status">{{range .Data.Statuses}}<option value="{{.}}" {{if eq . $a.Status}}selected{{end}}>{{label .}}</option>{{end}}</select></label>
     <label>Reason <input name="reason"></label>{{template "nophi"}}<button>Change status</button></form>
-  <details><summary>Edit details</summary>
+  <form method="post" action="/assets/{{$a.ID}}/relocate" class="act">{{template "csrf" .CSRF}}<input type="hidden" name="version" value="{{$a.Version}}">
+    <h3>Move it to another location</h3>
+    <label>New location <select name="location">{{range .Data.Locations}}<option value="{{.ID}}" {{if eq .ID $a.LocationID}}selected{{end}}>{{.Label}}</option>{{end}}</select></label><button>Move</button></form>
+  <div class="act act-wide"><h3>Correct its details</h3><details><summary>Edit manufacturer, model, serial number…</summary>
   <form method="post" action="/assets/{{$a.ID}}/edit" class="narrow">{{template "csrf" .CSRF}}<input type="hidden" name="version" value="{{$a.Version}}">
     <input type="hidden" name="orig_manufacturer" value="{{$a.Manufacturer}}"><input type="hidden" name="orig_model" value="{{$a.Model}}">
     <input type="hidden" name="orig_serial" value="{{$a.Serial}}"><input type="hidden" name="orig_risk_class" value="{{$a.RiskClass}}">
@@ -33,9 +37,7 @@
     <label>Risk class <select name="risk_class">{{range $c := slice3 "" "low" "medium" "high"}}<option value="{{$c}}" {{if eq $c $a.RiskClass}}selected{{end}}>{{if $c}}{{$c}}{{else}}not set{{end}}</option>{{end}}</select></label>
     <label class="check"><input type="checkbox" name="reference" value="yes" {{if $a.IsReferenceStandard}}checked{{end}}> Reference standard</label>
     <button>Save details</button>
-  </form></details>
-  <form method="post" action="/assets/{{$a.ID}}/relocate" class="inline">{{template "csrf" .CSRF}}<input type="hidden" name="version" value="{{$a.Version}}">
-    <label>Move to <select name="location">{{range .Data.Locations}}<option value="{{.ID}}" {{if eq .ID $a.LocationID}}selected{{end}}>{{.Label}}</option>{{end}}</select></label><button>Move</button></form>
+  </form></details></div>
 </section>{{end}}
 <section><h2>Files</h2>
 {{template "attachments" (files .Data.Attachments .CSRF (and (ne $a.Status "retired") (not $merged)) .IsMid (printf "/assets/%s/attachments" $a.ID))}}

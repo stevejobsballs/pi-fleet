@@ -14,10 +14,11 @@
 <p class="records"><a href="/work-orders/{{$w.ID}}/audit">Audit trail</a> · <a href="/work-orders/{{$w.ID}}/print">Printable record</a> · <a href="/work-orders/{{$w.ID}}/export.json">Download signed JSON</a></p>
 <section class="actions">
   {{if and (eq $w.Status "open") (not $d.Holder)}}
-  <form method="post" action="/work-orders/{{$w.ID}}/claim">{{template "csrf" .CSRF}}<button>Claim this work</button></form>
+  <form method="post" action="/work-orders/{{$w.ID}}/claim" class="act">{{template "csrf" .CSRF}}<h3>Take on this work</h3><button>Claim this work</button></form>
   {{end}}
   {{if and .IsMid (ne $w.Status "closed") (ne $w.Status "cancelled") (ne $w.Status "completed") (ne $w.Status "reviewed")}}
-  <form method="post" action="/work-orders/{{$w.ID}}/assign" class="inline">{{template "csrf" .CSRF}}
+  <form method="post" action="/work-orders/{{$w.ID}}/assign" class="act">{{template "csrf" .CSRF}}
+    <h3>Who does it</h3>
     <label>Assign to <select name="assignee">{{range $d.Users}}<option value="{{.ID}}">{{.Label}}</option>{{end}}</select></label>
     <button>{{if $w.AssignedTo}}Reassign{{else}}Assign{{end}}</button></form>
   {{end}}
@@ -27,12 +28,14 @@
     {{if eq $w.Status "on_hold"}}{{template "status" (dict3 $w.ID "in_progress" "Resume" $.CSRF)}}{{end}}
   {{end}}
   {{if and .IsMid (or (eq $w.Status "completed") (eq $w.Status "reviewed"))}}
-  <form method="post" action="/work-orders/{{$w.ID}}/status" class="inline">{{template "csrf" .CSRF}}
-    <input type="hidden" name="to" value="in_progress"><label>Reason <input name="reason" required></label>{{template "nophi"}}<button>Reopen</button></form>
+  <form method="post" action="/work-orders/{{$w.ID}}/status" class="act">{{template "csrf" .CSRF}}
+    <h3>Reopen this work order</h3>
+    <input type="hidden" name="to" value="in_progress"><label>Why it needs reopening <input name="reason" required></label>{{template "nophi"}}<button>Reopen</button></form>
   {{end}}
   {{if and .IsMid (ne $w.Status "closed") (ne $w.Status "cancelled")}}
-  <form method="post" action="/work-orders/{{$w.ID}}/status" class="inline">{{template "csrf" .CSRF}}
-    <input type="hidden" name="to" value="cancelled"><label>Reason <input name="reason" required></label>{{template "nophi"}}<button class="danger">Cancel work order</button></form>
+  <form method="post" action="/work-orders/{{$w.ID}}/status" class="act">{{template "csrf" .CSRF}}
+    <h3>Cancel this work order</h3>
+    <input type="hidden" name="to" value="cancelled"><label>Why it is cancelled <input name="reason" required></label>{{template "nophi"}}<button class="danger">Cancel work order</button></form>
   {{end}}
 </section>
 
@@ -128,7 +131,7 @@
 </section>
 {{end}}
 
-{{define "status"}}<form method="post" action="/work-orders/{{.A}}/status" class="inline"><input type="hidden" name="csrf" value="{{.D}}"><input type="hidden" name="to" value="{{.B}}"><button>{{.C}}</button></form>{{end}}
+{{define "status"}}<form method="post" action="/work-orders/{{.A}}/status" class="act"><input type="hidden" name="csrf" value="{{.D}}"><input type="hidden" name="to" value="{{.B}}"><h3>Progress</h3><button>{{.C}}</button></form>{{end}}
 
 {{define "calrecord"}}{{$c := .A}}
 <article class="cal {{if eq $c.Status "voided"}}old{{end}}">

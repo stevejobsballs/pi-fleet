@@ -1,7 +1,7 @@
 {{define "content"}}
-{{if .Data.Rows}}<table><thead><tr><th>Equipment</th><th>Schedule</th><th>Type</th><th>Every</th><th>Grace</th><th>Next due</th><th>Outstanding</th><th>Status</th></tr></thead><tbody>
-{{range .Data.Rows}}<tr><td><a href="/assets/{{.AssetID}}">{{.Asset}}</a></td><td>{{.Title}}</td><td>{{.Type}}</td><td>{{.Interval}} days{{with index $.Data.Usage .ID}}{{if .Schedule.Meter}}<br>or {{.Status.Interval}} {{.Schedule.Meter}} <small>({{.Status.Used}} used)</small>{{end}}{{end}}</td><td>{{.Grace}} days</td><td>{{.NextDue}}</td><td>{{.OpenWO}}</td><td>{{.Status}}</td></tr>
-{{if and $.IsMid (eq .Status "active")}}<tr><td colspan="8"><details><summary>Change or end</summary>
+{{if .Data.Rows}}<table class="stack"><thead><tr><th>Equipment</th><th>Schedule</th><th>Type</th><th>Every</th><th>Grace</th><th>Next due</th><th>Outstanding</th><th>Status</th></tr></thead><tbody>
+{{range .Data.Rows}}<tr><td data-label="Equipment"><a href="/assets/{{.AssetID}}">{{.Asset}}</a></td><td data-label="Schedule">{{.Title}}</td><td data-label="Type">{{.Type}}</td><td data-label="Every">{{.Interval}} days{{with index $.Data.Usage .ID}}{{if .Schedule.Meter}}<br>or {{.Status.Interval}} {{.Schedule.Meter}} <small>({{.Status.Used}} used)</small>{{end}}{{end}}</td><td data-label="Grace">{{.Grace}} days</td><td data-label="Next due">{{.NextDue}}</td><td data-label="Outstanding">{{.OpenWO}}</td><td data-label="Status">{{.Status}}</td></tr>
+{{if and $.IsMid (eq .Status "active")}}<tr class="more"><td colspan="8"><details><summary>Change or end this schedule</summary>
   <form method="post" action="/schedules/{{.ID}}/change" class="inline">{{template "csrf" $.CSRF}}
     <label>Title <input name="title" value="{{.Title}}"></label><label>Every (days) <input name="interval" value="{{.Interval}}" size="5"></label>
     <label>Grace <input name="grace" value="{{.Grace}}" size="4"></label><label>Next due <input name="next_due" type="date" value="{{.NextDue}}"></label>

@@ -89,6 +89,10 @@ details { margin: .5rem 0; }
 summary { cursor: pointer; color: var(--accent); font-weight: 600; font-size: 14px; }
 .actions { display: flex; flex-wrap: wrap; gap: .6rem; align-items: end; padding: .75rem; margin-bottom: 1rem;
   background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
+/* One action: a small heading, its fields and its button. */
+.act { display: inline-flex; flex-wrap: wrap; gap: .5rem; align-items: end; margin: 0 1rem .25rem 0; }
+.act h3 { flex-basis: 100%; margin: 0; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.act-wide { flex-basis: 100%; }
 
 /* Messages. */
 .flash { padding: .6rem .9rem; border: 1px solid var(--line); border-left: 4px solid var(--leaf); background: var(--panel); border-radius: var(--radius); }

@@ -56,17 +56,21 @@ func snapshotPages(t *testing.T, e *env, dir string) {
 	}
 	b := e.browser()
 	b.login("admin", "tumbleweed-gasket-42")
-	_, _, list := b.get("/assets")
-	first := hrefRE.FindAllStringSubmatch(list, -1)
-	assetPage := ""
-	for _, m := range first {
-		if strings.HasPrefix(m[1], "/assets/0") {
-			assetPage = m[1]
-			break
+	firstLink := func(list, prefix string) string {
+		_, _, page := b.get(list)
+		for _, m := range hrefRE.FindAllStringSubmatch(page, -1) {
+			if strings.HasPrefix(m[1], prefix) {
+				return m[1]
+			}
 		}
+		return list
 	}
 	pages := map[string]string{"dashboard": "/", "assets": "/assets", "work-orders": "/work-orders?view=all", "review": "/review",
-		"schedules": "/schedules", "new-asset": "/assets/new", "merge": "/assets/merge?master_id=M-2", "asset": assetPage}
+		"schedules": "/schedules", "new-asset": "/assets/new", "merge": "/assets/merge?master_id=M-2",
+		"asset": firstLink("/assets?q=VENT", "/assets/0"), "work-order": firstLink("/work-orders?view=all", "/work-orders/0"),
+		"new-work-order": "/work-orders/new", "users": "/admin/users", "sites": "/admin/sites", "nodes": "/admin/nodes",
+		"kiosks": "/admin/kiosks", "inventory": "/inventory", "procedures": "/procedures", "procedure": firstLink("/procedures", "/procedures/0"),
+		"password": "/password"}
 	os.MkdirAll(dir, 0o755)
 	large, _ := filepath.Abs("static/large.css")
 	save := func(name, path string) {
@@ -80,23 +84,14 @@ func snapshotPages(t *testing.T, e *env, dir string) {
 		page = strings.ReplaceAll(page, `href="/static/large.css"`, `href="file://`+large+`"`)
 		os.WriteFile(filepath.Join(dir, name+".html"), []byte(page), 0o644)
 	}
-	defer func() { // the same pages with larger text and buttons
-		b.get("/display/large")
+	defer func() { // the same pages in the compact layout
+		b.get("/display/compact")
 		for name, path := range pages {
-			save(name+"-large", path)
+			save(name+"-compact", path)
 		}
 	}()
 	for name, path := range pages {
-		resp, err := b.c.Get(e.srv.URL + path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		page := strings.ReplaceAll(string(body), `href="/static/style.css"`, `href="file://`+css+`"`)
-		if err := os.WriteFile(filepath.Join(dir, name+".html"), []byte(page), 0o644); err != nil {
-			t.Fatal(err)
-		}
+		save(name, path)
 	}
 	// The sign-in page, signed out.
 	out := e.browser()
@@ -106,5 +101,6 @@ func snapshotPages(t *testing.T, e *env, dir string) {
 	}
 	body, _ := io.ReadAll(r2.Body)
 	r2.Body.Close()
-	os.WriteFile(filepath.Join(dir, "login.html"), []byte(strings.ReplaceAll(string(body), `href="/static/style.css"`, `href="file://`+css+`"`)), 0o644)
+	page := strings.ReplaceAll(string(body), `href="/static/style.css"`, `href="file://`+css+`"`)
+	os.WriteFile(filepath.Join(dir, "login.html"), []byte(strings.ReplaceAll(page, `href="/static/large.css"`, `href="file://`+large+`"`)), 0o644)
 }

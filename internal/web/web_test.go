@@ -451,32 +451,32 @@ func TestKioskAdminPage(t *testing.T) {
 	}
 }
 
-func TestLargerTextSwitch(t *testing.T) {
+func TestLargerTextIsTheDefaultWithACompactOption(t *testing.T) {
 	e := newEnv(t)
 	b := e.browser()
 	_, _, page := b.get("/login")
-	if !strings.Contains(page, `href="/display/large?back=%2Flogin"`) || strings.Contains(page, "large.css") {
-		t.Fatalf("switch on the sign-in page:\n%s", page)
+	if !strings.Contains(page, `href="/static/large.css"`) || !strings.Contains(page, `href="/display/compact?back=%2Flogin"`) {
+		t.Fatalf("larger text isn't the default on the sign-in page:\n%s", page)
 	}
-	// Switched on before signing in, it stays on afterwards.
-	if code, loc, _ := b.get("/display/large?back=%2Flogin"); code != http.StatusSeeOther || loc != "/login" {
+	// Compact chosen before signing in stays chosen afterwards.
+	if code, loc, _ := b.get("/display/compact?back=%2Flogin"); code != http.StatusSeeOther || loc != "/login" {
 		t.Fatalf("switch: %d %s", code, loc)
 	}
 	b.login("admin", "tumbleweed-gasket-42")
 	_, _, page = b.get("/assets")
-	if !strings.Contains(page, `href="/static/large.css"`) || !strings.Contains(page, "Standard text") {
-		t.Fatalf("larger text not on:\n%s", page)
+	if strings.Contains(page, "large.css") || !strings.Contains(page, "Larger text and buttons") {
+		t.Fatalf("compact layout not on:\n%s", page)
+	}
+	b.get("/display/large?back=%2Fassets")
+	if _, _, page = b.get("/assets"); !strings.Contains(page, "large.css") || !strings.Contains(page, "Compact layout") {
+		t.Fatal("larger text not back on")
 	}
 	if code, _, _ := b.get("/static/large.css"); code != http.StatusOK {
 		t.Fatalf("large.css: %d", code)
 	}
-	b.get("/display/standard?back=%2Fassets")
-	if _, _, page = b.get("/assets"); strings.Contains(page, "large.css") {
-		t.Fatal("larger text still on")
-	}
 	// Only back to this site.
 	for _, back := range []string{"https://evil.example/", "//evil.example/", "/\\evil.example", "/display/large"} {
-		if _, loc, _ := b.get("/display/large?back=" + url.QueryEscape(back)); loc != "/" {
+		if _, loc, _ := b.get("/display/compact?back=" + url.QueryEscape(back)); loc != "/" {
 			t.Errorf("back=%s went to %s", back, loc)
 		}
 	}

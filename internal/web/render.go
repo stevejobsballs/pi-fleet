@@ -27,7 +27,7 @@ type page struct {
 	Notices    []string
 	Insecure   bool
 	Trial      bool
-	Large      bool   // larger text and buttons, chosen in this browser
+	Large      bool   // larger text and buttons (the default; compact is chosen per browser)
 	Here       string // this page's path and query, to come back to
 	Path       string // the page's URL path, to mark the current menu item
 	Data       any
