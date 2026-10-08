@@ -468,7 +468,7 @@ func TestLargerTextIsTheDefaultWithACompactOption(t *testing.T) {
 		t.Fatalf("compact layout not on:\n%s", page)
 	}
 	b.get("/display/large?back=%2Fassets")
-	if _, _, page = b.get("/assets"); !strings.Contains(page, "large.css") || !strings.Contains(page, "Compact layout") {
+	if _, _, page = b.get("/assets"); !strings.Contains(page, "large.css") || !strings.Contains(page, "Switch to the compact layout") {
 		t.Fatal("larger text not back on")
 	}
 	if code, _, _ := b.get("/static/large.css"); code != http.StatusOK {

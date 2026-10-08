@@ -19,10 +19,8 @@ p { margin: .8rem 0; }
 
 /* Top bar: big menu buttons; the current page is a solid raspberry block. */
 header.top { gap: .6rem 1rem; padding: .6rem 1rem .75rem; min-height: 4.5rem; border-bottom-width: 6px; }
-/* Logo and the text-size switch on the first line, the menu below at full width. */
-header.top .brand { order: 1; }
-header.top .display { order: 2; }
-header.top nav { order: 3; flex-basis: 100%; }
+/* Logo on the first line, the menu below at full width. */
+header.top nav { flex-basis: 100%; }
 .brand { font-size: 1.4rem; gap: .65rem; }
 .brand .mark { width: 1.1rem; height: 1.35rem; border-top-width: .32rem; }
 header nav { gap: .4rem; }
@@ -30,9 +28,6 @@ header nav a { min-height: 3.5rem; padding: .5rem .8rem; margin: 0; border: 2px 
   font-size: 1.05rem; font-weight: 600; color: #fff; text-decoration: none; }
 header nav a:hover { background: rgba(255, 255, 255, .12); border-color: rgba(255, 255, 255, .35); }
 header nav a[aria-current="page"] { background: var(--raspberry); border-color: var(--raspberry); }
-header.top .display { margin-left: auto; min-height: 3rem; display: inline-flex; align-items: center; padding: .35rem 1rem;
-  border: 2px solid #fff; border-radius: 6px; font-size: 1rem; font-weight: 700; color: #fff; text-decoration: none; }
-header.top .display:hover { background: #fff; color: var(--bar); }
 
 /* Who is signed in, and the sync line: plain text, not small print. */
 .status { font: 1.1rem/1.5 system-ui, sans-serif; color: var(--fg); padding: .6rem 1.25rem; gap: .5rem 1.75rem; }
@@ -46,6 +41,9 @@ h2 { font-size: 1.45rem; font-weight: 700; text-transform: none; letter-spacing:
   margin: 2.25rem 0 .9rem; padding-bottom: .5rem; border-bottom: 3px solid var(--line); }
 h2::before { width: .8rem; height: .8rem; margin-right: .6rem; }
 footer { font-size: 1.1rem; padding: 1.5rem; }
+footer p { margin: .3rem 0; }
+/* The switch to the compact layout: tucked away at the bottom, small. */
+footer .display-small { font-size: .9rem; color: var(--muted); text-decoration-thickness: 1px; }
 
 /* Buttons: large, bold, unmistakable. */
 button, .button { min-height: 3.5rem; padding: .75rem 1.5rem; font-size: 1.25rem; font-weight: 700; border-width: 2px; border-radius: 8px; }

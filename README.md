@@ -74,8 +74,8 @@ needs a DNS name, and setup asks for it.
 **Larger text and buttons** are the default: big, plainly labelled
 controls, each action in its own box, for people who find small screens
 hard (often older users). Anyone who prefers more on the screen can choose
-**Compact layout** at the top right of any page, including the sign-in
-page; each browser remembers its own choice.
+**Switch to the compact layout** at the bottom of any page, including the
+sign-in page; each browser remembers its own choice.
 
 ## Tools
 

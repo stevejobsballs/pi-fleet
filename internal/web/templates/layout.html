@@ -22,7 +22,7 @@
     {{if .IsSuper}}<a href="/admin/users"{{if .In "/admin/users"}} aria-current="page"{{end}}>Users</a><a href="/admin/sites"{{if .In "/admin/sites"}} aria-current="page"{{end}}>Sites</a>{{if eq .Role "central"}}<a href="/admin/nodes"{{if .In "/admin/nodes"}} aria-current="page"{{end}}>Pis</a><a href="/admin/kiosks"{{if .In "/admin/kiosks"}} aria-current="page"{{end}}>Kiosks</a>{{end}}{{end}}
   </nav>
   {{end}}
-  <a class="display" href="/display/{{if .Large}}compact{{else}}large{{end}}?back={{urlquery .Here}}">{{if .Large}}Compact layout{{else}}Larger text and buttons{{end}}</a>
+  {{if not .Large}}<a class="display" href="/display/large?back={{urlquery .Here}}">Larger text and buttons</a>{{end}}
 </header>
 {{if .User.ID}}
 <div class="status">
@@ -45,7 +45,8 @@
   <h1>{{.Title}}</h1>
   {{template "content" .}}
 </main>
-{{if .PHIWarning}}<footer>Do not enter patient information. This system holds equipment records only.</footer>{{end}}
+<footer>{{if .PHIWarning}}<p>Do not enter patient information. This system holds equipment records only.</p>{{end}}
+{{if .Large}}<p><a class="display-small" href="/display/compact?back={{urlquery .Here}}">Switch to the compact layout</a></p>{{end}}</footer>
 </body>
 </html>{{end}}
 
