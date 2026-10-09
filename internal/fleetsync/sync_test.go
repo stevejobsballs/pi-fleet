@@ -717,7 +717,7 @@ func TestKioskMode(t *testing.T) {
 		t.Fatalf("new member with one-time password: %v", err)
 	}
 	dave := app.Actor{UserID: daveID, SessionID: "kiosk"}
-	f.must(k.app.ChangePassword(f.ctx, dave, temp, "granite-otter-meadow"))
+	f.must(k.app.ChooseFirstPassword(f.ctx, dave, "granite-otter-meadow")) // as the web page does
 	if r := k.sync(); r.Flagged != 0 {
 		t.Fatalf("password change from the kiosk flagged: %+v", r)
 	}
