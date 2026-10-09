@@ -1,0 +1,57 @@
+SETTING UP AN EMPLOYEE OR KIOSK PI  (pi-fleet {{VERSION}})
+==================================
+
+What's in this folder
+  Set-up-this-Pi.sh              START HERE (see "On the new Pi" below)
+  pi-fleet_{{VERSION}}_linux_arm64   the installer and program
+  manifest.json, .minisig        prove the program is genuine; keep them next to it
+  click-lib.sh                   used by the other scripts; leave it here
+  tools/Check-Pi.sh              afterwards: shows how this Pi is doing
+  tools/Update-Pi.sh             later: installs updates from the master Pi
+
+The master Pi
+  Address:      {{MASTER}}
+  Fingerprint:  {{FINGERPRINT}}
+
+BEFORE YOU START, on the master Pi (https://{{MASTER}})
+  1. Sites: make sure there is at least one site and location.
+  2. For an employee Pi: Users, create the employee's account (lowercase
+     username). Write down the ONE-TIME PASSWORD it shows; it is only shown
+     once and works for 3 days.
+     For a kiosk Pi (shared in a workshop): Kiosks, create a kiosk and write
+     down its name and ONE-TIME PASSWORD. Add the people who will use it as
+     members. (Setting up a kiosk again on a new Pi: on Pis, revoke the old
+     one; on Kiosks, press "New activation password".)
+  3. The master Pi must be switched on, with its data drive in, and on the
+     same network as the new Pi. If the Pis are joined only by a switch (no
+     router), double-click tools/Share-Wired-Network.sh (in the master setup folder)
+     on the master first.
+
+ON THE NEW PI (Raspberry Pi 4 or 5, 64-bit Raspberry Pi OS)
+  1. Connect it to the same network (Wi-Fi or cable) as the master Pi.
+  2. Plug in the USB stick with this folder. Programs can't run straight
+     from a USB stick, so:
+       a. Drag this folder from the stick onto the Pi's Desktop. Wait for
+          the copy to finish, then eject the stick.
+       b. Open the folder on the Desktop. Right-click Set-up-this-Pi.sh,
+          choose Properties, then Permissions, and allow executing it.
+       c. Double-click Set-up-this-Pi.sh and choose Execute.
+     (Or, without the desktop steps: open a terminal and type
+        bash /media/$USER/*/pi-fleet-employee-setup/Set-up-this-Pi.sh )
+     It asks for this Pi's own password (the one you log into the Pi with).
+  3. Choose  Employee Pi  (one person's)  or  Kiosk Pi  (shared).
+  4. Master Pi: type   {{MASTER}}
+  5. Compare the fingerprint it shows with the one at the top of this file
+     (also on the master's Pis page). If it matches exactly, answer y.
+     If not, answer n and stop: something is pretending to be the master.
+  6. Employee Pi: type the username, then the one-time password, then
+     choose the employee's own password (at least 12 characters).
+     Kiosk Pi: type the kiosk's name, then its one-time password. Each
+     member chooses their own password later, when they first sign in.
+  7. Six words appear. On the master Pi, open Pis, type those six words into
+     the waiting Pi's row and press Confirm.
+  8. Setup finishes by itself; the window waits for Enter. Open
+     http://127.0.0.1:8080 in the Pi's web browser and sign in with a
+     pi-fleet username and password (not the Pi's own login).
+
+If anything stops with an error, the window stays open: send what it says.

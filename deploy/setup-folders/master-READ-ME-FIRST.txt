@@ -1,0 +1,57 @@
+SETTING UP THE MASTER PI  (pi-fleet {{VERSION}})
+========================
+
+The master Pi is the first Pi: it keeps every record for your institution
+on an external drive. Set it up once; every other Pi is set up with the
+pi-fleet-employee-setup folder.
+
+What's in this folder
+  Set-up-this-Pi.sh                 START HERE (see below)
+  pi-fleet_{{VERSION}}_linux_arm64      the installer and program
+  manifest.json, .minisig           prove the program is genuine; keep them next to it
+  click-lib.sh                      used by the other scripts; leave it here
+  tools/Check-Pi.sh                 afterwards: shows how the master is doing
+  tools/Update-Pi.sh                later: installs a newer release
+  tools/Share-Wired-Network.sh      only if the Pis are joined by a switch with no router
+  NETWORK-guide-for-IT.md           for your IT department, if Pis are at other sites
+
+YOU NEED
+  - A Raspberry Pi 5 (or 4) with 64-bit Raspberry Pi OS and the official
+    27 W power supply (an SSD needs it).
+  - An external drive for the records: a USB SSD of 250 GB or more. Setup
+    erases it, after showing what's on it and asking you to type ERASE.
+    (Only trying it out? A USB stick works too; setup marks it as a trial.)
+  - For backups (recommended): a second drive, and a small USB stick for
+    the backup keys that you then keep somewhere else.
+  - Pis at other buildings or sites: give NETWORK-guide-for-IT.md to your
+    IT department first. Setup asks for the network name they give you.
+
+ON THE MASTER PI
+  1. Plug in the external drive.
+  2. Plug in the USB stick with this folder. Programs can't run straight
+     from a USB stick, so:
+       a. Drag this folder from the stick onto the Pi's Desktop. Wait for
+          the copy to finish, then eject the stick.
+       b. Open the folder on the Desktop. Right-click Set-up-this-Pi.sh,
+          choose Properties, then Permissions, and allow executing it.
+       c. Double-click Set-up-this-Pi.sh and choose Execute.
+     (Or, without the desktop steps: open a terminal and type
+        bash /media/$USER/*/pi-fleet-master-setup/Set-up-this-Pi.sh )
+     It asks for this Pi's own password (the one you log into the Pi with).
+  3. Choose  Master Pi  and follow the steps: the drive, the Pi's name, the
+     first super user (lowercase username, and a password you'll remember),
+     then backups.
+  4. At the end it shows the master's ADDRESS and CERTIFICATE FINGERPRINT.
+     Write both down: every employee Pi's setup asks for them. (Both are
+     also on the master's Pis page.)
+  5. Open the address in the web browser and sign in as the super user.
+     Firefox warns about the certificate the first time: check the
+     fingerprint, then accept it.
+
+AFTERWARDS, in the web browser on the master
+  - Sites: create your sites and locations.
+  - Users: create an account for each person (each gets a one-time password).
+  - Kiosks: create a kiosk for each shared workshop Pi, and add its members.
+  Then set up the other Pis with the pi-fleet-employee-setup folder.
+
+If anything stops with an error, the window stays open: send what it says.

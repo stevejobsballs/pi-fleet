@@ -38,6 +38,8 @@ else
   echo
   echo "Signed. Eject the USB stick in the File Manager, then unplug it and put it away."
 fi
+echo
+PIFLEET_NO_TERMINAL=1 bash "$KIT/Make-Setup-Folders.sh"
 
 echo
 if [ ! -f /etc/systemd/system/pi-fleet.service ] || ! grep -q -- "-releases /srv/pi-fleet/releases" /etc/systemd/system/pi-fleet.service; then
