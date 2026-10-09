@@ -46,7 +46,7 @@ chmod +x "$DEST/$(basename "$BIN")"
 [ -d "$DEST/tools" ] && chmod +x "$DEST"/tools/*.sh
 echo
 trap - EXIT
-if [ -n "${PIFLEET_IN_TERMINAL:-}" ]; then
-  set -- -pause "$@" # this script opened the window: keep it open at the end
-fi
+# Keep the window open at the end so its last messages can be read: the
+# file manager's "Execute in Terminal" closes it as soon as setup ends.
+set -- -pause "$@"
 exec "$DEST/$(basename "$BIN")" setup "$@"
