@@ -456,6 +456,19 @@ func TestKioskAdminPage(t *testing.T) {
 	if _, page = b.post("/admin/kiosks/"+id[1]+"/members/remove", url.Values{"user": {tessID}}); !strings.Contains(page, "No members yet") {
 		t.Fatalf("member not removed:\n%s", page)
 	}
+	// Someone new, still on their one-time password, can be added: they
+	// choose their own password on the kiosk.
+	newID, _, err := e.app.CreateUser(e.ctx, e.super, app.NewUser{Username: "nell", LegalName: "Nell New", Email: "nell@example.org",
+		Role: domain.RoleUser, HomeSites: []string{e.site}, IdentityVerification: "badge"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, page = b.get("/admin/kiosks"); !strings.Contains(page, `<option value="`+newID+`">Nell New (nell) · new, one-time password</option>`) {
+		t.Fatalf("new user not offered:\n%s", page)
+	}
+	if _, page = b.post("/admin/kiosks/"+id[1]+"/members", url.Values{"user": {newID}}); !strings.Contains(page, "<li>Nell New (nell)") {
+		t.Fatalf("new user not added:\n%s", page)
+	}
 	if _, page = b.post("/admin/kiosks", url.Values{"site": {e.site}, "name": {"Bad Name!"}}); !strings.Contains(page, "Not saved") {
 		t.Fatalf("bad kiosk name accepted:\n%s", page)
 	}

@@ -75,6 +75,19 @@ func userOptions(ctx context.Context, q domain.Querier) ([]option, error) {
 	})
 }
 
+// kioskUserOptions lists who can be added to a kiosk: active users, and
+// new ones still on their one-time password, who choose their own on
+// the kiosk.
+func kioskUserOptions(ctx context.Context, q domain.Querier) ([]option, error) {
+	rows, err := q.QueryContext(ctx, `SELECT id, legal_name || ' (' || username || ')'
+			|| CASE WHEN status = 'pending_activation' THEN ' · new, one-time password' ELSE '' END
+		FROM users WHERE status IN ('active', 'pending_activation') ORDER BY legal_name`)
+	return scanAll(rows, err, func(r *sql.Rows) (option, error) {
+		var o option
+		return o, r.Scan(&o.ID, &o.Label)
+	})
+}
+
 func standardOptions(ctx context.Context, q domain.Querier, exclude string) ([]option, error) {
 	rows, err := q.QueryContext(ctx, `SELECT a.id, a.tag || ' · ' || a.manufacturer || ' ' || a.model ||
 			coalesce(' · due ' || (SELECT min(next_due) FROM pm_schedules p WHERE p.asset_id = a.id AND p.wo_type = 'calibration' AND p.status = 'active'), '')

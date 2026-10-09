@@ -44,7 +44,7 @@ func (s *Server) kioskList(w http.ResponseWriter, r *http.Request, sess *session
 	if d.Sites, err = siteOptions(ctx, q); err != nil {
 		return err
 	}
-	if d.Users, err = userOptions(ctx, q); err != nil {
+	if d.Users, err = kioskUserOptions(ctx, q); err != nil {
 		return err
 	}
 	return s.render(w, r, sess, "kiosks", "Kiosks", d)
