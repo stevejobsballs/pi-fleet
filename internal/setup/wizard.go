@@ -920,6 +920,19 @@ func (w *Wizard) activate(base string, kiosk bool) error {
 func (w *Wizard) existingNode() error {
 	u := w.UI
 	u.Say("")
+	if !w.nodeConnected() {
+		// Installed before, but setup stopped before the master Pi
+		// approved it, or its records were removed: carry on.
+		u.Say("pi-fleet is installed here, but this Pi isn't connected to a master Pi yet.")
+		role, err := u.Choose("What will this Pi be?", []string{
+			"Employee Pi: one person's Pi, which works offline and syncs with the master Pi",
+			"Kiosk Pi: a shared Pi in a workshop, used by a group of people",
+		})
+		if err != nil {
+			return err
+		}
+		return w.newNode(role == 1)
+	}
 	u.Say("pi-fleet is already set up here as an employee or kiosk Pi.")
 	type choice struct {
 		label string
@@ -942,6 +955,18 @@ func (w *Wizard) existingNode() error {
 		return err
 	}
 	return choices[i].do()
+}
+
+// nodeConnected reports whether this employee or kiosk Pi has been
+// approved by a master Pi. One that can't reach its master counts as
+// connected: that is what "Connect to the master again" is for.
+func (w *Wizard) nodeConnected() bool {
+	out, err := w.Sys.Output("runuser", "-u", "pifleet", "--", Binary, "activation-status", "-data", NodeDataDir)
+	if err != nil {
+		msg := err.Error()
+		return !strings.Contains(msg, "not activated") && !strings.Contains(msg, "init first")
+	}
+	return strings.TrimSpace(string(out)) == "active"
 }
 
 // --- shared steps ---

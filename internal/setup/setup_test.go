@@ -953,6 +953,47 @@ func TestAddANetworkNameToAnExistingMaster(t *testing.T) {
 	}
 }
 
+func TestFinishAnEmployeePiThatWasNeverApproved(t *testing.T) {
+	sys := newFake()
+	sys.files[UnitPath] = []byte(NodeUnit())
+	sys.files[NodeDataDir+"/pi-fleet.db"] = []byte("x")
+	checks := 0
+	sys.output = func(c string) ([]byte, error) {
+		switch {
+		case strings.HasPrefix(c, "hostname"):
+			return []byte("biomedshop\n"), nil
+		case strings.Contains(c, "activation-status"):
+			if checks++; checks <= 2 { // setup's check, then activate's
+				return nil, errors.New("runuser: exit status 1: pi-fleet: this Pi is not activated: store: not found")
+			}
+			return []byte("active\n"), nil
+		case strings.HasPrefix(c, "id pifleet"):
+			return []byte("uid=999\n"), nil
+		}
+		return nil, errors.New("no")
+	}
+	cert, _, _ := NewCertificate([]string{"fleet-master.local"}, nil, time.Now())
+	w, out := wizard(sys, "1", "", "fleet-master.local:8443", "y", "tess")
+	w.Fetch = func(hp string) ([]byte, error) { return cert, nil }
+	if err := w.Run(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	if !strings.Contains(out.String(), "isn't connected to a master Pi yet") {
+		t.Errorf("output:\n%s", out)
+	}
+	for _, want := range []string{
+		"runuser -u pifleet -- /opt/pi-fleet/current/pi-fleet activate -data /var/lib/pi-fleet -central https://fleet-master.local:8443 -ca /etc/pi-fleet/master.pem -username tess",
+		"runuser -u pifleet -- /opt/pi-fleet/current/pi-fleet sync -data /var/lib/pi-fleet",
+	} {
+		if !sys.ran(want) {
+			t.Errorf("didn't run %q\n%s", want, strings.Join(sys.calls, "\n"))
+		}
+	}
+	if sys.ran("set-master") || sys.ran("pi-fleet init") {
+		t.Fatalf("ran:\n%s", strings.Join(sys.calls, "\n"))
+	}
+}
+
 func TestReconnectAnEmployeePi(t *testing.T) {
 	sys := newFake()
 	sys.files[UnitPath] = []byte(NodeUnit())
