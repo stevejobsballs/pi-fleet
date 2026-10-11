@@ -39,7 +39,7 @@ run systemctl start pi-fleet
 echo "== now running $($PF version 2>/dev/null || echo unknown)"
 echo "== files in $DATA not owned by pifleet (there should be none):"
 if [ "$DRY_RUN" -eq 0 ]; then
-  BAD=$(find "$DATA" -path "$DATA/lost+found" -prune -o ! -user pifleet -printf '  %u %p\n')
+  BAD=$(files_not_owned "$DATA")
   if [ -n "$BAD" ]; then echo "$BAD"; echo "PROBLEM: report these"; else echo "  none"; fi
 fi
 exit $STATUS

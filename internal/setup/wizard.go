@@ -330,9 +330,21 @@ func (w *Wizard) confirmErase(d Disk) (bool, error) {
 
 // chownData gives pi-fleet's user its records. All of them: on a drive
 // kept from an earlier installation (say, after Reset-Pi), the user may
-// have been made again with different numbers.
+// have been made again with different numbers. The drive's own lost+found,
+// where the disk check puts what it recovers after a crash, stays root's
+// (and is given back to root where an earlier version took it).
 func (w *Wizard) chownData() error {
-	return w.Sys.Run("chown", "-R", "pifleet:pifleet", DataDir)
+	lostFound := DataDir + "/lost+found"
+	if err := w.Sys.Run("find", DataDir, "-path", lostFound, "-prune", "-o", "-exec", "chown", "pifleet:pifleet", "{}", "+"); err != nil {
+		return err
+	}
+	if !w.Sys.Exists(lostFound) {
+		return nil
+	}
+	if err := w.Sys.Run("chown", "-R", "root:root", lostFound); err != nil {
+		return err
+	}
+	return w.Sys.Run("chmod", "700", lostFound)
 }
 
 // certificate makes the HTTPS certificate on the data drive, unless there

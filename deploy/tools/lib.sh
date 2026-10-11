@@ -29,3 +29,30 @@ data_drive_missing() {
 DATA_DRIVE_HELP="The master Pi's data drive isn't connected, so pi-fleet isn't running.
 Shut the Pi down, plug the data drive (labelled PIFLEET-DATA) back in, and
 start the Pi again; pi-fleet then starts by itself. Then try again."
+
+# files_not_owned prints, one per line, what in the data folder $1 isn't
+# pi-fleet's, and prints nothing when all is well. A drive's lost+found is
+# root's and is skipped while empty; files in it are what the disk check
+# recovered after a crash, so they're reported. A folder that can't be
+# checked (say, its drive isn't connected) is reported too.
+files_not_owned() {
+  local data=$1 out
+  if [ ! -d "$data" ] || data_drive_missing; then
+    echo "  not checked: $data isn't there (is the data drive connected?)"
+    return
+  fi
+  if mountpoint -q "$data"; then
+    out=$(find "$data" -path "$data/lost+found" -prune -o ! -user pifleet -printf '  %u %p\n') ||
+      out="$out
+  not checked: some files in $data couldn't be read"
+    if [ -n "$(find "$data/lost+found" -mindepth 1 -print -quit 2>/dev/null)" ]; then
+      out="$out
+  $data/lost+found holds files the disk check recovered after a crash; some records may be damaged"
+    fi
+  else
+    out=$(find "$data" ! -user pifleet -printf '  %u %p\n') ||
+      out="$out
+  not checked: some files in $data couldn't be read"
+  fi
+  printf '%s' "$out" | sed '/^$/d'
+}

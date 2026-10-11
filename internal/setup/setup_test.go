@@ -343,6 +343,7 @@ func TestNewMasterReusesADataDrive(t *testing.T) {
 	outputs(sys, map[string]string{"lsblk": disks, "hostname": "fleet-master\n", "id pifleet": "uid=999",
 		"runuser -u pifleet -- /opt/pi-fleet/current/pi-fleet bootstrap -data /srv/pi-fleet -check": "this master Pi has a super user\n"})
 	sys.exists["/srv/pi-fleet/pi-fleet.db"] = true // on the drive, once mounted
+	sys.exists["/srv/pi-fleet/lost+found"] = true
 	sys.files["/srv/pi-fleet/tls/cert.pem"], _, _ = NewCertificate([]string{"fleet-master.local"}, nil, time.Now())
 	w, out := wizard(sys, "1", "", "", "2", "y", "", "n")
 	if err := w.Run(); err != nil {
@@ -351,8 +352,11 @@ func TestNewMasterReusesADataDrive(t *testing.T) {
 	if sys.ran("wipefs") || sys.ran("mkfs") || sys.ran("runuser -u pifleet -- /opt/pi-fleet/current/pi-fleet init") || sys.ran("runuser -u pifleet -- /opt/pi-fleet/current/pi-fleet bootstrap -data /srv/pi-fleet -username") {
 		t.Fatalf("changed the reused drive:\n%s", strings.Join(sys.calls, "\n"))
 	}
-	if !sys.ran("chown -R pifleet:pifleet /srv/pi-fleet") {
-		t.Errorf("kept records not given to pi-fleet's (possibly new) user:\n%s", strings.Join(sys.calls, "\n"))
+	if !sys.ran("find /srv/pi-fleet -path /srv/pi-fleet/lost+found -prune -o -exec chown pifleet:pifleet {} +") || slices.Contains(sys.calls, "chown -R pifleet:pifleet /srv/pi-fleet") {
+		t.Errorf("kept records not given to pi-fleet's (possibly new) user, or lost+found taken from root:\n%s", strings.Join(sys.calls, "\n"))
+	}
+	if !sys.ran("chown -R root:root /srv/pi-fleet/lost+found") || !sys.ran("chmod 700 /srv/pi-fleet/lost+found") {
+		t.Errorf("the drive's lost+found not given back to root:\n%s", strings.Join(sys.calls, "\n"))
 	}
 	if !strings.Contains(string(sys.files["/etc/fstab"]), "UUID=keep-me") || !strings.Contains(out.String(), "Found the master Pi's records") {
 		t.Fatalf("output:\n%s", out)
