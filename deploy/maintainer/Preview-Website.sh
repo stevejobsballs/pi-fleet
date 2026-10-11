@@ -24,6 +24,23 @@ echo "After editing style.css, close this window and double-click this file"
 echo "again: the preview picks up changes when it starts. Close this window"
 echo "to stop the preview."
 echo
-( sleep 4; xdg-open "http://$ADDR" >/dev/null 2>&1 || true ) &
+# An earlier preview may still be running (closing its window doesn't
+# always stop it), holding the address: stop it, as it shows older code.
+for pid in $(pgrep -u "$(id -u)" -f 'TestPreview' || true); do
+  if tr '\0' '\n' <"/proc/$pid/environ" 2>/dev/null | grep -qx "PIFLEET_PREVIEW=$ADDR"; then
+    echo "Stopping an earlier preview that was still running."
+    kill "$pid" 2>/dev/null || true
+  fi
+done
+sleep 1
+# Open the browser once the preview answers (building it can take a minute).
+( for _ in $(seq 1 180); do
+    if (exec 3<>"/dev/tcp/${ADDR%:*}/${ADDR#*:}") 2>/dev/null; then
+      xdg-open "http://$ADDR" >/dev/null 2>&1 || true
+      exit 0
+    fi
+    sleep 1
+  done ) &
+echo "Building the preview; the browser opens when it's ready..."
 cd "$REPO"
 PIFLEET_PREVIEW=$ADDR go test ./internal/web -run '^TestPreview$' -count=1 -v -timeout 0 2>&1 | grep -v '^=== RUN' || true
