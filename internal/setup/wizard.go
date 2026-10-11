@@ -162,6 +162,10 @@ func (w *Wizard) newMaster() error {
 	if err := w.records(reused); err != nil {
 		return err
 	}
+	// Employee Pis install updates from the master's copy of the release.
+	if err := w.mirrorRelease(DataDir, filepath.Dir(w.Self)); err != nil {
+		return err
+	}
 	port := 443
 	if err := w.startService(MasterUnit(port), fmt.Sprintf("https://127.0.0.1:%d/login", port)); err != nil {
 		return err
@@ -559,25 +563,30 @@ func (w *Wizard) update(dataDir string, master bool, healthURL string) error {
 		return fmt.Errorf("the update didn't install (see above); pi-fleet is running the version it had: %w", err)
 	}
 	if master {
-		// Employee Pis update from the master Pi's copy of the release.
-		mirror := dataDir + "/releases"
-		if err := w.Sys.MkdirAll(mirror, 0o755); err != nil {
-			return err
-		}
-		entries, _ := w.ReadDir(dir)
-		for _, e := range entries {
-			n := e.Name()
-			if n == "manifest.json" || n == "manifest.json.minisig" || strings.HasPrefix(n, "pi-fleet_"+w.Version+"_") {
-				if err := w.Sys.CopyFile(filepath.Join(dir, n), filepath.Join(mirror, n), 0o644); err != nil {
-					return err
-				}
-			}
-		}
-		if err := w.Sys.Run("chown", "-R", "pifleet:pifleet", mirror); err != nil {
+		if err := w.mirrorRelease(dataDir, dir); err != nil {
 			return err
 		}
 	}
 	return w.restart(healthURL)
+}
+
+// mirrorRelease puts this release (from dir) in the master Pi's release
+// folder, which employee Pis install and update from.
+func (w *Wizard) mirrorRelease(dataDir, dir string) error {
+	mirror := dataDir + "/releases"
+	if err := w.Sys.MkdirAll(mirror, 0o755); err != nil {
+		return err
+	}
+	entries, _ := w.ReadDir(dir)
+	for _, e := range entries {
+		n := e.Name()
+		if n == "manifest.json" || n == "manifest.json.minisig" || strings.HasPrefix(n, "pi-fleet_"+w.Version+"_") {
+			if err := w.Sys.CopyFile(filepath.Join(dir, n), filepath.Join(mirror, n), 0o644); err != nil {
+				return err
+			}
+		}
+	}
+	return w.Sys.Run("chown", "-R", "pifleet:pifleet", mirror)
 }
 
 // moveToDrive copies a master Pi's records onto a new external drive,

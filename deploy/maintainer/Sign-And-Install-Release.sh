@@ -59,6 +59,9 @@ if [ "$INSTALLED" = "$VER" ]; then
 fi
 confirm "Install $VER on this master Pi now (it has ${INSTALLED:-no version})?" y || exit 0
 echo "You'll be asked for your sudo password."
+# The master's copy of the release, which employee Pis update from (a
+# newly set-up master may not have the folder yet).
+sudo install -d -o pifleet -g pifleet -m 0755 /srv/pi-fleet/releases
 sudo install -o pifleet -g pifleet -m 0644 "$DIR"/* /srv/pi-fleet/releases/
 sudo bash "$KIT/../tools/update.sh"
 echo

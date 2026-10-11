@@ -280,6 +280,28 @@ func TestNewMasterOnAnErasedDrive(t *testing.T) {
 	if sys.ran("wipefs --all --quiet /dev/sda") || sys.ran("mkfs.ext4 -q -F -L PIFLEET-DATA -m 1 /dev/sda1") {
 		t.Fatalf("erased the USB stick:\n%s", strings.Join(sys.calls, "\n"))
 	}
+	// Employee Pis can install from the new master straight away.
+	w2, _ := wizard(newFake())
+	w2.ReadDir = func(string) ([]os.DirEntry, error) {
+		return []os.DirEntry{entry("manifest.json"), entry("manifest.json.minisig"), entry("pi-fleet_v1.0.0_linux_arm64"), entry("notes.txt")}, nil
+	}
+	s2 := w2.Sys.(*fakeSys)
+	if err := w2.mirrorRelease(DataDir, "/home/pi/Downloads"); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"install /home/pi/Downloads/manifest.json /srv/pi-fleet/releases/manifest.json",
+		"install /home/pi/Downloads/pi-fleet_v1.0.0_linux_arm64 /srv/pi-fleet/releases/pi-fleet_v1.0.0_linux_arm64",
+		"chown -R pifleet:pifleet /srv/pi-fleet/releases"} {
+		if !s2.ran(want) {
+			t.Errorf("mirror didn't run %q:\n%s", want, strings.Join(s2.calls, "\n"))
+		}
+	}
+	if s2.ran("notes.txt") {
+		t.Error("copied something that isn't the release")
+	}
+	if !sys.ran("chown -R pifleet:pifleet /srv/pi-fleet/releases") {
+		t.Errorf("new master has no release folder:\n%s", strings.Join(sys.calls, "\n"))
+	}
 	for _, want := range []string{
 		"hostnamectl set-hostname fleet-master",
 		"wipefs --all --quiet /dev/sdb",
