@@ -180,6 +180,8 @@ func (s *Server) Handler() (http.Handler, error) {
 	mux.Handle("GET /procedures/{id}", user(s.procedureView))
 	mux.Handle("GET /procedures/{id}/export.json", user(s.procedureExport))
 	mux.Handle("POST /work-orders/{id}/checklist", user(s.workOrderChecklist))
+	mux.Handle("POST /work-orders/{id}/checklists", user(s.workOrderAddChecklist))
+	mux.Handle("POST /work-orders/{id}/checklists/remove", user(s.workOrderRemoveChecklist))
 	mux.Handle("POST /procedures/{id}/retire", mid(s.procedureRetire))
 	mux.Handle("POST /work-orders/{id}/procedure", mid(s.workOrderSetProcedure))
 	mux.Handle("POST /work-orders/{id}/steps", user(s.workOrderStep))

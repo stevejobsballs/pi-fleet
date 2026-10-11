@@ -103,7 +103,8 @@ func (e *env) seedEverything() {
 	defib, err := e.app.RegisterAsset(e.ctx, e.super, domain.AssetRegistered{Tag: "DEFIB-1", LocationID: e.loc, Manufacturer: "Zoll", Model: "R Series", MasterID: "ZL-77"})
 	must(err)
 	richProc, _, err := e.app.PublishChecklist(e.ctx, mid, domain.ProcedurePublished{Name: "Defibrillator inspection", Category: "Performance check",
-		Reference: "IEC 60601-2-4", Description: "Yearly, and after any drop.", Steps: []domain.Step{
+		Reference: "IEC 60601-2-4", Description: "Yearly, and after any drop.", AppliesTo: []domain.EquipmentMatch{{Manufacturer: "Zoll", Model: "R Series"}},
+		Steps: []domain.Step{
 			{ID: "start", Text: "Before you start", Kind: domain.StepHeading},
 			{ID: "warn", Text: "Discharge into the test load only. Keep clear of the paddles.", Kind: domain.StepInfo},
 			{ID: "condition", Text: "Housing condition", Kind: domain.StepChoice, Required: true, NoteOnFail: true,
@@ -129,6 +130,13 @@ func (e *env) seedEverything() {
 	must(e.app.RecordStep(e.ctx, tessAct, richWO, "condition", "Worn", ""))
 	must(e.app.RecordStep(e.ctx, tessAct, richWO, "battery", "No", ""))
 	must(e.app.RecordStep(e.ctx, tessAct, richWO, "energy", "150", "low on all three"))
+	esa, _, err := e.app.PublishChecklist(e.ctx, mid, domain.ProcedurePublished{Name: "Electrical safety (IEC 62353)", Category: "Electrical safety",
+		Reference: "IEC 62353", Steps: []domain.Step{
+			{ID: "pe", Text: "Protective earth resistance", Kind: domain.StepNumber, Unit: "Ω", Upper: "0.3", Required: true, Critical: true},
+			{ID: "leak", Text: "Equipment leakage current", Kind: domain.StepNumber, Unit: "µA", Upper: "500", Required: true, Critical: true},
+		}})
+	must(err)
+	must(e.app.AddChecklist(e.ctx, tessAct, richWO, esa))
 	propose("Ultrasound 3", "US-1")
 	must(e.app.ReviewLocation(e.ctx, e.super, propose("Closet B", "US-2"), false, "not a clinical area"))
 }

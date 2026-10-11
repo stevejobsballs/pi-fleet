@@ -59,7 +59,7 @@ func (p page) Nav() []navGroup {
 	if central {
 		work = append(work, navItem{Href: "/requests", Label: "Reported problems"})
 	}
-	work = append(work, navItem{Href: "/schedules", Label: "Schedules"}, navItem{Href: "/procedures", Label: "Checklists"})
+	work = append(work, navItem{Href: "/schedules", Label: "Schedules"})
 	if p.IsMid() {
 		work = append(work, navItem{Href: "/review", Label: "Review"})
 	}
@@ -67,7 +67,7 @@ func (p page) Nav() []navGroup {
 		{Label: "Today", Href: "/"},
 		{Label: "Work", Items: work},
 		{Label: "Equipment", Items: []navItem{{Href: "/assets", Label: "All equipment"}, {Href: "/assets/new", Label: "Register equipment"},
-			{Href: "/inventory", Label: "Parts and stock"}}},
+			{Href: "/procedures", Label: "Checklists"}, {Href: "/inventory", Label: "Parts and stock"}}},
 	}
 	if p.IsSuper() {
 		admin := []navItem{{Href: "/admin/users", Label: "People"}, {Href: "/admin/sites", Label: "Sites and locations"}}

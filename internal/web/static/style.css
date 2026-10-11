@@ -231,3 +231,12 @@ form.builder textarea { width: 100%; }
 fieldset.bstep:not(:has(option[value="number"]:checked)) .for-number,
 fieldset.bstep:not(:has(option[value="choice"]:checked, option[value="multi"]:checked)) .for-choice,
 fieldset.bstep:has(option[value="heading"]:checked, option[value="info"]:checked) .for-answer { display: none; }
+
+/* Today: the three things people most often start. */
+nav.quick { display: flex; flex-wrap: wrap; gap: .75rem; margin: 0 0 1.25rem; }
+ul.cl-list { list-style: none; padding: 0; margin: .25rem 0 1rem; }
+ul.cl-list li { padding: .45rem 0; border-bottom: 1px solid var(--line); }
+section.maker h3 { margin: 1rem 0 .25rem; font-size: 1rem; }
+.cl-block { margin: 0 0 1.5rem; }
+.cl-title { margin: 1rem 0 .4rem; font-size: 1.1rem; }
+form.add-checklist { padding: .75rem 1rem; background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: var(--radius); }

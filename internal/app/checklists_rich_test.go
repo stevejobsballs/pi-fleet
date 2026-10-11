@@ -125,3 +125,85 @@ func TestChecklistDefinitionsAreChecked(t *testing.T) {
 		}
 	}
 }
+
+func TestSeveralChecklistsOnAWorkOrder(t *testing.T) {
+	e := newEnv(t)
+	mid, tech, other := e.activeUser("mona", domain.RoleMidTier), e.activeUser("tess", domain.RoleUser), e.activeUser("otto", domain.RoleUser)
+	asset := e.assetMade("DEFIB-3", "Zoll", "R Series")
+	pm, _, err := e.app.PublishChecklist(e.ctx, mid, domain.ProcedurePublished{Name: "Zoll R PM", AppliesTo: []domain.EquipmentMatch{{Manufacturer: "Zoll", Model: "R Series"}},
+		Steps: []domain.Step{{ID: "s1", Text: "Self test passes", Kind: domain.StepCheck, Required: true}}})
+	e.must(err)
+	esa, _, err := e.app.PublishChecklist(e.ctx, mid, domain.ProcedurePublished{Name: "Electrical safety",
+		Steps: []domain.Step{{ID: "s1", Text: "Earth leakage", Kind: domain.StepNumber, Unit: "µA", Upper: "500", Required: true}}})
+	e.must(err)
+	zollAll, _, err := e.app.PublishChecklist(e.ctx, mid, domain.ProcedurePublished{Name: "Zoll cleaning", AppliesTo: []domain.EquipmentMatch{{Manufacturer: "ZOLL "}},
+		Steps: []domain.Step{{ID: "s1", Text: "Cleaned", Kind: domain.StepCheck}}})
+	e.must(err)
+	_, _, err = e.app.PublishChecklist(e.ctx, mid, domain.ProcedurePublished{Name: "Philips PM", AppliesTo: []domain.EquipmentMatch{{Manufacturer: "Philips", Model: "MX40"}},
+		Steps: []domain.Step{{ID: "s1", Text: "x", Kind: domain.StepCheck}}})
+	e.must(err)
+
+	// Matching checklists come first: this model, this manufacturer, any equipment, the rest.
+	matches, err := domain.ChecklistsFor(e.ctx, e.st.DB(), "zoll", " R  series")
+	e.must(err)
+	var order []string
+	for _, m := range matches {
+		order = append(order, m.Name+":"+m.Fit)
+	}
+	if strings.Join(order, ",") != "Zoll R PM:model,Zoll cleaning:manufacturer,Electrical safety:any,Philips PM:" {
+		t.Fatalf("order: %v", order)
+	}
+
+	wo, _, err := e.app.OpenWorkOrder(e.ctx, mid, NewWorkOrder{Type: "pm", AssetID: asset, Priority: "normal", Title: "PM", ProcedureID: pm})
+	e.must(err)
+	_, err = e.app.AssignWorkOrder(e.ctx, mid, wo, tech.UserID)
+	e.must(err)
+	// The technician adds the electrical safety test; someone else can't.
+	wantRejection(t, e.app.AddChecklist(e.ctx, other, wo, esa), domain.FlagNotAuthorized)
+	e.must(e.app.AddChecklist(e.ctx, tech, wo, esa))
+	wantRejection(t, e.app.AddChecklist(e.ctx, tech, wo, esa), domain.FlagConflict)
+	e.must(e.app.AddChecklist(e.ctx, mid, wo, zollAll))
+	e.must(e.app.ChangeWorkOrderStatus(e.ctx, tech, wo, domain.WOInProgress, ""))
+	// Both checklists have a step "s1": answers are kept apart.
+	e.must(e.app.RecordChecklistStep(e.ctx, tech, wo, pm, "s1", "pass", ""))
+	e.must(e.app.RecordChecklistStep(e.ctx, tech, wo, esa, "s1", "120", ""))
+	// A checklist with answers stays; one without can be removed.
+	wantRejection(t, e.app.RemoveChecklist(e.ctx, tech, wo, esa), domain.FlagInvalid)
+	e.must(e.app.RemoveChecklist(e.ctx, tech, wo, zollAll))
+	w, _ := domain.GetWorkOrder(e.ctx, e.st.DB(), wo)
+	all, err := domain.Checklists(e.ctx, e.st.DB(), w)
+	e.must(err)
+	if len(all) != 2 || !all[0].First || all[0].Steps[0].Value != "pass" || all[1].Name != "Electrical safety" || all[1].Steps[0].Value != "120" ||
+		all[1].AddedBy != "Tess" {
+		t.Fatalf("checklists: %+v", all)
+	}
+	// Completion needs every checklist.
+	e.must(e.sign(tech, wo, domain.MeaningPerformed))
+	wantRejection(t, e.app.AddChecklist(e.ctx, tech, wo, zollAll), domain.FlagInvalid) // finished
+	e.must(e.st.Rebuild(e.ctx))
+	if all, _ := domain.Checklists(e.ctx, e.st.DB(), w); len(all) != 2 || all[1].Steps[0].Value != "120" {
+		t.Fatalf("after rebuild: %+v", all)
+	}
+}
+
+func TestAddingTheOnlyRequiredChecklistBlocksCompletion(t *testing.T) {
+	e := newEnv(t)
+	mid, tech := e.activeUser("mona", domain.RoleMidTier), e.activeUser("tess", domain.RoleUser)
+	asset := e.asset("PUMP-9")
+	esa, _, _ := e.app.PublishChecklist(e.ctx, mid, domain.ProcedurePublished{Name: "Electrical safety",
+		Steps: []domain.Step{{ID: "s1", Text: "Earth leakage", Kind: domain.StepNumber, Required: true}}})
+	wo, _, _ := e.app.OpenWorkOrder(e.ctx, mid, NewWorkOrder{Type: "corrective", AssetID: asset, Priority: "normal", Title: "Fix"})
+	e.app.AssignWorkOrder(e.ctx, mid, wo, tech.UserID)
+	e.must(e.app.ChangeWorkOrderStatus(e.ctx, tech, wo, domain.WOInProgress, ""))
+	e.must(e.app.AddChecklist(e.ctx, tech, wo, esa)) // no checklist yet: it becomes the first
+	if err := e.sign(tech, wo, domain.MeaningPerformed); err == nil || !strings.Contains(err.Error(), "Earth leakage") {
+		t.Fatalf("completed without the added checklist: %v", err)
+	}
+	e.must(e.app.RecordStep(e.ctx, tech, wo, "s1", "80", ""))
+	e.must(e.sign(tech, wo, domain.MeaningPerformed))
+}
+
+func (e *env) assetMade(tag, manufacturer, model string) string {
+	e.t.Helper()
+	return e.must2(e.app.RegisterAsset(e.ctx, e.super, domain.AssetRegistered{Tag: tag, LocationID: e.loc, Manufacturer: manufacturer, Model: model}))
+}

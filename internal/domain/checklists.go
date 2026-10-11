@@ -16,14 +16,16 @@ import (
 
 // Event types for checklists and labour (DESIGN.md §4.3–4.4).
 const (
-	TypeProcedurePublished    = "procedure.published"
-	TypeProcedureRetired      = "procedure.retired"
-	TypeWorkOrderProcedureSet = "workorder.procedure_set"
-	TypeWorkOrderStepRecorded = "workorder.step_recorded"
-	TypeLaborLogged           = "labor.logged"
-	TypeLaborReversed         = "labor.reversed"
-	EntityProcedure           = "procedure_version"
-	EntityLabor               = "labor_entry"
+	TypeProcedurePublished        = "procedure.published"
+	TypeProcedureRetired          = "procedure.retired"
+	TypeWorkOrderProcedureSet     = "workorder.procedure_set"
+	TypeWorkOrderStepRecorded     = "workorder.step_recorded"
+	TypeWorkOrderChecklistAdded   = "workorder.checklist_added"
+	TypeWorkOrderChecklistRemoved = "workorder.checklist_removed"
+	TypeLaborLogged               = "labor.logged"
+	TypeLaborReversed             = "labor.reversed"
+	EntityProcedure               = "procedure_version"
+	EntityLabor                   = "labor_entry"
 )
 
 // Kinds of checklist step. Headings and instructions take no answer.
@@ -93,7 +95,35 @@ type ProcedurePublished struct {
 	Description string `json:"description,omitempty"`
 	Reference   string `json:"reference,omitempty"` // the standard or manual it follows
 	Category    string `json:"category,omitempty"`
-	Steps       []Step `json:"steps"`
+	// AppliesTo is the equipment it is for; empty, any equipment.
+	AppliesTo []EquipmentMatch `json:"applies_to,omitempty"`
+	Steps     []Step           `json:"steps"`
+}
+
+// EquipmentMatch names equipment a checklist is for: a manufacturer's
+// model, or (Model empty) every model of the manufacturer.
+type EquipmentMatch struct {
+	Manufacturer string `json:"manufacturer"`
+	Model        string `json:"model,omitempty"`
+}
+
+// Matches reports whether equipment of this manufacturer and model is
+// meant (ignoring case and surrounding spaces).
+func (m EquipmentMatch) Matches(manufacturer, model string) bool {
+	return normName(m.Manufacturer) == normName(manufacturer) && (m.Model == "" || normName(m.Model) == normName(model))
+}
+
+func normName(s string) string { return strings.ToLower(strings.Join(strings.Fields(s), " ")) }
+
+// WorkOrderChecklistAdded adds a checklist to a work order: the first
+// becomes its checklist, later ones are added beside it.
+type WorkOrderChecklistAdded struct {
+	ProcedureID string `json:"procedure_id"`
+}
+
+// WorkOrderChecklistRemoved removes a checklist nothing was recorded in.
+type WorkOrderChecklistRemoved struct {
+	ProcedureID string `json:"procedure_id"`
 }
 
 type ProcedureRetired struct {
@@ -106,11 +136,13 @@ type WorkOrderProcedureSet struct {
 	ProcedureID string `json:"procedure_id"`
 }
 
-// WorkOrderStepRecorded records (or re-records) one checklist step.
+// WorkOrderStepRecorded records (or re-records) one checklist step. An
+// empty ProcedureID means the work order's first checklist.
 type WorkOrderStepRecorded struct {
-	StepID string `json:"step_id"`
-	Value  string `json:"value"`
-	Note   string `json:"note,omitempty"`
+	ProcedureID string `json:"procedure_id,omitempty"`
+	StepID      string `json:"step_id"`
+	Value       string `json:"value"`
+	Note        string `json:"note,omitempty"`
 }
 
 // LaborLogged is time a user spent on a work order.
@@ -136,6 +168,8 @@ func init() {
 	reg(TypeProcedureRetired, EntityProcedure, func() any { return &ProcedureRetired{} })
 	reg(TypeWorkOrderProcedureSet, EntityWorkOrder, func() any { return &WorkOrderProcedureSet{} })
 	reg(TypeWorkOrderStepRecorded, EntityWorkOrder, func() any { return &WorkOrderStepRecorded{} })
+	reg(TypeWorkOrderChecklistAdded, EntityWorkOrder, func() any { return &WorkOrderChecklistAdded{} })
+	reg(TypeWorkOrderChecklistRemoved, EntityWorkOrder, func() any { return &WorkOrderChecklistRemoved{} })
 	reg(TypeLaborLogged, EntityLabor, func() any { return &LaborLogged{} })
 	reg(TypeLaborReversed, EntityLabor, func() any { return &LaborReversed{} })
 }
@@ -257,6 +291,14 @@ func (ap *applier) procedurePublished(p *ProcedurePublished) error {
 	if len(p.Description) > 4000 || len(p.Reference) > 300 || len(p.Category) > 80 {
 		return invalid("the description, reference or category is too long")
 	}
+	if len(p.AppliesTo) > 100 {
+		return invalid("a checklist can name at most 100 manufacturers and models")
+	}
+	for _, m := range p.AppliesTo {
+		if blank(m.Manufacturer) || len(m.Manufacturer) > 120 || len(m.Model) > 120 {
+			return invalid("each piece of equipment it is for needs a manufacturer (and, if only one model, the model)")
+		}
+	}
 	if err := validateSteps(p.Steps); err != nil {
 		return err
 	}
@@ -268,9 +310,10 @@ func (ap *applier) procedurePublished(p *ProcedurePublished) error {
 		return store.Reject(FlagConflict, "%s is at version %d; this would publish version %d", p.Name, latest, p.Version)
 	}
 	steps, _ := json.Marshal(p.Steps)
-	return ap.exec(`INSERT INTO procedures (id, name, version, steps, status, published_by, published_at, last_event_id, description, reference, category)
-		VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?)`, ap.e.EntityID, p.Name, p.Version, string(steps), ap.actor.id, ap.wall(), ap.e.EventID,
-		p.Description, p.Reference, p.Category)
+	applies, _ := json.Marshal(nonNilMatches(p.AppliesTo))
+	return ap.exec(`INSERT INTO procedures (id, name, version, steps, status, published_by, published_at, last_event_id, description, reference, category, applies_to)
+		VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?)`, ap.e.EntityID, p.Name, p.Version, string(steps), ap.actor.id, ap.wall(), ap.e.EventID,
+		p.Description, p.Reference, p.Category, string(applies))
 }
 
 func (ap *applier) procedureRetired(p *ProcedureRetired) error {
@@ -318,16 +361,24 @@ type Procedure struct {
 	ID, Name, Status                 string
 	Description, Reference, Category string
 	Version                          int
+	AppliesTo                        []EquipmentMatch
 	Steps                            []Step
 	PublishedAt                      time.Time
+}
+
+func nonNilMatches(m []EquipmentMatch) []EquipmentMatch {
+	if m == nil {
+		return []EquipmentMatch{}
+	}
+	return m
 }
 
 // GetProcedure returns a checklist version.
 func GetProcedure(ctx context.Context, q Querier, id string) (Procedure, error) {
 	var p Procedure
-	var steps, at string
-	err := q.QueryRowContext(ctx, `SELECT id, name, version, steps, status, published_at, description, reference, category FROM procedures WHERE id = ?`, id).
-		Scan(&p.ID, &p.Name, &p.Version, &steps, &p.Status, &at, &p.Description, &p.Reference, &p.Category)
+	var steps, at, applies string
+	err := q.QueryRowContext(ctx, `SELECT id, name, version, steps, status, published_at, description, reference, category, applies_to FROM procedures WHERE id = ?`, id).
+		Scan(&p.ID, &p.Name, &p.Version, &steps, &p.Status, &at, &p.Description, &p.Reference, &p.Category, &applies)
 	if errors.Is(err, sql.ErrNoRows) {
 		return p, ErrNotFound
 	}
@@ -335,6 +386,7 @@ func GetProcedure(ctx context.Context, q Querier, id string) (Procedure, error) 
 		return p, err
 	}
 	p.PublishedAt, _ = time.Parse(time.RFC3339, at)
+	json.Unmarshal([]byte(applies), &p.AppliesTo)
 	return p, json.Unmarshal([]byte(steps), &p.Steps)
 }
 
@@ -349,10 +401,17 @@ func (ap *applier) workOrderStepRecorded(p *WorkOrderStepRecorded) error {
 	if err := ap.checkLease(w); err != nil {
 		return err
 	}
-	if w.ProcedureID == "" {
+	procID := p.ProcedureID
+	if procID == "" {
+		procID = w.ProcedureID
+	}
+	if procID == "" {
 		return invalid("%s has no checklist", w.Number)
 	}
-	proc, err := GetProcedure(ap.ctx, ap.tx, w.ProcedureID)
+	if on, err := ap.checklistOn(w, procID); err != nil || !on {
+		return orInvalid(err, "that checklist isn't on %s", w.Number)
+	}
+	proc, err := GetProcedure(ap.ctx, ap.tx, procID)
 	if err != nil {
 		return err
 	}
@@ -368,7 +427,7 @@ func (ap *applier) workOrderStepRecorded(p *WorkOrderStepRecorded) error {
 	if Inputless(step.Kind) {
 		return invalid("%q takes no answer", step.Text)
 	}
-	answers, err := ap.stepAnswers(w.ID)
+	answers, err := ap.stepAnswers(w.ID, proc.ID)
 	if err != nil {
 		return err
 	}
@@ -382,10 +441,10 @@ func (ap *applier) workOrderStepRecorded(p *WorkOrderStepRecorded) error {
 	if pass != nil && !*pass && step.NoteOnFail && blank(p.Note) {
 		return invalid("%q failed: say why in the note", step.Text)
 	}
-	if err := ap.exec(`INSERT INTO checklist_results (wo_id, step_id, value, pass, note, recorded_by, recorded_at, event_id)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (wo_id, step_id) DO UPDATE SET value = excluded.value, pass = excluded.pass,
+	if err := ap.exec(`INSERT INTO checklist_results (wo_id, procedure_id, step_id, value, pass, note, recorded_by, recorded_at, event_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (wo_id, procedure_id, step_id) DO UPDATE SET value = excluded.value, pass = excluded.pass,
 		note = excluded.note, recorded_by = excluded.recorded_by, recorded_at = excluded.recorded_at, event_id = excluded.event_id`,
-		w.ID, step.ID, p.Value, pass, p.Note, ap.actor.id, ap.wall(), ap.e.EventID); err != nil {
+		w.ID, proc.ID, step.ID, p.Value, pass, p.Note, ap.actor.id, ap.wall(), ap.e.EventID); err != nil {
 		return err
 	}
 	return ap.exec(`UPDATE work_orders SET version = version + 1, last_event_id = ? WHERE id = ?`, ap.e.EventID, w.ID)
@@ -512,9 +571,9 @@ func stepText(steps []Step, id string) string {
 	return id
 }
 
-// stepAnswers are a work order's recorded answers, by step.
-func (ap *applier) stepAnswers(woID string) (map[string]string, error) {
-	rows, err := ap.tx.QueryContext(ap.ctx, `SELECT step_id, value FROM checklist_results WHERE wo_id = ?`, woID)
+// stepAnswers are a work order's recorded answers to one checklist, by step.
+func (ap *applier) stepAnswers(woID, procID string) (map[string]string, error) {
+	rows, err := ap.tx.QueryContext(ap.ctx, `SELECT step_id, value FROM checklist_results WHERE wo_id = ? AND procedure_id = ?`, woID, procID)
 	if err != nil {
 		return nil, err
 	}
@@ -530,50 +589,146 @@ func (ap *applier) stepAnswers(woID string) (map[string]string, error) {
 	return out, rows.Err()
 }
 
-// checkChecklist requires every required step that applies before
-// completion, and that equipment which failed a critical step is out of
-// service.
+// checkChecklist requires, in every checklist on the work order, each
+// required step that applies, and that equipment which failed a critical
+// step is out of service.
 func (ap *applier) checkChecklist(w WorkOrder) error {
-	if w.ProcedureID == "" {
-		return nil
-	}
-	proc, err := GetProcedure(ap.ctx, ap.tx, w.ProcedureID)
+	ids, err := checklistIDs(ap.ctx, ap.tx, w)
 	if err != nil {
 		return err
 	}
-	answers, err := ap.stepAnswers(w.ID)
-	if err != nil {
-		return err
-	}
-	for _, st := range proc.Steps {
-		if Inputless(st.Kind) || !StepApplies(st, answers) {
-			continue
-		}
-		if _, done := answers[st.ID]; st.Required && !done {
-			return invalid("required checklist step %q is not recorded", st.Text)
-		}
-		if !st.Critical {
-			continue
-		}
-		var failed bool
-		err := ap.tx.QueryRowContext(ap.ctx, `SELECT pass = 0 FROM checklist_results WHERE wo_id = ? AND step_id = ? AND pass IS NOT NULL`, w.ID, st.ID).Scan(&failed)
-		if errors.Is(err, sql.ErrNoRows) {
-			continue
-		}
+	for _, id := range ids {
+		proc, err := GetProcedure(ap.ctx, ap.tx, id)
 		if err != nil {
 			return err
 		}
-		if failed {
-			var status string
-			if err := ap.tx.QueryRowContext(ap.ctx, `SELECT status FROM assets WHERE id = ?`, w.AssetID).Scan(&status); err != nil {
+		answers, err := ap.stepAnswers(w.ID, id)
+		if err != nil {
+			return err
+		}
+		for _, st := range proc.Steps {
+			if Inputless(st.Kind) || !StepApplies(st, answers) {
+				continue
+			}
+			if _, done := answers[st.ID]; st.Required && !done {
+				return invalid("required checklist step %q (%s) is not recorded", st.Text, proc.Name)
+			}
+			if !st.Critical {
+				continue
+			}
+			var failed bool
+			err := ap.tx.QueryRowContext(ap.ctx, `SELECT pass = 0 FROM checklist_results WHERE wo_id = ? AND procedure_id = ? AND step_id = ? AND pass IS NOT NULL`,
+				w.ID, id, st.ID).Scan(&failed)
+			if errors.Is(err, sql.ErrNoRows) {
+				continue
+			}
+			if err != nil {
 				return err
 			}
-			if status == AssetInService {
-				return invalid("critical step %q failed: take the equipment out of service before completing the work order", st.Text)
+			if failed {
+				var status string
+				if err := ap.tx.QueryRowContext(ap.ctx, `SELECT status FROM assets WHERE id = ?`, w.AssetID).Scan(&status); err != nil {
+					return err
+				}
+				if status == AssetInService {
+					return invalid("critical step %q failed: take the equipment out of service before completing the work order", st.Text)
+				}
 			}
 		}
 	}
 	return nil
+}
+
+// checklistIDs are the checklists on a work order: its first, then those
+// added, in the order added.
+func checklistIDs(ctx context.Context, q Querier, w WorkOrder) ([]string, error) {
+	var out []string
+	if w.ProcedureID != "" {
+		out = append(out, w.ProcedureID)
+	}
+	rows, err := q.QueryContext(ctx, `SELECT procedure_id FROM work_order_checklists WHERE wo_id = ? ORDER BY added_at, procedure_id`, w.ID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}
+
+func (ap *applier) checklistOn(w WorkOrder, procID string) (bool, error) {
+	ids, err := checklistIDs(ap.ctx, ap.tx, w)
+	return slices.Contains(ids, procID), err
+}
+
+// checklistEditor checks the actor may add or remove checklists: the
+// person doing the work (holding its lease), or a mid-tier user, while
+// the work isn't finished.
+func (ap *applier) checklistEditor(w WorkOrder) error {
+	switch w.Status {
+	case WOOpen, WOAssigned, WOInProgress:
+	default:
+		return invalid("checklists can't be changed once %s is %s", w.Number, w.Status)
+	}
+	if ap.actor.atLeast(RoleMidTier) {
+		return nil
+	}
+	if w.AssignedTo != ap.actor.id {
+		return store.Reject(FlagNotAuthorized, "only the person doing %s, or a mid-tier user, can change its checklists", w.Number)
+	}
+	return ap.checkLease(w)
+}
+
+func (ap *applier) workOrderChecklistAdded(p *WorkOrderChecklistAdded) error {
+	w, err := ap.targetWorkOrder()
+	if err != nil {
+		return err
+	}
+	if err := ap.checklistEditor(w); err != nil {
+		return err
+	}
+	if err := ap.activeProcedure(p.ProcedureID); err != nil {
+		return err
+	}
+	if on, err := ap.checklistOn(w, p.ProcedureID); err != nil || on {
+		return orConflict(err, "that checklist is already on %s", w.Number)
+	}
+	if w.ProcedureID == "" {
+		return ap.bumpWorkOrder(`procedure_id = ?`, p.ProcedureID)
+	}
+	if err := ap.exec(`INSERT INTO work_order_checklists (wo_id, procedure_id, added_by, added_at, last_event_id) VALUES (?, ?, ?, ?, ?)`,
+		w.ID, p.ProcedureID, ap.actor.id, ap.wall(), ap.e.EventID); err != nil {
+		return err
+	}
+	return ap.exec(`UPDATE work_orders SET version = version + 1, last_event_id = ? WHERE id = ?`, ap.e.EventID, w.ID)
+}
+
+func (ap *applier) workOrderChecklistRemoved(p *WorkOrderChecklistRemoved) error {
+	w, err := ap.targetWorkOrder()
+	if err != nil {
+		return err
+	}
+	if err := ap.checklistEditor(w); err != nil {
+		return err
+	}
+	if on, err := ap.checklistOn(w, p.ProcedureID); err != nil || !on {
+		return orInvalid(err, "that checklist isn't on %s", w.Number)
+	}
+	if ok, err := ap.exists(`SELECT 1 FROM checklist_results WHERE wo_id = ? AND procedure_id = ?`, w.ID, p.ProcedureID); err != nil || ok {
+		return orInvalid(err, "answers are already recorded in that checklist, so it stays")
+	}
+	if p.ProcedureID == w.ProcedureID {
+		return ap.bumpWorkOrder(`procedure_id = ''`)
+	}
+	if err := ap.exec(`DELETE FROM work_order_checklists WHERE wo_id = ? AND procedure_id = ?`, w.ID, p.ProcedureID); err != nil {
+		return err
+	}
+	return ap.exec(`UPDATE work_orders SET version = version + 1, last_event_id = ? WHERE id = ?`, ap.e.EventID, w.ID)
 }
 
 func (ap *applier) laborLogged(p *LaborLogged) error {
@@ -666,45 +821,118 @@ func (r StepResult) Outcome() string {
 	return "fail"
 }
 
-// Checklist returns a work order's checklist with results, or nil.
-func Checklist(ctx context.Context, q Querier, w WorkOrder) (*Procedure, []StepResult, error) {
-	if w.ProcedureID == "" {
-		return nil, nil, nil
-	}
-	proc, err := GetProcedure(ctx, q, w.ProcedureID)
+// WorkOrderChecklist is one checklist on a work order, with its answers.
+type WorkOrderChecklist struct {
+	Procedure
+	Steps    []StepResult
+	First    bool   // the work order's first checklist
+	Answered int    // steps with an answer
+	AddedBy  string // who added it, for checklists added later
+}
+
+// Checklists returns the checklists on a work order with their answers:
+// its first, then those added, in the order added.
+func Checklists(ctx context.Context, q Querier, w WorkOrder) ([]WorkOrderChecklist, error) {
+	ids, err := checklistIDs(ctx, q, w)
 	if err != nil {
+		return nil, err
+	}
+	var out []WorkOrderChecklist
+	for _, id := range ids {
+		proc, err := GetProcedure(ctx, q, id)
+		if err != nil {
+			return nil, err
+		}
+		c := WorkOrderChecklist{Procedure: proc, First: id == w.ProcedureID, Steps: make([]StepResult, len(proc.Steps))}
+		q.QueryRowContext(ctx, `SELECT coalesce((SELECT legal_name FROM users WHERE id = added_by), added_by) FROM work_order_checklists
+			WHERE wo_id = ? AND procedure_id = ?`, w.ID, id).Scan(&c.AddedBy)
+		answers := map[string]string{}
+		for i, st := range proc.Steps {
+			c.Steps[i].Step = st
+			var pass sql.NullBool
+			var at string
+			err := q.QueryRowContext(ctx, `SELECT value, pass, note, coalesce((SELECT legal_name FROM users WHERE id = recorded_by), recorded_by),
+				recorded_at FROM checklist_results WHERE wo_id = ? AND procedure_id = ? AND step_id = ?`, w.ID, id, st.ID).
+				Scan(&c.Steps[i].Value, &pass, &c.Steps[i].Note, &c.Steps[i].RecordedBy, &at)
+			if errors.Is(err, sql.ErrNoRows) {
+				continue
+			}
+			if err != nil {
+				return nil, err
+			}
+			c.Steps[i].Recorded = true
+			c.Answered++
+			answers[st.ID] = c.Steps[i].Value
+			if pass.Valid {
+				b := pass.Bool
+				c.Steps[i].Pass = &b
+			}
+			c.Steps[i].RecordedAt, _ = time.Parse(time.RFC3339, at)
+		}
+		for i := range c.Steps {
+			c.Steps[i].Applies = Inputless(c.Steps[i].Kind) || StepApplies(c.Steps[i].Step, answers)
+		}
+		out = append(out, c)
+	}
+	return out, nil
+}
+
+// Checklist returns a work order's first checklist with its answers, or
+// nil.
+func Checklist(ctx context.Context, q Querier, w WorkOrder) (*Procedure, []StepResult, error) {
+	all, err := Checklists(ctx, q, w)
+	if err != nil || len(all) == 0 || !all[0].First {
 		return nil, nil, err
 	}
-	out := make([]StepResult, len(proc.Steps))
-	for i, st := range proc.Steps {
-		out[i].Step = st
-		var pass sql.NullBool
-		var at string
-		err := q.QueryRowContext(ctx, `SELECT value, pass, note, coalesce((SELECT legal_name FROM users WHERE id = recorded_by), recorded_by),
-			recorded_at FROM checklist_results WHERE wo_id = ? AND step_id = ?`, w.ID, st.ID).Scan(&out[i].Value, &pass, &out[i].Note, &out[i].RecordedBy, &at)
-		if errors.Is(err, sql.ErrNoRows) {
-			continue
-		}
-		if err != nil {
-			return nil, nil, err
-		}
-		out[i].Recorded = true
-		if pass.Valid {
-			b := pass.Bool
-			out[i].Pass = &b
-		}
-		out[i].RecordedAt, _ = time.Parse(time.RFC3339, at)
+	return &all[0].Procedure, all[0].Steps, nil
+}
+
+// ChecklistMatch is an active checklist with how closely it fits some
+// equipment: "model", "manufacturer", "any" (for any equipment) or ""
+// (for other equipment).
+type ChecklistMatch struct {
+	ID, Name, Category, Reference string
+	Version                       int
+	AppliesTo                     []EquipmentMatch
+	Fit                           string
+}
+
+// ChecklistsFor lists the newest active version of every checklist,
+// those for this manufacturer and model first, then the manufacturer's,
+// then those for any equipment, then the rest.
+func ChecklistsFor(ctx context.Context, q Querier, manufacturer, model string) ([]ChecklistMatch, error) {
+	rows, err := q.QueryContext(ctx, `SELECT id, name, category, reference, version, applies_to FROM procedures p
+		WHERE status = 'active' AND version = (SELECT max(version) FROM procedures x WHERE x.name = p.name AND x.status = 'active')
+		ORDER BY name`)
+	if err != nil {
+		return nil, err
 	}
-	answers := map[string]string{}
-	for _, r := range out {
-		if r.Recorded {
-			answers[r.ID] = r.Value
+	defer rows.Close()
+	var out []ChecklistMatch
+	for rows.Next() {
+		var c ChecklistMatch
+		var applies string
+		if err := rows.Scan(&c.ID, &c.Name, &c.Category, &c.Reference, &c.Version, &applies); err != nil {
+			return nil, err
 		}
+		json.Unmarshal([]byte(applies), &c.AppliesTo)
+		if len(c.AppliesTo) == 0 {
+			c.Fit = "any"
+		}
+		for _, m := range c.AppliesTo {
+			if m.Matches(manufacturer, model) {
+				if m.Model != "" {
+					c.Fit = "model"
+				} else if c.Fit == "" {
+					c.Fit = "manufacturer"
+				}
+			}
+		}
+		out = append(out, c)
 	}
-	for i := range out {
-		out[i].Applies = Inputless(out[i].Kind) || StepApplies(out[i].Step, answers)
-	}
-	return &proc, out, nil
+	rank := map[string]int{"model": 0, "manufacturer": 1, "any": 2, "": 3}
+	slices.SortStableFunc(out, func(a, b ChecklistMatch) int { return rank[a.Fit] - rank[b.Fit] })
+	return out, rows.Err()
 }
 
 // LaborEntry is projected labour time.

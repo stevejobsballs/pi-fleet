@@ -9,6 +9,16 @@
     <label>Standard or manual it follows <input name="reference" value="{{$d.Reference}}" maxlength="300" placeholder="e.g. IEC 62353, or the service manual's section"></label>
     <label>Description <textarea name="description" rows="2" maxlength="4000" placeholder="e.g. yearly inspection, after any drop, and before first use">{{$d.Description}}</textarea></label>
   </fieldset>
+  <fieldset class="about"><legend>Equipment it's for</legend>
+    <p class="hint">Name each manufacturer and model it is for. Leave the model empty for every model by that manufacturer. Leave it all empty if it is for any equipment, such as a general electrical safety test. Work orders on matching equipment list it first.</p>
+    <input type="hidden" name="acount" value="{{len $d.AppliesTo}}">
+    {{range $i, $m := $d.AppliesTo}}<div class="row">
+      <label class="grow">Manufacturer <input name="mfr_{{$i}}" value="{{$m.Manufacturer}}" list="manufacturers" maxlength="120"{{if eq $i 0}} placeholder="e.g. Zoll"{{end}}></label>
+      <label class="grow">Model <input name="model_{{$i}}" value="{{$m.Model}}" list="models" maxlength="120"{{if eq $i 0}} placeholder="e.g. R Series"{{end}}></label>
+    </div>{{end}}
+    <datalist id="manufacturers">{{range $d.Manufacturers}}<option value="{{.}}">{{end}}</datalist>
+    <datalist id="models">{{range $d.Models}}<option value="{{.}}">{{end}}</datalist>
+  </fieldset>
   <p class="hint">Fill in as many steps as you need; empty ones are left out. Section headings and instructions take no answer. A step can be asked only when an earlier step has a certain answer, such as a battery voltage only when a battery is fitted.</p>
   {{range $d.Steps}}{{$i := sub .Num 1}}
   <fieldset class="bstep">

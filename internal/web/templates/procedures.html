@@ -1,12 +1,24 @@
-{{define "content"}}
-<p>A checklist is the list of steps a work order follows: checks, readings, choices, dates and notes, in sections. Published versions never change. To change a checklist, publish its next version; work already using an older version keeps it.</p>
-{{if .IsMid}}<p><a class="button" href="/procedures/new">New checklist</a></p>{{end}}
-{{if .Data}}<table><thead><tr><th>Checklist</th><th>Version</th><th>For</th><th>Follows</th><th>Steps</th><th>Status</th></tr></thead><tbody>
-{{range .Data}}<tr class="{{if ne .Status "active"}}old{{end}}"><td><a href="/procedures/{{.ID}}">{{.Name}}</a></td><td>v{{.Version}}</td><td>{{.Category}}</td><td>{{.Reference}}</td><td>{{.Steps}}</td><td>{{.Status}}</td></tr>{{end}}
-</tbody></table>{{else}}<p>No checklists yet.{{if .IsMid}} Choose New checklist to make the first.{{end}}</p>{{end}}
+{{define "content"}}{{$d := .Data}}
+<p>Every checklist, grouped by the equipment it is for. A work order lists the checklists for its equipment first. Published versions never change: to change one, publish its next version, and work already using the older one keeps it.</p>
+<p class="buttons">{{if .IsMid}}<a class="button" href="/procedures/new">New checklist</a>{{end}}
+  {{if $d.ShowAll}}<a href="/procedures">Show the library</a>{{else}}<a href="/procedures?all=1">Show every version, older and retired too</a>{{end}}</p>
+{{if $d.ShowAll}}
+{{if $d.All}}<table><thead><tr><th>Checklist</th><th>Version</th><th>For</th><th>Follows</th><th>Steps</th><th>Status</th></tr></thead><tbody>
+{{range $d.All}}<tr class="{{if ne .Status "active"}}old{{end}}"><td><a href="/procedures/{{.ID}}">{{.Name}}</a></td><td>v{{.Version}}</td><td>{{.Category}}</td><td>{{.Reference}}</td><td>{{.Steps}}</td><td>{{.Status}}</td></tr>{{end}}
+</tbody></table>{{else}}<p>No checklists yet.</p>{{end}}
+{{else}}
+<form method="get" action="/procedures" class="inline"><label>Find a checklist <input name="q" type="search" value="{{$d.Search}}" placeholder="e.g. Zoll, defibrillator or IEC 62353"></label><button>Find</button></form>
+{{if or $d.Any $d.Makers}}
+{{with $d.Any}}<section><h2>For any equipment</h2>{{template "cl-list" .}}</section>{{end}}
+{{range $d.Makers}}<section class="maker"><h2>{{.Manufacturer}}</h2>
+  {{range .Models}}<h3>{{if .Model}}{{.Model}}{{else}}Every model{{end}}</h3>{{template "cl-list" .Checklists}}{{end}}
+</section>{{end}}
+{{else}}<p>{{if $d.Search}}No checklist matches “{{$d.Search}}”.{{else}}No checklists yet.{{if .IsMid}} Choose New checklist to make the first.{{end}}{{end}}</p>{{end}}
 {{if .IsMid}}<section><h2>Copy a checklist from another pi-fleet</h2>
 <p class="hint">On the other pi-fleet, open the checklist and choose Download. Then choose the file here. It opens in the builder for you to check before publishing.</p>
 <form method="post" action="/procedures/import" enctype="multipart/form-data" class="inline">{{template "csrf" .CSRF}}
   <label>Checklist file <input type="file" name="file" accept=".json,application/json" required></label><button>Open</button></form>
 </section>{{end}}
 {{end}}
+{{end}}
+{{define "cl-list"}}<ul class="cl-list">{{range .}}<li><a href="/procedures/{{.ID}}">{{.Name}}</a> <span class="hint">v{{.Version}}{{with .Category}} · {{.}}{{end}}{{with .Reference}} · follows {{.}}{{end}}</span></li>{{end}}</ul>{{end}}

@@ -1,12 +1,14 @@
 package web
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -38,12 +40,96 @@ func procedureOptions(r *http.Request, s *Server) ([]option, error) {
 	return out, err
 }
 
+// libraryGroup is a manufacturer's checklists in the library, by model.
+type libraryGroup struct {
+	Manufacturer string
+	Models       []libraryModel
+}
+
+type libraryModel struct {
+	Model      string // "" for every model
+	Checklists []domain.ChecklistMatch
+}
+
+type libraryData struct {
+	Search  string
+	Any     []domain.ChecklistMatch // for any equipment
+	Makers  []libraryGroup
+	All     []procedureRow // every version, when asked for
+	ShowAll bool
+}
+
+// procedureList is the checklist library: the newest active version of
+// each checklist, those for any equipment first, then by manufacturer and
+// model. ?all=1 lists every version, old and retired too.
 func (s *Server) procedureList(w http.ResponseWriter, r *http.Request, sess *session) error {
-	rows, err := listProcedures(r, s, false)
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	d := libraryData{Search: q, ShowAll: r.URL.Query().Get("all") != ""}
+	if d.ShowAll {
+		rows, err := listProcedures(r, s, false)
+		if err != nil {
+			return err
+		}
+		d.All = rows
+		return s.render(w, r, sess, "procedures", "Checklists", d)
+	}
+	all, err := domain.ChecklistsFor(r.Context(), s.App.Store.DB(), "", "")
 	if err != nil {
 		return err
 	}
-	return s.render(w, r, sess, "procedures", "Checklists", rows)
+	lq := strings.ToLower(q)
+	hit := func(parts ...string) bool {
+		if lq == "" {
+			return true
+		}
+		for _, p := range parts {
+			if strings.Contains(strings.ToLower(p), lq) {
+				return true
+			}
+		}
+		return false
+	}
+	makers := map[string]*libraryGroup{}
+	var order []string
+	for _, c := range all {
+		if len(c.AppliesTo) == 0 {
+			if hit(c.Name, c.Category, c.Reference) {
+				d.Any = append(d.Any, c)
+			}
+			continue
+		}
+		for _, m := range c.AppliesTo {
+			if !hit(c.Name, c.Category, c.Reference, m.Manufacturer, m.Model) {
+				continue
+			}
+			key := strings.ToLower(strings.TrimSpace(m.Manufacturer))
+			g := makers[key]
+			if g == nil {
+				g = &libraryGroup{Manufacturer: strings.TrimSpace(m.Manufacturer)}
+				makers[key] = g
+				order = append(order, key)
+			}
+			placed := false
+			for i := range g.Models {
+				if strings.EqualFold(g.Models[i].Model, strings.TrimSpace(m.Model)) {
+					g.Models[i].Checklists = append(g.Models[i].Checklists, c)
+					placed = true
+				}
+			}
+			if !placed {
+				g.Models = append(g.Models, libraryModel{Model: strings.TrimSpace(m.Model), Checklists: []domain.ChecklistMatch{c}})
+			}
+		}
+	}
+	slices.Sort(order)
+	for _, k := range order {
+		g := *makers[k]
+		slices.SortFunc(g.Models, func(a, b libraryModel) int {
+			return strings.Compare(strings.ToLower(a.Model), strings.ToLower(b.Model))
+		})
+		d.Makers = append(d.Makers, g)
+	}
+	return s.render(w, r, sess, "procedures", "Checklists", d)
 }
 
 func (s *Server) procedureView(w http.ResponseWriter, r *http.Request, sess *session) error {
@@ -66,6 +152,8 @@ type formStep struct {
 
 type builderData struct {
 	Name, Description, Reference, Category string
+	AppliesTo                              []domain.EquipmentMatch // rows, some empty
+	Manufacturers, Models                  []string                // suggestions, from the equipment registered
 	Steps                                  []formStep
 	Kinds, Categories                      []string
 	From                                   string // the version this starts from, if any
@@ -114,6 +202,19 @@ func withBlankSteps(steps []formStep, extra, min int) []formStep {
 
 func (s *Server) renderBuilder(w http.ResponseWriter, r *http.Request, sess *session, d builderData) error {
 	d.Kinds, d.Categories = domain.StepKinds, domain.CategoryOptions
+	for len(d.AppliesTo) < 3 || d.AppliesTo[len(d.AppliesTo)-1].Manufacturer != "" {
+		d.AppliesTo = append(d.AppliesTo, domain.EquipmentMatch{})
+	}
+	q := s.App.Store.DB()
+	for col, dst := range map[string]*[]string{"manufacturer": &d.Manufacturers, "model": &d.Models} {
+		rows, err := q.QueryContext(r.Context(), `SELECT DISTINCT `+col+` FROM assets WHERE `+col+` != '' ORDER BY 1 LIMIT 500`)
+		if *dst, err = scanAll(rows, err, func(r *sql.Rows) (string, error) {
+			var v string
+			return v, r.Scan(&v)
+		}); err != nil {
+			return err
+		}
+	}
 	title := "New checklist"
 	if d.Name != "" {
 		title = "Checklist: " + d.Name
@@ -131,7 +232,8 @@ func (s *Server) procedureNew(w http.ResponseWriter, r *http.Request, sess *sess
 		if err != nil {
 			return err
 		}
-		d = builderData{Name: p.Name, Description: p.Description, Reference: p.Reference, Category: p.Category, Steps: stepsToForm(p.Steps), From: from}
+		d = builderData{Name: p.Name, Description: p.Description, Reference: p.Reference, Category: p.Category, AppliesTo: p.AppliesTo,
+			Steps: stepsToForm(p.Steps), From: from}
 	}
 	d.Steps = withBlankSteps(d.Steps, min(max(more, 3), 50), 8)
 	return s.renderBuilder(w, r, sess, d)
@@ -152,6 +254,14 @@ func readBuilder(f url.Values) (builderData, []domain.Step, error) {
 	}
 	d := builderData{Name: strings.TrimSpace(f.Get("name")), Description: strings.TrimSpace(f.Get("description")),
 		Reference: strings.TrimSpace(f.Get("reference")), Category: strings.TrimSpace(f.Get("category")), From: f.Get("from")}
+	acount, _ := strconv.Atoi(f.Get("acount"))
+	for i := 0; i < min(max(acount, 0), 100); i++ {
+		m := domain.EquipmentMatch{Manufacturer: get("mfr", i), Model: get("model", i)}
+		if m.Manufacturer == "" && m.Model != "" {
+			return d, nil, userErr("equipment row %d: give the manufacturer of %q", i+1, m.Model)
+		}
+		d.AppliesTo = append(d.AppliesTo, m)
+	}
 	count, _ := strconv.Atoi(f.Get("count"))
 	count = min(max(count, 0), 400)
 	for i := 0; i < count; i++ {
@@ -218,8 +328,14 @@ func (s *Server) procedurePublish(w http.ResponseWriter, r *http.Request, sess *
 	var id string
 	var version int
 	if err == nil {
+		var applies []domain.EquipmentMatch
+		for _, m := range d.AppliesTo {
+			if m.Manufacturer != "" {
+				applies = append(applies, m)
+			}
+		}
 		id, version, err = s.App.PublishChecklist(r.Context(), s.actor(sess), domain.ProcedurePublished{Name: d.Name, Description: d.Description,
-			Reference: d.Reference, Category: d.Category, Steps: steps})
+			Reference: d.Reference, Category: d.Category, AppliesTo: applies, Steps: steps})
 	}
 	if err != nil {
 		msg := message(err)
@@ -235,12 +351,13 @@ func (s *Server) procedurePublish(w http.ResponseWriter, r *http.Request, sess *
 
 // checklistFile is a checklist as downloaded, to copy to another pi-fleet.
 type checklistFile struct {
-	Format      string        `json:"format"` // "pi-fleet checklist"
-	Name        string        `json:"name"`
-	Description string        `json:"description,omitempty"`
-	Reference   string        `json:"reference,omitempty"`
-	Category    string        `json:"category,omitempty"`
-	Steps       []domain.Step `json:"steps"`
+	Format      string                  `json:"format"` // "pi-fleet checklist"
+	Name        string                  `json:"name"`
+	Description string                  `json:"description,omitempty"`
+	Reference   string                  `json:"reference,omitempty"`
+	Category    string                  `json:"category,omitempty"`
+	AppliesTo   []domain.EquipmentMatch `json:"applies_to,omitempty"`
+	Steps       []domain.Step           `json:"steps"`
 }
 
 const checklistFormat = "pi-fleet checklist"
@@ -251,7 +368,7 @@ func (s *Server) procedureExport(w http.ResponseWriter, r *http.Request, sess *s
 		return err
 	}
 	b, err := json.MarshalIndent(checklistFile{Format: checklistFormat, Name: p.Name, Description: p.Description, Reference: p.Reference,
-		Category: p.Category, Steps: p.Steps}, "", "  ")
+		Category: p.Category, AppliesTo: p.AppliesTo, Steps: p.Steps}, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -274,7 +391,7 @@ func (s *Server) procedureImport(w http.ResponseWriter, r *http.Request, sess *s
 	if err := json.Unmarshal([]byte(data), &c); err != nil || c.Format != checklistFormat {
 		return s.done(w, r, sess, "/procedures", "Not opened: that isn't a checklist downloaded from pi-fleet.")
 	}
-	d := builderData{Name: c.Name, Description: c.Description, Reference: c.Reference, Category: c.Category, Steps: stepsToForm(c.Steps)}
+	d := builderData{Name: c.Name, Description: c.Description, Reference: c.Reference, Category: c.Category, AppliesTo: c.AppliesTo, Steps: stepsToForm(c.Steps)}
 	d.Steps = withBlankSteps(d.Steps, 3, 0)
 	return s.renderBuilder(w, r, sess, d)
 }
@@ -285,6 +402,59 @@ func (s *Server) procedureRetire(w http.ResponseWriter, r *http.Request, sess *s
 		return s.failed(w, r, sess, "/procedures/"+id, err)
 	}
 	return s.done(w, r, sess, "/procedures/"+id, "Retired. Work already using it keeps it.")
+}
+
+// choiceGroup is a labelled group of options (an optgroup).
+type choiceGroup struct {
+	Label string
+	Items []option
+}
+
+// checklistChoices groups the checklists that can be added to a work
+// order on this equipment: those for its model, its manufacturer, any
+// equipment, then all others; those already on it are left out.
+func checklistChoices(ctx context.Context, q domain.Querier, a domain.Asset, on []domain.WorkOrderChecklist) ([]choiceGroup, error) {
+	all, err := domain.ChecklistsFor(ctx, q, a.Manufacturer, a.Model)
+	if err != nil {
+		return nil, err
+	}
+	have := map[string]bool{}
+	for _, c := range on {
+		have[c.Name] = true
+	}
+	groups := []choiceGroup{{Label: "For " + a.Manufacturer + " " + a.Model}, {Label: "For all " + a.Manufacturer + " equipment"},
+		{Label: "For any equipment"}, {Label: "Other checklists"}}
+	idx := map[string]int{"model": 0, "manufacturer": 1, "any": 2, "": 3}
+	for _, c := range all {
+		if have[c.Name] {
+			continue
+		}
+		g := &groups[idx[c.Fit]]
+		g.Items = append(g.Items, option{ID: c.ID, Label: fmt.Sprintf("%s (v%d)", c.Name, c.Version)})
+	}
+	var out []choiceGroup
+	for _, g := range groups {
+		if len(g.Items) > 0 {
+			out = append(out, g)
+		}
+	}
+	return out, nil
+}
+
+func (s *Server) workOrderAddChecklist(w http.ResponseWriter, r *http.Request, sess *session) error {
+	id := r.PathValue("id")
+	if err := s.App.AddChecklist(r.Context(), s.actor(sess), id, r.PostFormValue("procedure")); err != nil {
+		return s.failed(w, r, sess, "/work-orders/"+id+"#checklist", err)
+	}
+	return s.done(w, r, sess, "/work-orders/"+id+"#checklist", "Checklist added.")
+}
+
+func (s *Server) workOrderRemoveChecklist(w http.ResponseWriter, r *http.Request, sess *session) error {
+	id := r.PathValue("id")
+	if err := s.App.RemoveChecklist(r.Context(), s.actor(sess), id, r.PostFormValue("procedure")); err != nil {
+		return s.failed(w, r, sess, "/work-orders/"+id+"#checklist", err)
+	}
+	return s.done(w, r, sess, "/work-orders/"+id+"#checklist", "Checklist removed.")
 }
 
 func (s *Server) workOrderSetProcedure(w http.ResponseWriter, r *http.Request, sess *session) error {
@@ -320,9 +490,16 @@ func (s *Server) workOrderChecklist(w http.ResponseWriter, r *http.Request, sess
 	if err != nil {
 		return err
 	}
-	_, steps, err := domain.Checklist(ctx, s.App.Store.DB(), wo)
+	all, err := domain.Checklists(ctx, s.App.Store.DB(), wo)
 	if err != nil {
 		return err
+	}
+	procID := r.PostFormValue("procedure")
+	var steps []domain.StepResult
+	for _, c := range all {
+		if c.ID == procID || (procID == "" && c.First) {
+			steps, procID = c.Steps, c.ID
+		}
 	}
 	saved := 0
 	var problems []string
@@ -350,7 +527,7 @@ func (s *Server) workOrderChecklist(w http.ResponseWriter, r *http.Request, sess
 		}
 		err := s.phiCheck(r, value, note)
 		if err == nil {
-			err = s.App.RecordStep(ctx, s.actor(sess), id, st.ID, value, note)
+			err = s.App.RecordChecklistStep(ctx, s.actor(sess), id, procID, st.ID, value, note)
 		}
 		if err != nil {
 			msg := message(err)

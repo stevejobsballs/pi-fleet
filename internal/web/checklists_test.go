@@ -192,3 +192,99 @@ func TestRichChecklistThroughTheUI(t *testing.T) {
 		t.Fatalf("signed with a failed critical step:\n%s", page)
 	}
 }
+
+// Checklists made for a model: the library, the equipment page, and a
+// technician adding them to the work order they are doing.
+func TestChecklistsForEquipmentModels(t *testing.T) {
+	e := newEnv(t)
+	e.user("mona", "Mona Mid", domain.RoleMidTier)
+	tessID := e.user("tess", "Tess Tech", domain.RoleUser)
+	asset, _ := e.app.RegisterAsset(e.ctx, e.super, domain.AssetRegistered{Tag: "DEFIB-1", LocationID: e.loc, Manufacturer: "Zoll", Model: "R Series"})
+	mona, tess := e.browser(), e.browser()
+	mona.login("mona", "brass-kettle-orchard-7")
+	tess.login("tess", "brass-kettle-orchard-7")
+
+	// The builder suggests the manufacturers and models registered.
+	_, _, page := mona.get("/procedures/new")
+	if !strings.Contains(page, `<datalist id="manufacturers"><option value="Zoll">`) || !strings.Contains(page, `name="mfr_2"`) {
+		t.Fatalf("builder equipment rows:\n%s", page)
+	}
+	publish := func(name, mfr, model string) {
+		t.Helper()
+		_, page := mona.post("/procedures", url.Values{"name": {name}, "count": {"1"}, "acount": {"1"}, "mfr_0": {mfr}, "model_0": {model},
+			"text_0": {"Check " + name}, "kind_0": {"check"}, "required_0": {"yes"}})
+		if !strings.Contains(page, "Published "+name) {
+			t.Fatalf("publish %s:\n%s", name, page)
+		}
+	}
+	publish("Zoll R PM", "Zoll", "R Series")
+	publish("Zoll cleaning", "zoll", "")
+	publish("Electrical safety", "", "")
+	publish("Philips MX40 PM", "Philips", "MX40")
+	if _, page = mona.post("/procedures", url.Values{"name": {"Bad"}, "count": {"1"}, "acount": {"1"}, "model_0": {"R Series"}, "text_0": {"x"}, "kind_0": {"check"}}); !strings.Contains(page, "give the manufacturer of &#34;R Series&#34;") {
+		t.Fatalf("model without manufacturer:\n%s", page)
+	}
+
+	// The library: under Equipment, for any equipment first, then by manufacturer and model.
+	_, _, page = mona.get("/procedures")
+	if !strings.Contains(page, `<a href="/procedures" aria-current="page">Checklists</a>`) || !strings.Contains(page, `>Equipment</a>`) {
+		t.Fatalf("not under Equipment:\n%s", page)
+	}
+	iAny, iPhilips, iZoll := strings.Index(page, "<h2>For any equipment</h2>"), strings.Index(page, "<h2>Philips</h2>"), strings.Index(page, "<h2>Zoll</h2>")
+	if iAny < 0 || iPhilips < iAny || iZoll < iPhilips || !strings.Contains(page[iZoll:], "<h3>Every model</h3>") || !strings.Contains(page[iZoll:], "<h3>R Series</h3>") {
+		t.Fatalf("library:\n%s", page)
+	}
+	if _, _, page = mona.get("/procedures?q=mx40"); !strings.Contains(page, "Philips MX40 PM") || strings.Contains(page, "Zoll R PM") {
+		t.Fatalf("search:\n%s", page)
+	}
+	// The equipment page lists those made for it.
+	if _, _, page = tess.get("/assets/" + asset); !strings.Contains(page, ">Zoll R PM</a> <span class=\"hint\">v1 · for Zoll R Series") ||
+		!strings.Contains(page, ">Zoll cleaning</a> <span class=\"hint\">v1 · for all Zoll equipment") || strings.Contains(page, "Philips MX40 PM") {
+		t.Fatalf("equipment page:\n%s", page)
+	}
+
+	// The technician's work order: matching checklists offered first.
+	mona.get("/work-orders/new")
+	_, page = mona.post("/work-orders", url.Values{"asset": {asset}, "type": {"pm"}, "priority": {"normal"}, "title": {"PM"}})
+	wo := "/work-orders/" + regexp.MustCompile(`/work-orders/([0-9a-f-]{36})/assign`).FindStringSubmatch(page)[1]
+	mona.post(wo+"/assign", url.Values{"assignee": {tessID}})
+	_, _, page = tess.get(wo)
+	sel := page[strings.Index(page, `name="procedure" required><option value="" selected disabled>Choose a checklist</option><optgroup`):]
+	sel = sel[:strings.Index(sel, "</select>")]
+	if !strings.Contains(sel, `Choose a checklist</option><optgroup label="For Zoll R Series"><option`) || strings.Index(sel, "For all Zoll equipment") > strings.Index(sel, "For any equipment") ||
+		strings.Index(sel, "Other checklists") < strings.Index(sel, "Electrical safety") {
+		t.Fatalf("add choices:\n%s", sel)
+	}
+	ids := map[string]string{}
+	for _, m := range regexp.MustCompile(`<option value="([0-9a-f-]{36})">([^<]+) \(v1\)</option>`).FindAllStringSubmatch(sel, -1) {
+		ids[m[2]] = m[1]
+	}
+	_, page = tess.post(wo+"/checklists", url.Values{"procedure": {ids["Zoll R PM"]}})
+	_, page = tess.post(wo+"/checklists", url.Values{"procedure": {ids["Electrical safety"]}})
+	_, page = tess.post(wo+"/checklists", url.Values{"procedure": {ids["Zoll cleaning"]}})
+	if !strings.Contains(page, "Checklist added.") || strings.Count(page, `class="cl-title"`) != 3 || strings.Count(page, "Remove this checklist") != 3 {
+		t.Fatalf("added:\n%s", page)
+	}
+	_, page = tess.post(wo+"/checklists/remove", url.Values{"procedure": {ids["Zoll cleaning"]}})
+	if strings.Count(page, `class="cl-title"`) != 2 {
+		t.Fatalf("removed:\n%s", page)
+	}
+	tess.post(wo+"/status", url.Values{"to": {"in_progress"}})
+	// Each checklist is saved by its own button; both have a step "s1".
+	tess.post(wo+"/checklist", url.Values{"procedure": {ids["Zoll R PM"]}, "v_s1": {"pass"}})
+	_, page = tess.post(wo+"/checklist", url.Values{"procedure": {ids["Electrical safety"]}, "v_s1": {"fail"}, "n_s1": {"leakage high"}})
+	if strings.Count(page, "<strong>pass</strong>") != 1 || strings.Count(page, "<strong>fail</strong>") != 1 || !strings.Contains(page, "Save Electrical safety") {
+		t.Fatalf("two checklists:\n%s", page)
+	}
+	// Answered checklists can't be removed.
+	if strings.Contains(page, "Remove this checklist") {
+		t.Fatalf("remove offered on answered checklists:\n%s", page)
+	}
+	if _, _, print := tess.get(wo + "/print"); !strings.Contains(print, "Checklist: Zoll R PM v1") || !strings.Contains(print, "Checklist: Electrical safety v1") {
+		t.Fatalf("printout:\n%s", print)
+	}
+	// Today: the three things people start most.
+	if _, _, page = tess.get("/"); !strings.Contains(page, `<nav class="quick" aria-label="Start something"><a class="button" href="/work-orders/new">New work order</a>`) {
+		t.Fatalf("today:\n%s", page)
+	}
+}

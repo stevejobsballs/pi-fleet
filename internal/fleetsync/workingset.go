@@ -56,7 +56,7 @@ var snapshotTables = []string{
 	"assets", "pm_schedules", "work_orders", "wo_leases",
 	"calibration_records", "cal_points", "cal_standards", "signatures", "attachments",
 	"parts", "stock_locations", "stock_levels", "flag_resolutions",
-	"procedures", "checklist_results", "labor_entries", "meter_readings",
+	"procedures", "checklist_results", "work_order_checklists", "labor_entries", "meter_readings",
 }
 
 // BuildSnapshot assembles a node's working set (DESIGN.md §5.6, decision
@@ -173,6 +173,7 @@ func BuildSnapshot(ctx context.Context, db *sql.DB, centralNodeID string, node d
 		{"stock_levels", "1", nil},
 		{"procedures", "1", nil},
 		{"checklist_results", in("wo_id"), []any{workOrders}},
+		{"work_order_checklists", in("wo_id"), []any{workOrders}},
 		{"labor_entries", in("wo_id"), []any{workOrders}},
 		// Recent readings of included equipment; the oldest carries
 		// central's running total, so new readings on the Pi add up right.

@@ -292,6 +292,8 @@ type assetData struct {
 	Separate   []option // records merged into this one, history kept with them
 	Duplicates []option // other unmerged records with the same MasterID
 	ReportBase string   // for its QR label
+	// Checklists made for this manufacturer and model (or the manufacturer).
+	Checklists []domain.ChecklistMatch
 }
 
 func (s *Server) assetView(w http.ResponseWriter, r *http.Request, sess *session) error {
@@ -300,6 +302,15 @@ func (s *Server) assetView(w http.ResponseWriter, r *http.Request, sess *session
 		return err
 	}
 	d.ReportBase = s.reportBase(r)
+	all, err := domain.ChecklistsFor(r.Context(), s.App.Store.DB(), d.Asset.Manufacturer, d.Asset.Model)
+	if err != nil {
+		return err
+	}
+	for _, c := range all {
+		if c.Fit == "model" || c.Fit == "manufacturer" {
+			d.Checklists = append(d.Checklists, c)
+		}
+	}
 	return s.render(w, r, sess, "asset", d.Asset.Tag, d)
 }
 
@@ -492,12 +503,13 @@ type woData struct {
 	Rows         int
 	Attachments  []domain.Attachment
 	CanAttach    bool
-	Procedure    *domain.Procedure
-	Steps        []domain.StepResult
-	Procedures   []option
-	Labor        []domain.LaborEntry
-	LaborTotal   int
-	Today        string
+	Checklists   []domain.WorkOrderChecklist
+	// ChangeChecklists: this person may add (and remove unused) checklists.
+	ChangeChecklists bool
+	AddChoices       []choiceGroup // checklists to add, those for this equipment first
+	Labor            []domain.LaborEntry
+	LaborTotal       int
+	Today            string
 	// SignAs is the meaning the current user may sign with now, if any.
 	SignAs    string
 	Performer bool
@@ -542,7 +554,7 @@ func (s *Server) loadWorkOrder(r *http.Request, sess *session, id string) (woDat
 	if d.Attachments, err = domain.ListAttachments(ctx, q, domain.EntityWorkOrder, wo.ID); err != nil {
 		return d, err
 	}
-	if d.Procedure, d.Steps, err = domain.Checklist(ctx, q, wo); err != nil {
+	if d.Checklists, err = domain.Checklists(ctx, q, wo); err != nil {
 		return d, err
 	}
 	if d.Labor, d.LaborTotal, err = domain.Labor(ctx, q, wo.ID); err != nil {
@@ -550,8 +562,9 @@ func (s *Server) loadWorkOrder(r *http.Request, sess *session, id string) (woDat
 	}
 	d.Today = today(s.now())
 	isMid := roleRank[sess.User.Role] >= roleRank[domain.RoleMidTier]
-	if isMid && d.Procedure == nil && (wo.Status == domain.WOOpen || wo.Status == domain.WOAssigned) {
-		if d.Procedures, err = procedureOptions(r, s); err != nil {
+	unfinished := wo.Status == domain.WOOpen || wo.Status == domain.WOAssigned || wo.Status == domain.WOInProgress
+	if d.ChangeChecklists = unfinished && (isMid || d.Holder); d.ChangeChecklists {
+		if d.AddChoices, err = checklistChoices(ctx, q, d.Asset, d.Checklists); err != nil {
 			return d, err
 		}
 	}

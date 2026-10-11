@@ -1,6 +1,7 @@
 {{define "content"}}{{$p := .Data}}
 <dl class="facts">
   <dt>Status</dt><dd>{{$p.Status}}, published {{when $p.PublishedAt}}</dd>
+  <dt>Equipment</dt><dd>{{range $i, $m := $p.AppliesTo}}{{if $i}}; {{end}}{{$m.Manufacturer}} {{if $m.Model}}{{$m.Model}}{{else}}(every model){{end}}{{else}}any equipment{{end}}</dd>
   {{with $p.Category}}<dt>For</dt><dd>{{.}}</dd>{{end}}
   {{with $p.Reference}}<dt>Follows</dt><dd>{{.}}</dd>{{end}}
   {{with $p.Description}}<dt>About</dt><dd class="pre">{{.}}</dd>{{end}}

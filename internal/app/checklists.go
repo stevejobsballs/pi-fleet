@@ -41,8 +41,15 @@ func (a *App) SetWorkOrderProcedure(ctx context.Context, actor Actor, woID, proc
 	})
 }
 
-// RecordStep records one checklist step under the actor's lease.
+// RecordStep records one step of a work order's first checklist under
+// the actor's lease.
 func (a *App) RecordStep(ctx context.Context, actor Actor, woID, stepID, value, note string) error {
+	return a.RecordChecklistStep(ctx, actor, woID, "", stepID, value, note)
+}
+
+// RecordChecklistStep records one step of one of a work order's
+// checklists ("" for its first) under the actor's lease.
+func (a *App) RecordChecklistStep(ctx context.Context, actor Actor, woID, procedureID, stepID, value, note string) error {
 	return a.Store.Update(ctx, func(tx *store.Tx) error {
 		w, err := domain.GetWorkOrder(ctx, tx, woID)
 		if err != nil {
@@ -51,8 +58,36 @@ func (a *App) RecordStep(ctx context.Context, actor Actor, woID, stepID, value, 
 		if w.AssignedTo != actor.UserID {
 			return ErrNotLeaseHolder
 		}
+		if procedureID == w.ProcedureID {
+			procedureID = "" // the first checklist, recorded as it always was
+		}
 		return a.emit(ctx, tx, actor, domain.TypeWorkOrderStepRecorded, domain.EntityWorkOrder, woID, w.Version, w.LeaseID,
-			domain.WorkOrderStepRecorded{StepID: stepID, Value: value, Note: note})
+			domain.WorkOrderStepRecorded{ProcedureID: procedureID, StepID: stepID, Value: value, Note: note})
+	})
+}
+
+// AddChecklist adds a checklist to a work order: by the person doing it
+// (under their lease) or a mid-tier user.
+func (a *App) AddChecklist(ctx context.Context, actor Actor, woID, procedureID string) error {
+	return a.changeChecklists(ctx, actor, woID, domain.TypeWorkOrderChecklistAdded, domain.WorkOrderChecklistAdded{ProcedureID: procedureID})
+}
+
+// RemoveChecklist removes a checklist nothing was recorded in.
+func (a *App) RemoveChecklist(ctx context.Context, actor Actor, woID, procedureID string) error {
+	return a.changeChecklists(ctx, actor, woID, domain.TypeWorkOrderChecklistRemoved, domain.WorkOrderChecklistRemoved{ProcedureID: procedureID})
+}
+
+func (a *App) changeChecklists(ctx context.Context, actor Actor, woID, typ string, payload any) error {
+	return a.Store.Update(ctx, func(tx *store.Tx) error {
+		w, err := domain.GetWorkOrder(ctx, tx, woID)
+		if err != nil {
+			return err
+		}
+		lease := ""
+		if w.AssignedTo == actor.UserID {
+			lease = w.LeaseID
+		}
+		return a.emit(ctx, tx, actor, typ, domain.EntityWorkOrder, woID, w.Version, lease, payload)
 	})
 }
 

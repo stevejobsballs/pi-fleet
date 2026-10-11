@@ -20,8 +20,10 @@ import (
 // v0.4.0 added the assets' merge columns and work orders' opened_at;
 // v0.7.0 locations' review columns and the location.proposed and
 // location.reviewed events; v0.9.0 checklists' new kinds of step and
-// settings, and their description columns.
-const MinNodeVersion = "v0.9.0"
+// settings, and their description columns; v0.10.0 several checklists per
+// work order (work_order_checklists, checklist_results.procedure_id) and
+// the equipment each checklist is for.
+const MinNodeVersion = "v0.10.0"
 
 const (
 	// On the master Pi: a newer version a super user requires, and when.
