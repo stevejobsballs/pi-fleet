@@ -1,20 +1,12 @@
 {{define "content"}}{{$d := .Data}}
-<form autocomplete="off" method="get" action="/search" role="search" class="find find-home">
-  <label for="find-page">Find equipment, a work order or a checklist</label>
-  <span class="find-row"><input id="find-page" name="q" type="search" value="{{$d.Q}}" required placeholder="e.g. a tag, MasterID, serial number, make, model or WO number"><button>Search</button></span>
-</form>
 {{if $d.Q}}
-{{if not (or $d.Assets $d.WorkOrders $d.Checklists)}}<p>Nothing matches “{{$d.Q}}”. Check the spelling, or try part of it, such as the model alone.</p>{{end}}
-{{if $d.More}}<p class="hint">Only the first 50 of each are shown: add more words to narrow the search.</p>{{end}}
-{{with $d.Assets}}<section><h2>Equipment <span class="count">{{len .}}</span></h2>
-<ul class="cards">{{range .}}
-  <li><a class="pick" href="/assets/{{.ID}}"><span class="pick-name">{{.Tag}}{{with .MasterID}} · {{.}}{{end}}</span>
-    <span>{{.Manufacturer}} {{.Model}}{{with .Serial}} · serial {{.}}{{end}}</span>
-    <span class="hint">{{.Location}}, {{.Site}} · <span class="s-{{.Status}}">{{if .MergedIntoTag}}merged into {{.MergedIntoTag}}{{else}}{{label .Status}}{{end}}</span>{{with .NextDue}} · next due {{.}}{{end}}</span></a></li>{{end}}
-</ul></section>{{end}}
-{{with $d.WorkOrders}}<section><h2>Work orders <span class="count">{{len .}}</span></h2>{{template "worows" .}}</section>{{end}}
-{{with $d.Checklists}}<section><h2>Checklists <span class="count">{{len .}}</span></h2>
-<ul class="cl-list">{{range .}}<li><a href="/procedures/{{.ID}}">{{.Name}}</a> <span class="hint">v{{.Version}} · {{template "clwhere" .AppliesTo}}{{with .Category}} · {{.}}{{end}}</span></li>{{end}}</ul></section>{{end}}
+{{range $d.Groups}}<section><h2>{{.Title}} <span class="count">{{len .Hits}}{{if .More}}+{{end}}</span></h2>
+{{if .More}}<p class="hint">Only the first 50 are shown: add more words to narrow the search.</p>{{end}}
+<ul class="cards">{{range .Hits}}
+  <li><a class="pick" href="{{.Href}}"><span class="pick-name">{{.Name}}</span>{{with .Detail}}<span>{{.}}</span>{{end}}{{with .Note}}<span class="hint">{{.}}</span>{{end}}</a></li>{{end}}
+</ul></section>
+{{else}}<p>Nothing matches “{{$d.Q}}”. Check the spelling, or try part of it, such as the model alone.</p>{{end}}
 {{if $d.Fleet}}<p><a href="/fleet/assets?q={{urlquery $d.Q}}">Search the whole fleet's equipment instead (needs a connection)</a></p>{{end}}
-{{else}}<p class="hint">Type what's on the label, or the make or model. A tag, MasterID, serial number or work order number that matches exactly opens it straight away.</p>{{end}}
+{{else}}<p>Type in the Find box at the top of any page. A tag, MasterID, serial number or work order number that matches exactly opens it straight away.</p>{{end}}
+<p class="hint">Searches what a {{label .User.Role}} can open: {{range $i, $t := $d.Searched}}{{if $i}}, {{end}}{{$t}}{{end}}.</p>
 {{end}}

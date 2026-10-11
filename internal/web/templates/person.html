@@ -1,0 +1,8 @@
+{{define "content"}}{{$p := .Data.Person}}
+<dl class="facts">
+  <dt>Role</dt><dd>{{label $p.Role}}</dd>
+  <dt>Home sites</dt><dd>{{or $p.Sites "none set"}}</dd>
+</dl>
+{{if .IsSuper}}<p><a href="/admin/users#user-{{$p.ID}}">Manage this account</a></p>{{end}}
+<section><h2>Open work <span class="count">{{len .Data.Work}}</span></h2>{{template "worows" .Data.Work}}</section>
+{{end}}

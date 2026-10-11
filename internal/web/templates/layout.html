@@ -11,7 +11,7 @@
 <header class="top">
   <a class="brand" href="/"><span class="mark" aria-hidden="true"></span>pi-fleet</a>
   {{if .User.ID}}<nav class="groups" aria-label="Main">{{range .Nav}}<a href="{{.Href}}"{{if .Current}} aria-current="true"{{end}}>{{.Label}}</a>{{end}}</nav>
-  {{if not (or (eq .Path "/") (eq .Path "/search") (eq .Path "/assets"))}}{{template "findbox" "bar"}}{{end}}{{end}}
+  {{template "findbox" .}}{{end}}
   <div class="me">
     {{if .User.ID}}<span>{{.User.LegalName}}, {{label .User.Role}}</span>
     <a href="/password">Password</a>
@@ -43,10 +43,10 @@
 </body>
 </html>{{end}}
 
-{{/* The one search box: on the home page, big; in the header, small. */}}
-{{define "findbox"}}<form autocomplete="off" method="get" action="/search" role="search" class="find find-{{.}}">
-  <label for="find-{{.}}">{{if eq . "home"}}Find equipment, a work order or a checklist{{else}}Find{{end}}</label>
-  <span class="find-row"><input id="find-{{.}}" name="q" type="search" required{{if eq . "home"}} placeholder="e.g. a tag, serial number, model or WO number"{{else}} placeholder="e.g. a tag, serial or WO number"{{end}}><button>Search</button></span>
+{{/* The one search box, in the header of every page. */}}
+{{define "findbox"}}<form autocomplete="off" method="get" action="/search" role="search" class="find find-bar">
+  <label for="find-q">Find</label>
+  <span class="find-row"><input id="find-q" name="q" type="search" value="{{.FindQ}}" required placeholder="e.g. a tag, serial, WO number or name"><button>Search</button></span>
 </form>{{end}}
 
 {{/* Choosing equipment for a form: search, then choose (an assetPick). */}}

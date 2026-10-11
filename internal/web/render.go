@@ -31,6 +31,7 @@ type page struct {
 	Large      bool   // larger text and buttons (the default; compact is chosen per browser)
 	Here       string // this page's path and query, to come back to
 	Path       string // the page's URL path, to mark the current menu item
+	FindQ      string // what was searched for, kept in the search box
 	Data       any
 	// BackHref and BackLabel: a Back link at the top left, to the screen
 	// this one was opened from (pages whose data has a BackLink).
@@ -66,7 +67,7 @@ func (p page) Nav() []navGroup {
 	if central {
 		work = append(work, navItem{Href: "/requests", Label: "Reported problems"})
 	}
-	work = append(work, navItem{Href: "/schedules", Label: "Schedules"})
+	work = append(work, navItem{Href: "/schedules", Label: "Schedules"}, navItem{Href: "/people", Label: "People"})
 	if p.IsMid() {
 		work = append(work, navItem{Href: "/review", Label: "Review"})
 	}
@@ -77,7 +78,7 @@ func (p page) Nav() []navGroup {
 			{Href: "/procedures", Label: "Checklists"}, {Href: "/inventory", Label: "Parts and stock"}}},
 	}
 	if p.IsSuper() {
-		admin := []navItem{{Href: "/admin/users", Label: "People"}, {Href: "/admin/sites", Label: "Sites and locations"}}
+		admin := []navItem{{Href: "/admin/users", Label: "User accounts"}, {Href: "/admin/sites", Label: "Sites and locations"}}
 		if central {
 			admin = append(admin, navItem{Href: "/admin/nodes", Label: "Pis"}, navItem{Href: "/admin/kiosks", Label: "Kiosks"})
 		}
@@ -224,6 +225,9 @@ func templateNames() ([]string, error) {
 func (s *Server) render(w http.ResponseWriter, r *http.Request, sess *session, name, title string, data any) error {
 	p := page{Title: title, Role: s.Role, Data: data, PHIWarning: true, Insecure: s.InsecureLAN, Trial: s.Trial, Path: r.URL.Path,
 		Large: largeDisplay(r), Here: r.URL.RequestURI()}
+	if p.Path == "/search" {
+		p.FindQ = r.URL.Query().Get("q")
+	}
 	if strings.HasPrefix(p.Path, "/fleet/assets") {
 		p.Path = "/assets" // the whole-fleet search is part of Equipment
 	}

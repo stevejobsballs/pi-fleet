@@ -1,5 +1,4 @@
 {{define "content"}}{{$d := .Data}}
-{{template "findbox" "home"}}
 <nav class="quick" aria-label="Start something"><a class="button" href="/work-orders/new">New work order</a><a class="button secondary" href="/assets/new">Register equipment</a></nav>
 {{if $d.Proposals}}<p class="flash warn" role="status"><a href="/procedures#waiting">{{$d.Proposals}} checklist{{if ne $d.Proposals 1}}s{{end}} waiting for your approval</a></p>{{end}}
 {{if $d.Requests}}<p class="flash warn" role="status"><a href="/requests">{{$d.Requests}} reported problem{{if ne $d.Requests 1}}s{{end}} waiting to be looked at</a></p>{{end}}

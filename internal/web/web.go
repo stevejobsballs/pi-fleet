@@ -139,6 +139,8 @@ func (s *Server) Handler() (http.Handler, error) {
 	mux.Handle("GET /{$}", user(s.dashboard))
 	mux.Handle("GET /today/open", user(s.openWorkOrders))
 	mux.Handle("GET /search", user(s.search))
+	mux.Handle("GET /people", user(s.peopleList))
+	mux.Handle("GET /people/{id}", user(s.personView))
 	mux.Handle("GET /assets", user(s.assetList))
 	mux.Handle("GET /assets/new", user(s.assetNew))
 	mux.Handle("POST /assets", user(s.assetCreate))

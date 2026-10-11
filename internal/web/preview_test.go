@@ -70,7 +70,7 @@ func snapshotPages(t *testing.T, e *env, dir string) {
 		"asset": firstLink("/assets?q=VENT", "/assets/0"), "work-order": firstLink("/work-orders?view=all", "/work-orders/0"),
 		"new-work-order": "/work-orders/new", "users": "/admin/users", "sites": "/admin/sites", "nodes": "/admin/nodes",
 		"kiosks": "/admin/kiosks", "inventory": "/inventory", "requests": "/requests", "report": "/r/M-1", "procedures": "/procedures", "procedure": firstLink("/procedures", "/procedures/0"),
-		"password": "/password", "search": "/search?q=GE", "pick-equipment": "/work-orders/new?q=GE"}
+		"password": "/password", "search": "/search?q=ma", "pick-equipment": "/work-orders/new?q=GE", "people": "/people"}
 	os.MkdirAll(dir, 0o755)
 	large, _ := filepath.Abs("static/large.css")
 	var saveAs func(b *browser, name, path string)

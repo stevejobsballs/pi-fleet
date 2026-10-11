@@ -149,7 +149,7 @@ func TestApproveAProposedLocation(t *testing.T) {
 	admin.login("admin", "tumbleweed-gasket-42")
 	admin.get("/admin/sites")
 	if _, page := admin.post("/admin/locations/"+loc+"/review", url.Values{"decision": {"approve"}}); !strings.Contains(page, "Location approved.") ||
-		!strings.Contains(page, "<li>Cath lab 2 (room)</li>") {
+		!strings.Contains(page, `">Cath lab 2 (room)</li>`) {
 		t.Fatalf("approved:\n%s", page)
 	}
 }

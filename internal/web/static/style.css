@@ -337,3 +337,5 @@ section.now a.job { background: var(--bg); }
   table.stack-narrow td { padding: .2rem 0; border: 0; }
   table.stack-narrow td[data-label]::before { content: attr(data-label); display: block; font-size: 13px; font-weight: 700; color: var(--muted); }
 }
+/* What a search result opened, on a page of many: outlined. */
+tr:target, section:target, li:target, fieldset:target { outline: 3px solid var(--accent); outline-offset: 2px; }

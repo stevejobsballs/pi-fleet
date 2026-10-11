@@ -11,8 +11,8 @@
 </fieldset>{{end}}
 </section>{{end}}
 <p class="hint">Sites can sit inside other sites, such as a satellite clinic inside its hospital. Equipment at a satellite also belongs to every site above it: choosing the hospital under Equipment lists its satellites' equipment too, and an employee whose home site is the hospital gets it on their Pi.</p>
-{{range .Data.Sites}}{{$site := .}}<section class="site depth-{{if gt .Depth 4}}4{{else}}{{.Depth}}{{end}}"><h2>{{.Path}} · {{.Name}}</h2><p>{{.Timezone}} · <a href="/assets?site={{.ID}}">Equipment at this site and its satellites</a></p>
-<ul>{{range .Locations}}<li>{{.Label}}</li>{{else}}<li>No locations.</li>{{end}}</ul>
+{{range .Data.Sites}}{{$site := .}}<section id="site-{{.ID}}" class="site depth-{{if gt .Depth 4}}4{{else}}{{.Depth}}{{end}}"><h2>{{.Path}} · {{.Name}}</h2><p>{{.Timezone}} · <a href="/assets?site={{.ID}}">Equipment at this site and its satellites</a></p>
+<ul>{{range .Locations}}<li id="loc-{{.ID}}">{{.Label}}</li>{{else}}<li>No locations.</li>{{end}}</ul>
 <form autocomplete="off" method="post" action="/admin/locations" class="inline">{{template "csrf" $.CSRF}}<input type="hidden" name="site" value="{{.ID}}">
   <label>Location <input name="name" required></label><label>Kind <select name="kind">{{range $.Data.Kinds}}<option>{{.}}</option>{{end}}</select></label><button>Add location</button></form>
 <form autocomplete="off" method="post" action="/admin/sites/{{.ID}}/move" class="inline">{{template "csrf" $.CSRF}}

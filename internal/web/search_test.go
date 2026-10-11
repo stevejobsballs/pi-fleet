@@ -3,6 +3,7 @@ package web
 import (
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -37,9 +38,59 @@ func TestSearch(t *testing.T) {
 	if _, _, page = b.get("/search?q=nothing-like-this"); !strings.Contains(page, "Nothing matches") {
 		t.Fatalf("no match:\n%s", page)
 	}
-	// Every other page has the small search box in its header.
-	if _, _, page = b.get("/schedules"); !strings.Contains(page, `class="find find-bar"`) {
-		t.Fatalf("no header search:\n%s", page)
+	// Every page has the search box in its header, keeping what was searched.
+	for _, path := range []string{"/", "/assets", "/schedules", "/admin/users"} {
+		if _, _, page = b.get(path); !strings.Contains(page, `class="find find-bar"`) {
+			t.Fatalf("no header search on %s:\n%s", path, page)
+		}
+	}
+	if _, _, page = b.get("/search?q=sigma"); !strings.Contains(page, `name="q" type="search" value="sigma"`) {
+		t.Fatalf("search not kept:\n%s", page)
+	}
+}
+
+// Search finds only what the person may open, and higher roles find
+// everything lower ones do: people, sites, Pis and kiosks for super
+// users; checklists waiting for approval for mid-tier users too.
+func TestSearchFollowsRoles(t *testing.T) {
+	e := newEnv(t)
+	tessID := e.user("tess", "Tess Tech", domain.RoleUser)
+	e.user("mona", "Mona Mid", domain.RoleMidTier)
+	e.app.RegisterAsset(e.ctx, e.super, domain.AssetRegistered{Tag: "TESS-BENCH", LocationID: e.loc, Manufacturer: "Fluke", Model: "ESA615"})
+	if _, err := e.app.ProposeLocation(e.ctx, app.Actor{UserID: tessID, SessionID: "t"}, domain.LocationProposed{SiteID: e.site, Name: "Tess store", Kind: "storage"}); err != nil {
+		t.Fatal(err)
+	}
+	groups := func(user, pw, q string) string {
+		b := e.browser()
+		b.login(user, pw)
+		_, _, page := b.get("/search?q=" + url.QueryEscape(q))
+		var got []string
+		for _, m := range regexp.MustCompile(`<h2>([^<]+) <span class="count">`).FindAllStringSubmatch(page, -1) {
+			got = append(got, m[1])
+		}
+		return strings.Join(got, ", ")
+	}
+	for _, c := range []struct{ user, pw, want string }{
+		{"tess", "brass-kettle-orchard-7", "Equipment, Locations, People"},
+		{"mona", "brass-kettle-orchard-7", "Equipment, Locations, People"},
+		{"admin", "tumbleweed-gasket-42", "Equipment, Locations, People"},
+	} {
+		if got := groups(c.user, c.pw, "tess"); got != c.want {
+			t.Errorf("%s searching tess: %q, want %q", c.user, got, c.want)
+		}
+	}
+	// Equipment matches by its site's name too; only super users get Sites.
+	if got := groups("tess", "brass-kettle-orchard-7", "new york"); got != "Equipment" {
+		t.Errorf("a user searching new york: %q", got)
+	}
+	if got := groups("admin", "tumbleweed-gasket-42", "new york"); got != "Equipment, Sites" {
+		t.Errorf("a super user searching new york: %q", got)
+	}
+	// What each role searches is listed under the results.
+	b := e.browser()
+	b.login("tess", "brass-kettle-orchard-7")
+	if _, _, page := b.get("/search"); strings.Contains(page, "Sites") || !strings.Contains(page, "Searches what a user can open: Equipment, Work orders") {
+		t.Fatalf("searched list:\n%s", page)
 	}
 }
 
@@ -134,5 +185,42 @@ func TestScanningALabel(t *testing.T) {
 	b.get("/login")
 	if code, page = b.post("/login", url.Values{"username": {"admin"}, "password": {"tumbleweed-gasket-42"}, "next": {"//evil.example/"}}); !strings.Contains(page, "<h1>My work") {
 		t.Fatalf("offsite next: %d\n%s", code, page)
+	}
+}
+
+// People: everyone can look up colleagues and their open work, read-only;
+// only super users see usernames and emails, on User accounts.
+func TestPeopleForEveryone(t *testing.T) {
+	e := newEnv(t)
+	tessID := e.user("tess", "Tess Tech", domain.RoleUser)
+	e.user("mona", "Mona Mid", domain.RoleMidTier)
+	pump, _ := e.app.RegisterAsset(e.ctx, e.super, domain.AssetRegistered{Tag: "PUMP-7", LocationID: e.loc, Manufacturer: "Baxter", Model: "Sigma"})
+	wo, number, err := e.app.OpenWorkOrder(e.ctx, e.super, app.NewWorkOrder{Type: "corrective", AssetID: pump, Priority: "normal", Title: "Alarm"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.app.AssignWorkOrder(e.ctx, e.super, wo, tessID); err != nil {
+		t.Fatal(err)
+	}
+	mona := e.browser()
+	mona.login("mona", "brass-kettle-orchard-7")
+	_, _, page := mona.get("/people")
+	if !strings.Contains(page, `href="/people/`+tessID+`"`) || !strings.Contains(page, "1 open work order<") || !strings.Contains(page, "New York") ||
+		strings.Contains(page, "tess@example.org") || !strings.Contains(page, `<a href="/people" aria-current="page">People</a>`) {
+		t.Fatalf("people:\n%s", page)
+	}
+	if _, _, page = mona.get("/people/" + tessID); !strings.Contains(page, "<h1>Tess Tech") || !strings.Contains(page, number) || strings.Contains(page, "Manage this account") {
+		t.Fatalf("person:\n%s", page)
+	}
+	if _, _, page = mona.get("/work-orders/" + wo); !strings.Contains(page, `<a href="/people/`+tessID+`">Tess Tech</a>`) {
+		t.Fatalf("assignee not linked:\n%s", page)
+	}
+	if code, _, _ := mona.get("/admin/users"); code != http.StatusForbidden {
+		t.Fatalf("user accounts open to mid-tier: %d", code)
+	}
+	admin := e.browser()
+	admin.login("admin", "tumbleweed-gasket-42")
+	if _, _, page = admin.get("/people/" + tessID); !strings.Contains(page, `href="/admin/users#user-`+tessID+`">Manage this account`) {
+		t.Fatalf("super user's person page:\n%s", page)
 	}
 }

@@ -1,0 +1,7 @@
+{{define "content"}}
+<p class="hint">Everyone who can use pi-fleet, and how much open work each has.{{if .IsSuper}} To add people or change accounts, use <a href="/admin/users">User accounts</a>.{{end}}</p>
+{{if .Data}}<ul class="cards">{{range .Data}}
+  <li id="person-{{.ID}}"><a class="pick" href="/people/{{.ID}}"><span class="pick-name">{{.Name}}</span><span>{{label .Role}}{{with .Sites}} · {{.}}{{end}}</span>
+    <span class="hint">{{if .Open}}{{.Open}} open work order{{if ne .Open 1}}s{{end}}{{else}}no open work{{end}}</span></a></li>{{end}}
+</ul>{{else}}<p>No one yet.</p>{{end}}
+{{end}}

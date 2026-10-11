@@ -5,7 +5,7 @@
   <dt>Type</dt><dd>{{$w.Type}}</dd>
   <dt>Status</dt><dd><strong>{{label $w.Status}}</strong></dd>
   <dt>Priority</dt><dd>{{template "prio" $w.Priority}}</dd>
-  <dt>Assigned to</dt><dd>{{if $d.Assignee}}{{$d.Assignee}}{{else}}nobody{{end}}</dd>
+  <dt>Assigned to</dt><dd>{{if $d.Assignee}}<a href="/people/{{$d.WO.AssignedTo}}">{{$d.Assignee}}</a>{{else}}nobody{{end}}</dd>
   <dt>Due</dt><dd>{{if $w.DueAt}}{{$w.DueAt}}{{else}}not set{{end}}</dd>
   <dt>Title</dt><dd>{{$w.Title}}</dd>
   <dt>Problem</dt><dd class="pre">{{$w.Problem}}</dd>

@@ -1,7 +1,7 @@
 {{define "content"}}
 <p>A kiosk is a shared Pi at a site. Each member signs in on it with their own password, and everything they record is attributed to them. Members can also have their own Pi.</p>
 {{range .Data.Kiosks}}{{$k := .}}
-<section><h2>{{.Name}} · {{.Site}}</h2>
+<section id="kiosk-{{.ID}}"><h2>{{.Name}} · {{.Site}}</h2>
 <p>Pi: {{label .PiStatus}}{{if .ActivationPending}} · activation password issued, not yet used{{end}}</p>
 <ul>{{range .Members}}<li>{{.Label}}
   <form autocomplete="off" method="post" action="/admin/kiosks/{{$k.ID}}/members/remove" class="inline">{{template "csrf" $.CSRF}}<input type="hidden" name="user" value="{{.ID}}"><button class="link">remove</button></form></li>
