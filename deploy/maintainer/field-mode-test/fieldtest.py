@@ -9,21 +9,20 @@ m = M()
 m.flag = sys.argv[3]
 step = lambda s: print("-", s, flush=True)
 
-m.go(base + "/login")
-m.js("""if (location.pathname !== '/login') return;
-document.querySelector('[name=username]').value='tess';
-document.querySelector('[name=password]').value='brass-kettle-orchard-7';
+# As a phone does after scanning "Open my work on my phone": the sign-in
+# page with the username filled in; after signing in, the work is saved
+# on the device by itself.
+m.cmd("WebDriver:DeleteAllCookies")
+m.go(base + "/login?user=tess&next=%2F%3Ftake%3D1")
+assert m.js("return document.querySelector('[name=username]').value") == "tess", "username not filled in"
+m.js("""document.querySelector('[name=password]').value='brass-kettle-orchard-7';
 document.querySelector('form[action="/login"]').requestSubmit();""")
 m.wait("return location.pathname === '/' && document.readyState === 'complete'")
-step("signed in as tess")
-m.ajs("const cb = arguments[arguments.length-1]; navigator.serviceWorker.ready.then(() => cb(true));")
-m.go(base + "/")
+step("signed in as tess from the phone link")
+note = m.wait("const n = document.getElementById('field-note'); return n && /^Saved [0-9]+ page/.test(n.textContent) && n.textContent", 30)
+step("took work by itself: " + note)
+assert m.js("return location.search") == "", "take=1 left in the address"
 m.wait("return !!navigator.serviceWorker.controller")
-step("service worker controls the page")
-m.wait("const b = document.getElementById('field-take'); return b && !b.hidden")
-m.js("document.getElementById('field-take').click()")
-note = m.wait("const n = document.getElementById('field-note'); return n && /^Saved \\d+ page/.test(n.textContent) && n.textContent")
-step("took work: " + note)
 wo = m.js("const a = [...document.querySelectorAll('a.job')].find(a => a.textContent.includes('Yearly inspection')); return a && a.getAttribute('href')")
 assert wo, "no Yearly inspection job"
 

@@ -354,3 +354,6 @@ div.pick form { margin: .3rem 0 0; }
 .field-bar p { margin: 0 0 .4rem; }
 .field-bar p:last-child { margin: 0; }
 form.field-kept { outline: 3px dashed var(--accent); outline-offset: 4px; }
+ol.phone-steps { text-align: left; margin: 0; padding-left: 1.4rem; }
+ol.phone-steps li { margin: .3rem 0; }
+.qr-pop .hint { word-break: break-all; }

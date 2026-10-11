@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io/fs"
 	"net/http"
+	"net/url"
 
 	"pi-fleet/internal/domain"
 )
@@ -82,4 +83,23 @@ func (s *Server) fieldManifest(w http.ResponseWriter, r *http.Request, sess *ses
 	}
 	w.Header().Set("Content-Type", "application/json")
 	return json.NewEncoder(w).Encode(m)
+}
+
+// phoneURL opens someone's work on their phone: the sign-in page with
+// their username filled in, then My work, which saves the work on the
+// phone. It carries no password or sign-in token: whoever scans it still
+// signs in as themselves.
+func phoneURL(base, username string) string {
+	return base + "/login?user=" + url.QueryEscape(username) + "&next=" + url.QueryEscape("/?take=1")
+}
+
+// phoneQR is the QR code of phoneURL, for the person signed in.
+func (s *Server) phoneQR(w http.ResponseWriter, r *http.Request, sess *session) error {
+	img, err := qrPNG(phoneURL(s.reportBase(r), sess.User.Username), 10)
+	if err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "image/png")
+	_, err = w.Write(img)
+	return err
 }

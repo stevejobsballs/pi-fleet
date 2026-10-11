@@ -36,7 +36,10 @@ func (s *Server) loginPage(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, nextPage(r), http.StatusSeeOther)
 		return
 	}
-	if err := s.render(w, r, nil, "login", "Sign in", loginData{Next: r.URL.Query().Get("next")}); err != nil {
+	// A phone that scanned someone's "open my work" code: their username,
+	// filled in.
+	d := loginData{Next: r.URL.Query().Get("next"), Username: strings.TrimSpace(r.URL.Query().Get("user"))}
+	if err := s.render(w, r, nil, "login", "Sign in", d); err != nil {
 		s.fail(w, r, err)
 	}
 }
@@ -124,6 +127,9 @@ type dashboardData struct {
 	Locations  int // proposed locations waiting for a super user
 	Requests   int // reported problems waiting (master Pi)
 	Proposals  int // checklists waiting for approval (mid-tier and super users)
+	// The address a phone scans to open this person's work (master Pi).
+	PhoneURL  string
+	PhoneWarn bool // phones may not open it
 }
 
 func (s *Server) dashboard(w http.ResponseWriter, r *http.Request, sess *session) error {
@@ -151,6 +157,10 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request, sess *session
 		q.QueryRowContext(ctx, `SELECT count(*) FROM procedure_proposals WHERE status = 'pending'`).Scan(&d.Proposals)
 	}
 	q.QueryRowContext(ctx, `SELECT count(*) FROM event_flags f WHERE NOT EXISTS (SELECT 1 FROM flag_resolutions r WHERE r.event_id = f.event_id)`).Scan(&d.Flags)
+	if s.Role == "central" {
+		base := s.reportBase(r)
+		d.PhoneURL, d.PhoneWarn = phoneURL(base, sess.User.Username), phonesMayFail(base)
+	}
 	return s.render(w, r, sess, "dashboard", "My work", d)
 }
 

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -54,6 +55,24 @@ func TestFieldMode(t *testing.T) {
 		!strings.Contains(page, `id="field-take" class="secondary" hidden>Take my work with me</button>`) {
 		t.Fatalf("My work:\n%s", page)
 	}
+	// The code a phone scans: sign-in with the username filled in, then My
+	// work, which saves the work on the phone. No password or token in it.
+	open := phoneURL("https://pifleet.hospital.org", "tess")
+	if open != "https://pifleet.hospital.org/login?user=tess&next=%2F%3Ftake%3D1" || !strings.Contains(page, `popovertarget="phone-qr">Open my work on my phone</button>`) {
+		t.Fatalf("phone link %q, page:\n%s", open, page)
+	}
+	if code, _, png := tess.get("/field/phone.png"); code != 200 || !strings.HasPrefix(png, "\x89PNG") {
+		t.Fatalf("phone QR: %d", code)
+	}
+	phone := e.browser()
+	if _, _, signin := phone.get("/login?user=tess&next=%2F%3Ftake%3D1"); !strings.Contains(signin, `name="username" value="tess" autocomplete="username" required>`) ||
+		!strings.Contains(signin, `autocomplete="current-password" required autofocus>`) || !strings.Contains(signin, `name="next" value="/?take=1"`) {
+		t.Fatalf("phone sign-in:\n%s", signin)
+	}
+	phone.get("/login?user=tess&next=%2F%3Ftake%3D1")
+	if code, loc := phonePost(phone, "tess"); code != http.StatusSeeOther || loc != "/?take=1" {
+		t.Fatalf("after signing in on the phone: %d %s", code, loc)
+	}
 	_, _, js := tess.get("/field/manifest")
 	var m fieldManifest
 	if err := json.Unmarshal([]byte(js), &m); err != nil {
@@ -63,4 +82,15 @@ func TestFieldMode(t *testing.T) {
 	if strings.Join(m.Pages, " ") != strings.Join(want, " ") || strings.Contains(js, other) || !strings.Contains(js, "/static/fonts/") {
 		t.Fatalf("manifest: %+v", m)
 	}
+}
+
+// phonePost signs in on the phone's sign-in page, returning where it goes.
+func phonePost(b *browser, username string) (int, string) {
+	b.e.t.Helper()
+	resp, err := b.c.PostForm(b.e.srv.URL+"/login", url.Values{"username": {username}, "password": {"brass-kettle-orchard-7"}, "next": {"/?take=1"}})
+	if err != nil {
+		b.e.t.Fatal(err)
+	}
+	resp.Body.Close()
+	return resp.StatusCode, resp.Header.Get("Location")
 }

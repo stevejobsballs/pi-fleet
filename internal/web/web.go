@@ -245,6 +245,7 @@ func (s *Server) Handler() (http.Handler, error) {
 		mux.HandleFunc("GET /sw.js", s.serviceWorker)
 		mux.HandleFunc("GET /field/ping", s.fieldPing)
 		mux.Handle("GET /field/manifest", user(s.fieldManifest))
+		mux.Handle("GET /field/phone.png", user(s.phoneQR))
 		// Reporting a problem from an equipment QR label: no sign-in.
 		mux.HandleFunc("GET /r/{code}", s.reportPage)
 		mux.HandleFunc("POST /r/{code}", s.reportSubmit)

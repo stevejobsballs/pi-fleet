@@ -71,6 +71,12 @@
           `Saved ${r.saved} page${r.saved === 1 ? "" : "s"} at ${r.at}. They open on this device without a network; what you save there is sent when you're back.`);
       });
     }
+    // Opened from the "open my work on my phone" code: save the work here.
+    if (take && new URLSearchParams(location.search).get("take") === "1") {
+      history.replaceState(null, "", location.pathname);
+      await navigator.serviceWorker.ready;
+      take.click();
+    }
     const st = await ask({ type: "status", user, page: location.pathname });
     for (const item of st.forPage || []) refill(item);
     if (new URLSearchParams(location.search).get("saved") === "offline") {
