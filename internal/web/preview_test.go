@@ -103,6 +103,7 @@ func snapshotPages(t *testing.T, e *env, dir string) {
 	e.app.Store.DB().QueryRow(`SELECT id FROM work_orders WHERE title = 'Yearly inspection'`).Scan(&wo)
 	e.app.Store.DB().QueryRow(`SELECT id FROM procedures WHERE name = 'Energy calibration'`).Scan(&cal)
 	saveAs(tess, "calibration-checklist", "/work-orders/"+wo+"/checklists/"+cal)
+	saveAs(tess, "work-order-in-progress", "/work-orders/"+wo)
 	saveAs(b, "calibration-builder", "/procedures/new?from="+cal)
 	// The sign-in page, signed out.
 	out := e.browser()

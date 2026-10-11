@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -633,6 +634,12 @@ type woData struct {
 	Labor            []domain.LaborEntry
 	LaborTotal       int
 	Today            string
+	// The test equipment used, and (for the person doing the work) the
+	// test equipment that can be added.
+	TestEquipment []domain.TestEquipmentUse
+	TestChoices   []standardChoice
+	// EditWork: the person doing the work, while it is in progress.
+	EditWork bool
 	// CalPoints: its checklists have calibration points, so the
 	// calibration readings are recorded there, not on a separate form.
 	CalPoints bool
@@ -689,6 +696,20 @@ func (s *Server) loadWorkOrder(r *http.Request, sess *session, id string) (woDat
 	for _, c := range d.Checklists {
 		for _, st := range c.Steps {
 			d.CalPoints = d.CalPoints || st.Kind == domain.StepCalibration
+		}
+	}
+	if d.TestEquipment, err = domain.WorkOrderTestEquipmentUsed(ctx, q, wo.ID); err != nil {
+		return d, err
+	}
+	if d.EditWork = d.Holder && wo.Status == domain.WOInProgress; d.EditWork {
+		all, err := standardChoices(ctx, q, wo.AssetID, today(s.now()))
+		if err != nil {
+			return d, err
+		}
+		for _, c := range all {
+			if !slices.ContainsFunc(d.TestEquipment, func(u domain.TestEquipmentUse) bool { return u.AssetID == c.ID }) {
+				d.TestChoices = append(d.TestChoices, c)
+			}
 		}
 	}
 	d.Today = today(s.now())

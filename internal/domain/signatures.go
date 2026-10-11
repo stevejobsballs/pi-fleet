@@ -157,6 +157,18 @@ func WorkOrderContentHash(ctx context.Context, q Querier, woID string) (string, 
 	if len(more) > 0 {
 		content["more_checklists"] = toAny(more)
 	}
+	// The work done and test equipment used (only when there are any, so
+	// earlier work orders' content is as it always was).
+	if w.WorkDone != "" {
+		content["work_done"] = w.WorkDone
+	}
+	tools, err := queryStrings(ctx, q, `SELECT asset_id || char(31) || due_at_time_of_use FROM wo_test_equipment WHERE wo_id = ? ORDER BY asset_id`, woID)
+	if err != nil {
+		return "", err
+	}
+	if len(tools) > 0 {
+		content["test_equipment"] = toAny(tools)
+	}
 	b, err := canon.Marshal(content)
 	if err != nil {
 		return "", err

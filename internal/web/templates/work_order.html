@@ -1,6 +1,7 @@
 {{define "content"}}
 {{$d := .Data}}{{$w := .Data.WO}}
-<dl class="facts">
+<nav class="wo-tabs" aria-label="Parts of this work order"><a href="#details">Details</a><a href="#checklist">Checklists</a><a href="#work-done">Work done</a><a href="#test-equipment">Test equipment</a><a href="#labour">Time</a><a href="#files">Files</a><a href="#signatures">Signatures</a></nav>
+<dl class="facts" id="details">
   <dt>Equipment</dt><dd><a href="/assets/{{$d.Asset.ID}}">{{$d.Asset.Tag}}</a> · {{$d.Asset.Manufacturer}} {{$d.Asset.Model}} · serial {{$d.Asset.Serial}}</dd>
   <dt>Type</dt><dd>{{$w.Type}}</dd>
   <dt>Status</dt><dd><strong>{{label $w.Status}}</strong></dd>
@@ -40,7 +41,7 @@
 </section>
 
 {{if or (and (eq $w.Type "calibration") (not $d.CalPoints)) $d.Calibrations}}
-<section>
+<section id="calibration">
   <h2>Calibration</h2>
   {{range $d.Calibrations}}{{template "calrecord" (dict2 . $.CSRF)}}{{end}}
   {{if and $d.Holder (eq $w.Status "in_progress") (eq $w.Type "calibration") (not $d.CalPoints)}}
@@ -84,6 +85,32 @@
   {{else}}<p>No checklist yet.{{if $d.ChangeChecklists}} Add one above: those made for this equipment are listed first.{{end}}</p>{{end}}
 </section>
 
+<section id="work-done">
+  <h2>Work done</h2>
+  {{if $d.EditWork}}<form autocomplete="off" method="post" action="/work-orders/{{$w.ID}}/work-done" class="narrow work-done">{{template "csrf" .CSRF}}
+    <label>Describe all the work done <textarea name="work_done" rows="6" maxlength="8000" placeholder="e.g. replaced the occlusion sensor, recalibrated the flow, ran it for 30 minutes with no alarms">{{$w.WorkDone}}</textarea></label>
+    {{template "nophi"}}
+    <button>Save the work done</button></form>
+  {{else if $w.WorkDone}}<p class="pre work-done-text">{{$w.WorkDone}}</p>
+  {{else}}<p>Not described yet.{{if and $d.Holder (or (eq $w.Status "assigned") (eq $w.Status "open"))}} Start the work to describe it.{{end}}</p>{{end}}
+</section>
+
+<section id="test-equipment">
+  <h2>Test equipment used{{with $d.TestEquipment}} <span class="count">{{len .}}</span>{{end}}</h2>
+  <p class="hint">The inventoried test equipment used to verify readings, with when each was due for calibration.</p>
+  {{if $d.TestEquipment}}<ul class="cards">{{range $d.TestEquipment}}
+    <li><div class="pick"><span class="pick-name"><a href="/assets/{{.AssetID}}">{{.Tag}}</a></span><span>{{.Equipment}}{{with .Serial}} · serial {{.}}{{end}}</span>
+      <span class="{{if .Overdue}}fail{{else}}hint{{end}}">{{if .Due}}{{if .Overdue}}calibration was overdue (due {{.Due}}){{else}}calibration due {{.Due}}{{end}}{{else}}no calibration schedule{{end}}</span>
+      {{if $d.EditWork}}<form autocomplete="off" method="post" action="/work-orders/{{$w.ID}}/test-equipment/remove">{{template "csrf" $.CSRF}}<input type="hidden" name="asset" value="{{.AssetID}}"><button class="link">Take it off the list</button></form>{{end}}</div></li>{{end}}
+  </ul>{{else}}<p>None listed.</p>{{end}}
+  {{if $d.EditWork}}
+  {{if $d.TestChoices}}<form autocomplete="off" method="post" action="/work-orders/{{$w.ID}}/test-equipment" class="inline">{{template "csrf" .CSRF}}
+    <label>Test equipment <select name="asset" required><option value="" selected disabled>Choose what you used</option>{{range $d.TestChoices}}<option value="{{.ID}}">{{.Tag}} · {{.Equipment}} · {{if .Due}}{{if .Overdue}}OVERDUE since{{else}}due{{end}} {{.Due}}{{else}}no calibration schedule{{end}}</option>{{end}}</select></label>
+    <button>Add</button></form>{{end}}
+  <p><a class="button secondary" href="/work-orders/{{$w.ID}}/test-equipment/new">Not in the list? Add new test equipment</a></p>
+  {{end}}
+</section>
+
 <section id="labour">
   <h2>Labour <small>({{hhmm $d.LaborTotal}} total)</small></h2>
   {{if $d.Labor}}<table><thead><tr><th>Date</th><th>Who</th><th>Time</th><th>Note</th><th></th></tr></thead><tbody>
@@ -97,12 +124,12 @@
     <label>Note <input name="note"></label><button>Log my time</button></form>{{end}}
 </section>
 
-<section>
+<section id="files">
   <h2>Files</h2>
   {{template "attachments" (files $d.Attachments .CSRF $d.CanAttach .IsMid (printf "/work-orders/%s/attachments" $w.ID))}}
 </section>
 
-<section>
+<section id="signatures">
   <h2>Signatures</h2>
   {{if $d.Signatures}}
   <ul class="sigs">{{range $d.Signatures}}

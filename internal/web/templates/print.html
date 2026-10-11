@@ -27,6 +27,10 @@ As found: <strong>{{.AsFound}}</strong> · As left: <strong>{{.AsLeft}}</strong>
 <table><thead><tr><th>Step</th><th>Result</th><th>Recorded</th><th>Note</th></tr></thead><tbody>
 {{range .Steps}}{{if eq .Kind "heading"}}<tr><th colspan="9">{{.Text}}</th></tr>{{else if eq .Kind "info"}}{{else}}<tr><td>{{.Text}}{{if .Required}} (required){{end}}{{if .Critical}} (critical){{end}}</td><td>{{if not .Applies}}not needed{{else if .Recorded}}{{.Summary}} {{if eq .Kind "number"}}{{.Unit}}{{end}}{{if .Measured}} (measured {{.Measured}}{{if .Unit}} {{.Unit}}{{end}}){{end}}{{if eq .Kind "calibration"}}{{else if eq .Outcome "pass"}} pass{{else if eq .Outcome "fail"}} FAIL{{end}}{{else}}not recorded{{end}}</td>
   <td>{{if .Recorded}}{{.RecordedBy}} {{when .RecordedAt}}{{end}}</td><td>{{.Note}}</td></tr>{{end}}{{end}}</tbody></table>{{end}}
+<h2>Work done</h2>
+{{if .WO.WorkDone}}<p class="pre">{{.WO.WorkDone}}</p>{{else}}<p>Not described.</p>{{end}}
+<h2>Test equipment used</h2>
+{{range .TestEquipment}}<p>{{.Tag}} · {{.Equipment}}{{with .Serial}} · serial {{.}}{{end}} · {{if .Due}}calibration due {{.Due}}{{if .Overdue}} (OVERDUE when used){{end}}{{else}}no calibration schedule{{end}}</p>{{else}}<p>None listed.</p>{{end}}
 <h2>Labour ({{hhmm .LaborTotal}} total)</h2>
 {{range .Labor}}<p>{{.Date}} · {{.User}} · {{hhmm .Minutes}}{{if .Note}} · {{.Note}}{{end}}{{if eq .Status "reversed"}} · reversed: {{.ReverseReason}}{{end}}</p>{{else}}<p>None.</p>{{end}}
 <h2>Files</h2>

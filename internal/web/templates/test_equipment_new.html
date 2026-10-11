@@ -1,0 +1,12 @@
+{{define "content"}}{{$d := .Data}}{{$f := $d.F}}
+<p>For work order <strong>{{$d.WO.Number}}</strong>: {{$d.WO.Title}}. The test equipment is registered as a reference standard, added to this work order, and you go straight back to it.</p>
+<form autocomplete="off" method="post" action="/work-orders/{{$d.WO.ID}}/test-equipment/new" class="narrow">{{template "csrf" .CSRF}}
+  {{with $d.Error}}<p class="error" role="alert">{{.}}</p>{{end}}
+  <label>Asset tag (as on its label) <input name="tag" value="{{$f.Get "tag"}}" required></label>
+  <label>Manufacturer <input name="manufacturer" value="{{$f.Get "manufacturer"}}" required placeholder="e.g. Fluke"></label>
+  <label>Model <input name="model" value="{{$f.Get "model"}}" required placeholder="e.g. ESA615"></label>
+  <label>Serial number <input name="serial" value="{{$f.Get "serial"}}"></label>
+  <label>Where it is kept <select name="location" required>{{range $d.Locations}}<option value="{{.ID}}"{{if eq .ID ($f.Get "location")}} selected{{end}}>{{.Label}}</option>{{end}}</select></label>
+  <p class="buttons"><button>Add it and go back to the work order</button><a href="/work-orders/{{$d.WO.ID}}#test-equipment">Cancel</a></p>
+</form>
+{{end}}

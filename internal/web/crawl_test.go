@@ -162,6 +162,8 @@ func (e *env) seedEverything() {
 	must(e.app.AddChecklist(e.ctx, tessAct, richWO, calProc))
 	must(e.app.RecordAnswer(e.ctx, tessAct, richWO, calProc, "stds", `["`+analyser+`"]`, "", "", ""))
 	must(e.app.RecordAnswer(e.ctx, tessAct, richWO, calProc, "e50", "61", "", "", "52"))
+	must(e.app.RecordWorkDone(e.ctx, tessAct, richWO, "Replaced the pads (expired). Adjusted the 50 J output, which was delivering 61 J."))
+	must(e.app.AddTestEquipment(e.ctx, tessAct, richWO, analyser))
 	// The sample portable X-ray checklist, for a GE AMX 4+, in progress.
 	file, err := os.ReadFile("../../deploy/sample-checklists/portable-x-ray.checklist.json")
 	must(err)

@@ -310,7 +310,7 @@ h2 .count::before { content: "("; } h2 .count::after { content: ")"; }
 /* Cards: a job, or equipment to choose. The whole card is the link, so
    it is an easy target for a finger. */
 ul.cards { list-style: none; padding: 0; margin: .5rem 0 1rem; display: grid; gap: .75rem; grid-template-columns: repeat(auto-fill, minmax(min(100%, 21rem), 1fr)); }
-a.job, a.pick { display: grid; gap: .15rem; height: 100%; padding: .75rem 1rem; color: var(--fg); text-decoration: none; background: var(--panel);
+a.job, a.pick, div.pick { display: grid; gap: .15rem; height: 100%; padding: .75rem 1rem; color: var(--fg); text-decoration: none; background: var(--panel);
   border: 1px solid var(--line-strong); border-left: 6px solid var(--line-strong); border-radius: var(--radius); }
 a.job:hover, a.pick:hover { background: var(--tint); color: var(--fg); }
 a.job.prio-urgent { background: var(--stat-bg); border-left-color: var(--stat-edge); }
@@ -341,3 +341,11 @@ section.now a.job { background: var(--bg); }
 }
 /* What a search result opened, on a page of many: outlined. */
 tr:target, section:target, li:target, fieldset:target { outline: 3px solid var(--accent); outline-offset: 2px; }
+/* A work order's parts, as tabs that jump to each. */
+nav.wo-tabs { display: flex; flex-wrap: wrap; gap: .4rem; margin: 0 0 1rem; }
+nav.wo-tabs a { padding: .35rem .8rem; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--panel); color: var(--fg); text-decoration: none; font-weight: 700; font-size: 14px; }
+nav.wo-tabs a:hover { background: var(--tint); }
+section:target > h2 { color: var(--accent); }
+form.work-done textarea { width: 100%; }
+.work-done-text { padding: .75rem 1rem; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
+div.pick form { margin: .3rem 0 0; }

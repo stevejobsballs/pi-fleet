@@ -26,8 +26,10 @@ import (
 // checklists (checklist_results.as_left and found_pass, the
 // checklist_standards table, and the as_left payload field); v0.15.0
 // offering sitecert.SyncALPN, so a master showing browsers the hospital's
-// certificate still gives the Pi pi-fleet's own.
-const MinNodeVersion = "v0.15.0"
+// certificate still gives the Pi pi-fleet's own; v0.16.0 work orders'
+// work done (work_orders.work_done) and test equipment used
+// (wo_test_equipment).
+const MinNodeVersion = "v0.16.0"
 
 const (
 	// On the master Pi: a newer version a super user requires, and when.

@@ -382,6 +382,7 @@ erDiagram
 | `work_order` | C to create/assign, **L** to perform | id, number, type (`pm`, `corrective`, `calibration`, `inspection`, `install`, `retire`), asset_id, priority, status, problem, findings, resolution, due_at, assigned_to | §4.5 |
 | `wo_lease` | C | wo_id, node_id, user_id, granted_at, ended_at, end_reason | One active lease per WO (§5.4) |
 | `checklist_standards` | A (under lease) | wo_id, checklist, step, standard asset id, due date at time of use | Recorded by a **reference standards** step. Overdue or untracked standards are flagged (or refused, by policy) as for calibration records. |
+| `wo_test_equipment` | A (under lease) | wo_id, asset id (an in-service reference standard), due date at time of use, added by/at | The test equipment used on a work order to verify readings; checked and flagged like reference standards. A work order also records the **work done** (free text). Both are part of the signed content. |
 | `checklist_result` | A (under lease) | wo_id, step_id, value, pass/fail (exact decimals), note, recorded_by | Latest result per step; re-recording keeps earlier values in the audit trail. Recorded only while in progress. Completion needs every required step. Results are part of the signature content hash. |
 | `calibration_record` | A (under lease) | wo_id, asset_id, procedure_version_id, environmental conditions, as_found / as_left result, adjusted, overall pass/fail, standards_used[] (asset id, its cal record id, due date at time of use), certificate attachment | Using an out-of-date standard → warning/block per policy. **Central recomputes pass/fail.** |
 | `cal_point` | A | parameter, unit, nominal, tolerance (abs / % / limits), as_found, as_left, uncertainty?, pass/fail (computed and stored) | |
@@ -403,6 +404,7 @@ history.
 - `asset.registered`, `asset.updated`, `asset.relocated`,
   `asset.status_changed`, `asset.retired`, `asset.merged`
 - Checklist steps include two **calibration modules**, usable in any checklist (a repair's or a PM's): a **calibration point** (unit, nominal, tolerance: ± value, ± %, or limits; the technician records as found and, if adjusted, as left, and central recomputes both results exactly) and **reference standards used**. A calibration work order completes on its checklists' calibration points as well as on a calibration record.
+- `workorder.work_done_recorded`, `workorder.test_equipment_added`, `workorder.test_equipment_removed`
 - `workorder.opened`, `workorder.assigned`, `workorder.claimed`,
   `workorder.lease_granted`,
   `workorder.lease_ended`, `workorder.status_changed`,
