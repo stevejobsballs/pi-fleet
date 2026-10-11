@@ -158,6 +158,12 @@ func (e *env) seedEverything() {
 		{"kv80", "81.3", "Analyser RTI Piranha 657, calibration due 2027-03"}, {"kv60", "64.1", "high on three exposures"}} {
 		must(e.app.RecordStep(e.ctx, tessAct, xrayWO, a[0], a[1], a[2]))
 	}
+	// A custom checklist configured from the X-ray template, for the ICU's units.
+	icu := append([]domain.Step{}, sample.Steps...)
+	icu = append(icu, domain.Step{ID: "icubay", Text: "ICU bays: unit parks clear of the ventilator and monitor cables", Kind: domain.StepCheck, Required: true})
+	_, _, err = e.app.PublishChecklist(e.ctx, mid, domain.ProcedurePublished{Name: "Portable X-ray PM: ICU units", Custom: true, Template: xrayProc,
+		Category: sample.Category, Reference: sample.Reference, AppliesTo: []domain.EquipmentMatch{{Manufacturer: "GE", Model: "AMX 4+"}}, Steps: icu})
+	must(err)
 	// A checklist tess built, waiting for approval.
 	_, err = e.app.ProposeChecklist(e.ctx, tessAct, domain.ProcedurePublished{Name: "Bed scale check", Category: "Performance check",
 		Steps: []domain.Step{{ID: "s1", Text: "Reads 0.0 kg empty", Kind: domain.StepCheck, Required: true},

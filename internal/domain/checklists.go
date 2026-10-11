@@ -98,7 +98,11 @@ type ProcedurePublished struct {
 	Category    string `json:"category,omitempty"`
 	// AppliesTo is the equipment it is for; empty, any equipment.
 	AppliesTo []EquipmentMatch `json:"applies_to,omitempty"`
-	Steps     []Step           `json:"steps"`
+	// Custom: a checklist configured for particular use, often from a
+	// generic template (Template); otherwise it is a generic template.
+	Custom   bool   `json:"custom,omitempty"`
+	Template string `json:"template,omitempty"`
+	Steps    []Step `json:"steps"`
 }
 
 // EquipmentMatch names equipment a checklist is for: a manufacturer's
@@ -297,6 +301,9 @@ func (ap *applier) procedurePublished(p *ProcedurePublished) error {
 	if err := validateChecklist(*p); err != nil {
 		return err
 	}
+	if err := ap.checkKind(*p); err != nil {
+		return err
+	}
 	var latest int
 	if err := ap.tx.QueryRowContext(ap.ctx, `SELECT coalesce(max(version), 0) FROM procedures WHERE name = ?`, p.Name).Scan(&latest); err != nil {
 		return err
@@ -306,9 +313,34 @@ func (ap *applier) procedurePublished(p *ProcedurePublished) error {
 	}
 	steps, _ := json.Marshal(p.Steps)
 	applies, _ := json.Marshal(nonNilMatches(p.AppliesTo))
-	return ap.exec(`INSERT INTO procedures (id, name, version, steps, status, published_by, published_at, last_event_id, description, reference, category, applies_to)
-		VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?)`, ap.e.EntityID, p.Name, p.Version, string(steps), ap.actor.id, ap.wall(), ap.e.EventID,
-		p.Description, p.Reference, p.Category, string(applies))
+	return ap.exec(`INSERT INTO procedures (id, name, version, steps, status, published_by, published_at, last_event_id, description, reference, category, applies_to,
+			custom, template_id)
+		VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?)`, ap.e.EntityID, p.Name, p.Version, string(steps), ap.actor.id, ap.wall(), ap.e.EventID,
+		p.Description, p.Reference, p.Category, string(applies), p.Custom, p.Template)
+}
+
+// checkKind keeps a name's versions all generic templates or all custom
+// checklists, and a custom checklist's template a real template.
+func (ap *applier) checkKind(p ProcedurePublished) error {
+	var custom sql.NullBool
+	if err := ap.tx.QueryRowContext(ap.ctx, `SELECT max(custom) FROM procedures WHERE name = ?`, p.Name).Scan(&custom); err != nil {
+		return err
+	}
+	if custom.Valid && custom.Bool != p.Custom {
+		if custom.Bool {
+			return invalid("a custom checklist is already called %q: a generic template needs its own name", p.Name)
+		}
+		return invalid("a generic template is already called %q: give the custom checklist its own name", p.Name)
+	}
+	if !p.Custom && p.Template != "" {
+		return invalid("only custom checklists come from a template")
+	}
+	if p.Template != "" {
+		if ok, err := ap.exists(`SELECT 1 FROM procedures WHERE id = ? AND custom = 0`, p.Template); err != nil || !ok {
+			return orInvalid(err, "generic template %s not found", p.Template)
+		}
+	}
+	return nil
 }
 
 func (ap *applier) procedureRetired(p *ProcedureRetired) error {
@@ -354,6 +386,8 @@ func (ap *applier) workOrderProcedureSet(p *WorkOrderProcedureSet) error {
 // Procedure is a projected checklist version.
 type Procedure struct {
 	ID, Name, Status                 string
+	Custom                           bool   // a custom checklist; otherwise a generic template
+	Template                         string // the template a custom checklist came from
 	Description, Reference, Category string
 	Version                          int
 	AppliesTo                        []EquipmentMatch
@@ -372,8 +406,9 @@ func nonNilMatches(m []EquipmentMatch) []EquipmentMatch {
 func GetProcedure(ctx context.Context, q Querier, id string) (Procedure, error) {
 	var p Procedure
 	var steps, at, applies string
-	err := q.QueryRowContext(ctx, `SELECT id, name, version, steps, status, published_at, description, reference, category, applies_to FROM procedures WHERE id = ?`, id).
-		Scan(&p.ID, &p.Name, &p.Version, &steps, &p.Status, &at, &p.Description, &p.Reference, &p.Category, &applies)
+	err := q.QueryRowContext(ctx, `SELECT id, name, version, steps, status, published_at, description, reference, category, applies_to, custom, template_id
+		FROM procedures WHERE id = ?`, id).
+		Scan(&p.ID, &p.Name, &p.Version, &steps, &p.Status, &at, &p.Description, &p.Reference, &p.Category, &applies, &p.Custom, &p.Template)
 	if errors.Is(err, sql.ErrNoRows) {
 		return p, ErrNotFound
 	}
@@ -917,6 +952,7 @@ func Checklist(ctx context.Context, q Querier, w WorkOrder) (*Procedure, []StepR
 // (for other equipment).
 type ChecklistMatch struct {
 	ID, Name, Category, Reference string
+	Custom                        bool
 	Version                       int
 	AppliesTo                     []EquipmentMatch
 	Fit                           string
@@ -926,7 +962,7 @@ type ChecklistMatch struct {
 // those for this manufacturer and model first, then the manufacturer's,
 // then those for any equipment, then the rest.
 func ChecklistsFor(ctx context.Context, q Querier, manufacturer, model string) ([]ChecklistMatch, error) {
-	rows, err := q.QueryContext(ctx, `SELECT id, name, category, reference, version, applies_to FROM procedures p
+	rows, err := q.QueryContext(ctx, `SELECT id, name, category, reference, version, applies_to, custom FROM procedures p
 		WHERE status = 'active' AND version = (SELECT max(version) FROM procedures x WHERE x.name = p.name AND x.status = 'active')
 		ORDER BY name`)
 	if err != nil {
@@ -937,7 +973,7 @@ func ChecklistsFor(ctx context.Context, q Querier, manufacturer, model string) (
 	for rows.Next() {
 		var c ChecklistMatch
 		var applies string
-		if err := rows.Scan(&c.ID, &c.Name, &c.Category, &c.Reference, &c.Version, &applies); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.Category, &c.Reference, &c.Version, &applies, &c.Custom); err != nil {
 			return nil, err
 		}
 		json.Unmarshal([]byte(applies), &c.AppliesTo)

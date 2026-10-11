@@ -76,12 +76,15 @@ func (ap *applier) procedureProposed(p *ProcedureProposed) error {
 	if err := validateChecklist(p.ProcedurePublished); err != nil {
 		return err
 	}
+	if err := ap.checkKind(p.ProcedurePublished); err != nil {
+		return err
+	}
 	steps, _ := json.Marshal(p.Steps)
 	applies, _ := json.Marshal(nonNilMatches(p.AppliesTo))
 	return ap.exec(`INSERT INTO procedure_proposals (id, name, description, reference, category, applies_to, steps, based_on,
-			proposed_by, proposed_at, status, last_event_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			proposed_by, proposed_at, status, last_event_id, custom, template_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		ap.e.EntityID, p.Name, p.Description, p.Reference, p.Category, string(applies), string(steps), p.BasedOn,
-		ap.actor.id, ap.wall(), ProposalPending, ap.e.EventID)
+		ap.actor.id, ap.wall(), ProposalPending, ap.e.EventID, p.Custom, p.Template)
 }
 
 func (ap *applier) procedureProposalReviewed(p *ProcedureProposalReviewed) error {
@@ -113,11 +116,15 @@ func (ap *applier) procedureProposalReviewed(p *ProcedureProposalReviewed) error
 	if err := ap.tx.QueryRowContext(ap.ctx, `SELECT coalesce(max(version), 0) FROM procedures WHERE name = ?`, pr.Name).Scan(&latest); err != nil {
 		return err
 	}
+	if err := ap.checkKind(pr.ProcedurePublished); err != nil {
+		return err
+	}
 	steps, _ := json.Marshal(pr.Steps)
 	applies, _ := json.Marshal(nonNilMatches(pr.AppliesTo))
-	if err := ap.exec(`INSERT INTO procedures (id, name, version, steps, status, published_by, published_at, last_event_id, description, reference, category, applies_to)
-		VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?)`, p.PublishedID, pr.Name, latest+1, string(steps), ap.actor.id, ap.wall(), ap.e.EventID,
-		pr.Description, pr.Reference, pr.Category, string(applies)); err != nil {
+	if err := ap.exec(`INSERT INTO procedures (id, name, version, steps, status, published_by, published_at, last_event_id, description, reference, category, applies_to,
+			custom, template_id)
+		VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?)`, p.PublishedID, pr.Name, latest+1, string(steps), ap.actor.id, ap.wall(), ap.e.EventID,
+		pr.Description, pr.Reference, pr.Category, string(applies), pr.Custom, pr.Template); err != nil {
 		return err
 	}
 	return ap.exec(`UPDATE procedure_proposals SET status = ?, reviewed_by = ?, review_note = ?, published_id = ?, last_event_id = ? WHERE id = ?`,
@@ -132,14 +139,14 @@ type Proposal struct {
 	ProposedAt                                   time.Time
 }
 
-const proposalColumns = `p.id, p.name, p.description, p.reference, p.category, p.applies_to, p.steps, p.based_on, p.status, p.review_note,
+const proposalColumns = `p.id, p.name, p.description, p.reference, p.category, p.custom, p.template_id, p.applies_to, p.steps, p.based_on, p.status, p.review_note,
 	p.published_id, p.proposed_by, coalesce((SELECT legal_name FROM users WHERE id = p.proposed_by), p.proposed_by),
 	coalesce((SELECT legal_name FROM users WHERE id = p.reviewed_by), p.reviewed_by), p.proposed_at FROM procedure_proposals p`
 
 func scanProposal(r interface{ Scan(...any) error }) (Proposal, error) {
 	var p Proposal
 	var applies, steps, at string
-	err := r.Scan(&p.ID, &p.Name, &p.Description, &p.Reference, &p.Category, &applies, &steps, &p.BasedOn, &p.Status, &p.ReviewNote,
+	err := r.Scan(&p.ID, &p.Name, &p.Description, &p.Reference, &p.Category, &p.Custom, &p.Template, &applies, &steps, &p.BasedOn, &p.Status, &p.ReviewNote,
 		&p.PublishedID, &p.ProposedByID, &p.ProposedBy, &p.ReviewedBy, &at)
 	json.Unmarshal([]byte(applies), &p.AppliesTo)
 	json.Unmarshal([]byte(steps), &p.Steps)

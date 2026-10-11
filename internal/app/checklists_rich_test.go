@@ -307,3 +307,43 @@ func TestChecklistsByUsersNeedApproval(t *testing.T) {
 		t.Fatalf("version 2 after rebuild: %+v", p)
 	}
 }
+
+func TestGenericTemplatesAndCustomChecklists(t *testing.T) {
+	e := newEnv(t)
+	mid, tech := e.activeUser("mona", domain.RoleMidTier), e.activeUser("tess", domain.RoleUser)
+	steps := []domain.Step{{ID: "s1", Text: "Collimator light works", Kind: domain.StepCheck, Required: true}}
+	tpl, _, err := e.app.PublishChecklist(e.ctx, mid, domain.ProcedurePublished{Name: "Portable X-ray PM", Steps: steps})
+	e.must(err)
+	if p, _ := domain.GetProcedure(e.ctx, e.st.DB(), tpl); p.Custom {
+		t.Fatal("a checklist is a generic template unless made custom")
+	}
+	// A custom checklist from the template needs its own name.
+	_, _, err = e.app.PublishChecklist(e.ctx, mid, domain.ProcedurePublished{Name: "Portable X-ray PM", Custom: true, Template: tpl, Steps: steps})
+	wantRejection(t, err, domain.FlagInvalid)
+	custom, _, err := e.app.PublishChecklist(e.ctx, mid, domain.ProcedurePublished{Name: "Portable X-ray PM: Ward 3", Custom: true, Template: tpl, Steps: steps})
+	e.must(err)
+	if p, _ := domain.GetProcedure(e.ctx, e.st.DB(), custom); !p.Custom || p.Template != tpl {
+		t.Fatalf("custom: %+v", p)
+	}
+	// Its next version stays custom; a template can't take its name.
+	_, _, err = e.app.PublishChecklist(e.ctx, mid, domain.ProcedurePublished{Name: "Portable X-ray PM: Ward 3", Steps: steps})
+	wantRejection(t, err, domain.FlagInvalid)
+	_, _, err = e.app.PublishChecklist(e.ctx, mid, domain.ProcedurePublished{Name: "Bad", Custom: true, Template: custom, Steps: steps})
+	wantRejection(t, err, domain.FlagInvalid) // a custom checklist isn't a template
+	// A technician's custom checklist goes through approval and stays custom.
+	prop, err := e.app.ProposeChecklist(e.ctx, tech, domain.ProcedurePublished{Name: "Portable X-ray PM: ICU", Custom: true, Template: tpl, Steps: steps}, tpl)
+	e.must(err)
+	pub, err := e.app.ReviewChecklist(e.ctx, mid, prop, true, "")
+	e.must(err)
+	if p, _ := domain.GetProcedure(e.ctx, e.st.DB(), pub); !p.Custom || p.Template != tpl {
+		t.Fatalf("approved custom: %+v", p)
+	}
+	// An amendment to the template is its next version.
+	amend, err := e.app.ProposeChecklist(e.ctx, tech, domain.ProcedurePublished{Name: "Portable X-ray PM", Steps: append(steps, domain.Step{ID: "s2", Text: "Brakes hold", Kind: domain.StepCheck})}, tpl)
+	e.must(err)
+	pub2, err := e.app.ReviewChecklist(e.ctx, mid, amend, true, "")
+	e.must(err)
+	if p, _ := domain.GetProcedure(e.ctx, e.st.DB(), pub2); p.Custom || p.Version != 2 || len(p.Steps) != 2 {
+		t.Fatalf("amended template: %+v", p)
+	}
+}

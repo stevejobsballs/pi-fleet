@@ -170,7 +170,7 @@ func TestRichChecklistThroughTheUI(t *testing.T) {
 		t.Fatalf("import:\n%s", page)
 	}
 	// "Change it" starts the next version from this one.
-	if _, _, page = mona.get("/procedures/new?from=" + procID); !strings.Contains(page, "Keep the name to publish its next version") || !strings.Contains(page, `value="Parts replaced"`) {
+	if _, _, page = mona.get("/procedures/new?from=" + procID); !strings.Contains(page, "Amending the generic template: publishing makes its next version") || !strings.Contains(page, `value="Parts replaced"`) {
 		t.Fatalf("next version:\n%s", page)
 	}
 
@@ -237,8 +237,9 @@ func TestChecklistsForEquipmentModels(t *testing.T) {
 	if !strings.Contains(page, `<a href="/procedures" aria-current="page">Checklists</a>`) || !strings.Contains(page, `>Equipment</a>`) {
 		t.Fatalf("not under Equipment:\n%s", page)
 	}
-	iAny, iPhilips, iZoll := strings.Index(page, "<h2>For any equipment</h2>"), strings.Index(page, "<h2>Philips</h2>"), strings.Index(page, "<h2>Zoll</h2>")
-	if iAny < 0 || iPhilips < iAny || iZoll < iPhilips || !strings.Contains(page[iZoll:], "<h3>Every model</h3>") || !strings.Contains(page[iZoll:], "<h3>R Series</h3>") {
+	iTpl, iAny, iPhilips, iZoll := strings.Index(page, "<h2>Generic templates</h2>"), strings.Index(page, "<h3>For any equipment</h3>"), strings.Index(page, "<h3>Philips</h3>"), strings.Index(page, "<h3>Zoll</h3>")
+	if iTpl < 0 || iAny < iTpl || iPhilips < iAny || iZoll < iPhilips || !strings.Contains(page[iZoll:], "<h4>Every model</h4>") || !strings.Contains(page[iZoll:], "<h4>R Series</h4>") ||
+		!strings.Contains(page, "<h2>Custom checklists</h2>") {
 		t.Fatalf("library:\n%s", page)
 	}
 	if _, _, page = mona.get("/procedures?q=mx40"); !strings.Contains(page, "Philips MX40 PM") || strings.Contains(page, "Zoll R PM") {
@@ -263,7 +264,7 @@ func TestChecklistsForEquipmentModels(t *testing.T) {
 		t.Fatalf("add choices:\n%s", sel)
 	}
 	ids := map[string]string{}
-	for _, m := range regexp.MustCompile(`<option value="([0-9a-f-]{36})">([^<]+) \(v1\)</option>`).FindAllStringSubmatch(sel, -1) {
+	for _, m := range regexp.MustCompile(`<option value="([0-9a-f-]{36})">([^<]+) \(v1, generic template\)</option>`).FindAllStringSubmatch(sel, -1) {
 		ids[m[2]] = m[1]
 	}
 	_, page = tess.post(wo+"/checklists", url.Values{"procedure": {ids["Zoll R PM"]}})
@@ -508,5 +509,57 @@ func TestFillAChecklistFromTheLibraryAndPrintIt(t *testing.T) {
 		if !strings.Contains(filled.String(), want) {
 			t.Errorf("filled CSV lacks %q:\n%s", want, filled.String())
 		}
+	}
+}
+
+// Generic templates: configure a custom checklist from one, or suggest an
+// amendment to it.
+func TestCustomChecklistFromAGenericTemplate(t *testing.T) {
+	e := newEnv(t)
+	e.user("mona", "Mona Mid", domain.RoleMidTier)
+	e.user("tess", "Tess Tech", domain.RoleUser)
+	tpl, _, err := e.app.PublishChecklist(e.ctx, e.super, domain.ProcedurePublished{Name: "Portable X-ray PM",
+		Steps: []domain.Step{{ID: "s1", Text: "Collimator light works", Kind: domain.StepCheck, Required: true}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tess := e.browser()
+	tess.login("tess", "brass-kettle-orchard-7")
+	_, _, page := tess.get("/procedures/" + tpl)
+	if !strings.Contains(page, "<dt>Kind</dt><dd>Generic template</dd>") || !strings.Contains(page, `href="/procedures/new?from=`+tpl+`&amp;mode=custom">Configure custom checklist</a>`) ||
+		!strings.Contains(page, ">Suggest amendment to Generic Template</a>") {
+		t.Fatalf("template page:\n%s", page)
+	}
+	// Configure a custom checklist: its own name, the template untouched.
+	_, _, page = tess.get("/procedures/new?from=" + tpl + "&mode=custom")
+	if !strings.Contains(page, "Configuring a custom checklist from the generic template <strong>Portable X-ray PM</strong>") || !strings.Contains(page, `value="Portable X-ray PM (custom)"`) {
+		t.Fatalf("custom builder:\n%s", page)
+	}
+	_, page = tess.post("/procedures", url.Values{"mode": {"custom"}, "custom": {"yes"}, "template": {tpl}, "name": {"Portable X-ray PM: ICU"}, "count": {"2"},
+		"text_0": {"Collimator light works"}, "kind_0": {"check"}, "required_0": {"yes"}, "text_1": {"ICU bay clearance checked"}, "kind_1": {"check"}})
+	if !strings.Contains(page, "Sent for approval.") || !strings.Contains(page, "Custom checklist, configured from <a href=\"/procedures/"+tpl+"\">a generic template</a>") {
+		t.Fatalf("sent:\n%s", page)
+	}
+	// Suggest an amendment to the template.
+	if _, _, page = tess.get("/procedures/new?from=" + tpl); !strings.Contains(page, "your amendment is sent for approval") || !strings.Contains(page, "<button>Send amendment for approval</button>") {
+		t.Fatalf("amend builder:\n%s", page)
+	}
+	_, page = tess.post("/procedures", url.Values{"mode": {"amend"}, "custom": {"no"}, "from": {tpl}, "name": {"Portable X-ray PM"}, "count": {"1"},
+		"text_0": {"Collimator light works and is bright"}, "kind_0": {"check"}, "required_0": {"yes"}})
+	if !strings.Contains(page, "Amendment to a generic template") {
+		t.Fatalf("amendment:\n%s", page)
+	}
+	// Approved, the custom checklist is listed under Custom checklists.
+	mona := e.browser()
+	mona.login("mona", "brass-kettle-orchard-7")
+	_, _, page = mona.get("/procedures")
+	for _, m := range regexp.MustCompile(`/checklist-proposals/([0-9a-f-]{36})`).FindAllStringSubmatch(page, -1) {
+		mona.post("/checklist-proposals/"+m[1]+"/review", url.Values{"decision": {"approve"}})
+	}
+	_, _, page = mona.get("/procedures")
+	iCustom := strings.Index(page, "<h2>Custom checklists</h2>")
+	if iCustom < 0 || !strings.Contains(page[iCustom:], "Portable X-ray PM: ICU") || strings.Contains(page[:iCustom], "Portable X-ray PM: ICU") ||
+		!strings.Contains(page[:iCustom], "Portable X-ray PM</a> <span class=\"hint\">v2") {
+		t.Fatalf("library after approval:\n%s", page)
 	}
 }

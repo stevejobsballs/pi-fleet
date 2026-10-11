@@ -55,18 +55,27 @@ type libraryModel struct {
 }
 
 type libraryData struct {
-	Waiting []domain.Proposal // for mid-tier and super users: everyone's; for others: their own
-	Mine    []domain.Proposal // this person's recently decided ones
-	Search  string
-	Any     []domain.ChecklistMatch // for any equipment
-	Makers  []libraryGroup
-	All     []procedureRow // every version, when asked for
-	ShowAll bool
+	Waiting  []domain.Proposal // for mid-tier and super users: everyone's; for others: their own
+	Mine     []domain.Proposal // this person's recently decided ones
+	Search   string
+	Sections []librarySection // generic templates, then custom checklists
+	All      []procedureRow   // every version, when asked for
+	ShowAll  bool
+}
+
+// librarySection is the generic templates or the custom checklists:
+// those for any equipment, then by manufacturer and model.
+type librarySection struct {
+	Title, Hint string
+	Custom      bool
+	Any         []domain.ChecklistMatch
+	Makers      []libraryGroup
 }
 
 // procedureList is the checklist library: the newest active version of
-// each checklist, those for any equipment first, then by manufacturer and
-// model. ?all=1 lists every version, old and retired too.
+// each checklist, generic templates first, then custom checklists, each
+// grouped by the equipment they are for. ?all=1 lists every version, old
+// and retired too.
 func (s *Server) procedureList(w http.ResponseWriter, r *http.Request, sess *session) error {
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
 	d := libraryData{Search: q, ShowAll: r.URL.Query().Get("all") != ""}
@@ -96,6 +105,27 @@ func (s *Server) procedureList(w http.ResponseWriter, r *http.Request, sess *ses
 		}
 		d.Mine = append(d.Mine, mine...)
 	}
+	for _, custom := range []bool{false, true} {
+		var some []domain.ChecklistMatch
+		for _, c := range all {
+			if c.Custom == custom {
+				some = append(some, c)
+			}
+		}
+		sec := librarySection{Title: "Generic templates", Custom: custom,
+			Hint: "Checklists to start from. Use one as it is, configure a custom checklist from it, or suggest an amendment."}
+		if custom {
+			sec.Title, sec.Hint = "Custom checklists", "Checklists configured for particular equipment or ways of working, often from a generic template."
+		}
+		sec.Any, sec.Makers = groupLibrary(some, q)
+		d.Sections = append(d.Sections, sec)
+	}
+	return s.render(w, r, sess, "procedures", "Checklists", d)
+}
+
+// groupLibrary groups checklists matching search: those for any
+// equipment, then by manufacturer and model.
+func groupLibrary(all []domain.ChecklistMatch, q string) ([]domain.ChecklistMatch, []libraryGroup) {
 	lq := strings.ToLower(q)
 	hit := func(parts ...string) bool {
 		if lq == "" {
@@ -108,12 +138,13 @@ func (s *Server) procedureList(w http.ResponseWriter, r *http.Request, sess *ses
 		}
 		return false
 	}
+	var anyEquipment []domain.ChecklistMatch
 	makers := map[string]*libraryGroup{}
 	var order []string
 	for _, c := range all {
 		if len(c.AppliesTo) == 0 {
 			if hit(c.Name, c.Category, c.Reference) {
-				d.Any = append(d.Any, c)
+				anyEquipment = append(anyEquipment, c)
 			}
 			continue
 		}
@@ -141,21 +172,23 @@ func (s *Server) procedureList(w http.ResponseWriter, r *http.Request, sess *ses
 		}
 	}
 	slices.Sort(order)
+	var groups []libraryGroup
 	for _, k := range order {
 		g := *makers[k]
 		slices.SortFunc(g.Models, func(a, b libraryModel) int {
 			return strings.Compare(strings.ToLower(a.Model), strings.ToLower(b.Model))
 		})
-		d.Makers = append(d.Makers, g)
+		groups = append(groups, g)
 	}
-	return s.render(w, r, sess, "procedures", "Checklists", d)
+	return anyEquipment, groups
 }
 
 // procedureData is a published checklist version, on its page, with the
 // equipment it can be filled in on (that it is for first).
 type procedureData struct {
 	domain.Procedure
-	Equipment []choiceGroup
+	Equipment    []choiceGroup
+	TemplateName string // for a custom checklist, the template it came from
 }
 
 func (procedureData) BackLink() (string, string) { return "/procedures", "checklists" }
@@ -166,6 +199,11 @@ func (s *Server) procedureView(w http.ResponseWriter, r *http.Request, sess *ses
 		return err
 	}
 	d := procedureData{Procedure: p}
+	if p.Template != "" {
+		if t, err := domain.GetProcedure(r.Context(), s.App.Store.DB(), p.Template); err == nil {
+			d.TemplateName = t.Name
+		}
+	}
 	if p.Status == "active" {
 		if d.Equipment, err = fillChoices(r.Context(), s.App.Store.DB(), p); err != nil {
 			return err
@@ -269,6 +307,13 @@ type builderData struct {
 	From                                   string // the version this starts from, if any
 	Error                                  string
 	CanPublish                             bool // mid-tier and super users; others send it for approval
+	// Custom: a custom checklist (configured from Template, if set);
+	// otherwise a generic template. Mode: "new", "amend" (the next version
+	// of From) or "custom" (configured from the template From).
+	Custom       bool
+	Template     string
+	TemplateName string
+	Mode         string
 }
 
 func (builderData) BackLink() (string, string) { return "/procedures", "checklists" }
@@ -340,14 +385,24 @@ func (s *Server) renderBuilder(w http.ResponseWriter, r *http.Request, sess *ses
 // to publish its next version or a new checklist based on it.
 func (s *Server) procedureNew(w http.ResponseWriter, r *http.Request, sess *session) error {
 	more, _ := strconv.Atoi(r.URL.Query().Get("more"))
-	d := builderData{}
+	d := builderData{Mode: "new", Custom: roleRank[sess.User.Role] < roleRank[domain.RoleMidTier]}
 	if from := r.URL.Query().Get("from"); from != "" {
 		p, err := domain.GetProcedure(r.Context(), s.App.Store.DB(), from)
 		if err != nil {
 			return err
 		}
 		d = builderData{Name: p.Name, Description: p.Description, Reference: p.Reference, Category: p.Category, AppliesTo: p.AppliesTo,
-			Steps: stepsToForm(p.Steps), From: from}
+			Steps: stepsToForm(p.Steps), From: from, Mode: "amend", Custom: p.Custom, Template: p.Template}
+		if r.URL.Query().Get("mode") == "custom" && !p.Custom {
+			// A custom checklist configured from this generic template.
+			d.Mode, d.Custom, d.Template, d.From = "custom", true, p.ID, ""
+			d.Name = p.Name + " (custom)"
+		}
+		if d.Template != "" {
+			if t, err := domain.GetProcedure(r.Context(), s.App.Store.DB(), d.Template); err == nil {
+				d.TemplateName = t.Name
+			}
+		}
 	}
 	d.Steps = withBlankSteps(d.Steps, min(max(more, 3), 50), 8)
 	return s.renderBuilder(w, r, sess, d)
@@ -367,7 +422,8 @@ func readBuilder(f url.Values) (builderData, []domain.Step, error) {
 		return out
 	}
 	d := builderData{Name: strings.TrimSpace(f.Get("name")), Description: strings.TrimSpace(f.Get("description")),
-		Reference: strings.TrimSpace(f.Get("reference")), Category: strings.TrimSpace(f.Get("category")), From: f.Get("from")}
+		Reference: strings.TrimSpace(f.Get("reference")), Category: strings.TrimSpace(f.Get("category")), From: f.Get("from"),
+		Custom: f.Get("custom") == "yes", Template: f.Get("template"), TemplateName: f.Get("template_name"), Mode: f.Get("mode")}
 	acount, _ := strconv.Atoi(f.Get("acount"))
 	for i := 0; i < min(max(acount, 0), 100); i++ {
 		m := domain.EquipmentMatch{Manufacturer: get("mfr", i), Model: get("model", i)}
@@ -452,10 +508,18 @@ func (s *Server) procedurePublish(w http.ResponseWriter, r *http.Request, sess *
 				applies = append(applies, m)
 			}
 		}
-		p := domain.ProcedurePublished{Name: d.Name, Description: d.Description, Reference: d.Reference, Category: d.Category, AppliesTo: applies, Steps: steps}
+		if !canPublish {
+			d.Custom = d.Custom || d.Mode != "amend" // others make custom checklists, or amend what exists
+		}
+		p := domain.ProcedurePublished{Name: d.Name, Description: d.Description, Reference: d.Reference, Category: d.Category, AppliesTo: applies, Steps: steps,
+			Custom: d.Custom, Template: d.Template}
 		if !canPublish {
 			// Others' checklists wait for a mid-tier or super user.
-			if id, err = s.App.ProposeChecklist(r.Context(), s.actor(sess), p, d.From); err == nil {
+			basedOn := d.From
+			if basedOn == "" {
+				basedOn = d.Template
+			}
+			if id, err = s.App.ProposeChecklist(r.Context(), s.actor(sess), p, basedOn); err == nil {
 				return s.done(w, r, sess, "/checklist-proposals/"+id, "Sent for approval. A mid-tier or super user approves it on the master Pi; until then it can't be used.")
 			}
 		} else {
@@ -555,7 +619,11 @@ func checklistChoices(ctx context.Context, q domain.Querier, a domain.Asset, on 
 			continue
 		}
 		g := &groups[idx[c.Fit]]
-		g.Items = append(g.Items, option{ID: c.ID, Label: fmt.Sprintf("%s (v%d)", c.Name, c.Version)})
+		kind := "generic template"
+		if c.Custom {
+			kind = "custom"
+		}
+		g.Items = append(g.Items, option{ID: c.ID, Label: fmt.Sprintf("%s (v%d, %s)", c.Name, c.Version, kind)})
 	}
 	var out []choiceGroup
 	for _, g := range groups {

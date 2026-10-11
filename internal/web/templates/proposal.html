@@ -3,6 +3,7 @@
 {{else if eq $p.Status "approved"}}<p class="flash" role="status">Approved{{with $p.ReviewedBy}} by {{.}}{{end}}{{with $p.ReviewNote}}: {{.}}{{end}}. <a href="/procedures/{{$p.PublishedID}}">See the published checklist</a>.</p>
 {{else}}<p class="error" role="alert">Not approved{{with $p.ReviewedBy}} by {{.}}{{end}}: {{$p.ReviewNote}}</p>{{end}}
 <dl class="facts">
+  <dt>Kind</dt><dd>{{if $p.Custom}}Custom checklist{{with $p.Template}}, configured from <a href="/procedures/{{.}}">a generic template</a>{{end}}{{else if $p.BasedOn}}Amendment to a generic template{{else}}Generic template{{end}}</dd>
   <dt>Made by</dt><dd>{{$p.ProposedBy}}, {{when $p.ProposedAt}}</dd>
   {{with $p.BasedOn}}<dt>Changes</dt><dd><a href="/procedures/{{.}}">the published version it started from</a></dd>{{end}}
   <dt>Equipment</dt><dd>{{template "clwhere" $p.AppliesTo}}</dd>

@@ -237,7 +237,9 @@ fieldset.bstep:has(option[value="heading"]:checked, option[value="info"]:checked
 nav.quick { display: flex; flex-wrap: wrap; gap: .75rem; margin: 0 0 1.25rem; }
 ul.cl-list { list-style: none; padding: 0; margin: .25rem 0 1rem; }
 ul.cl-list li { padding: .45rem 0; border-bottom: 1px solid var(--line); }
-section.maker h3 { margin: 1rem 0 .25rem; font-size: 1rem; }
+section.library h3 { margin: 1.1rem 0 .25rem; font-size: 1.05rem; }
+section.library h4 { margin: .6rem 0 .1rem; font-size: .95rem; color: var(--muted); }
+section.library .maker { padding-left: .75rem; border-left: 3px solid var(--line); margin: .5rem 0; }
 .cl-block { margin: 0 0 1.5rem; }
 .cl-title { margin: 1rem 0 .4rem; font-size: 1.1rem; }
 form.add-checklist { padding: .75rem 1rem; background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: var(--radius); }
