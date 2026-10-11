@@ -71,40 +71,14 @@
   {{if $d.ChangeChecklists}}{{if $d.AddChoices}}<form method="post" action="/work-orders/{{$w.ID}}/checklists" class="inline add-checklist">{{template "csrf" .CSRF}}
     <label>Add a checklist <select name="procedure" required><option value="" selected disabled>Choose a checklist</option>{{range $d.AddChoices}}<optgroup label="{{.Label}}">{{range .Items}}<option value="{{.ID}}">{{.Label}}</option>{{end}}</optgroup>{{end}}</select></label>
     <button>Add checklist</button></form>{{end}}{{end}}
-  {{if and $d.Holder (ne $w.Status "in_progress") $d.Checklists}}<p class="hint">Start the work to fill in the checklists.</p>{{end}}
-  {{range $d.Checklists}}{{$cl := .}}
-  <div class="cl-block">
-  <h3 class="cl-title"><a href="/procedures/{{.ID}}">{{.Name}} v{{.Version}}</a>{{with .Reference}} <span class="hint">· follows {{.}}</span>{{end}}{{with .AddedBy}} <span class="hint">· added by {{.}}</span>{{end}}</h3>
-  {{if and $d.ChangeChecklists (eq .Answered 0)}}<form method="post" action="/work-orders/{{$w.ID}}/checklists/remove" class="inline">{{template "csrf" $.CSRF}}<input type="hidden" name="procedure" value="{{.ID}}"><button class="link">Remove this checklist</button></form>{{end}}
-  <form method="post" action="/work-orders/{{$w.ID}}/checklist" class="checklist">{{template "csrf" $.CSRF}}<input type="hidden" name="procedure" value="{{.ID}}">
-  {{range .Steps}}
-    {{if eq .Kind "heading"}}<h3 class="cl-heading">{{.Text}}</h3>
-    {{else if eq .Kind "info"}}<p class="cl-info">{{.Text}}</p>
-    {{else}}<fieldset class="cl-step{{if not .Applies}} skipped{{end}}{{if eq .Outcome "fail"}} failed{{else if eq .Outcome "pass"}} passed{{end}}">
-      <legend>{{.Text}}{{if .Required}} <span class="tag">required</span>{{end}}{{if .Critical}} <span class="tag crit">critical</span>{{end}}</legend>
-      {{with .Help}}<p class="hint pre">{{.}}</p>{{end}}
-      {{if not .Applies}}<p class="hint">Not needed: only when “{{stepName $cl.Procedure.Steps .ShowIf.Step}}” is “{{.ShowIf.Equals}}”.</p>{{end}}
-      {{if .Recorded}}<p class="cl-answer"><strong>{{.Display}}{{if eq .Kind "number"}} {{.Unit}}{{end}}</strong>{{if eq .Outcome "pass"}} <span class="pass">pass</span>{{else if eq .Outcome "fail"}} <span class="fail">fail</span>{{end}}
-        <span class="hint">· {{.RecordedBy}}, {{when .RecordedAt}}</span>{{with .Note}}<br>Note: {{.}}{{end}}</p>{{end}}
-      {{if and $edit .Applies}}{{$s := .}}
-        {{if eq .Kind "check"}}<div class="choices">
-          <label class="pill"><input type="radio" name="v_{{.ID}}" value="pass"{{if eq .Value "pass"}} checked{{end}}> Pass</label>
-          <label class="pill"><input type="radio" name="v_{{.ID}}" value="fail"{{if eq .Value "fail"}} checked{{end}}> Fail</label>
-          {{if not .Required}}<label class="pill"><input type="radio" name="v_{{.ID}}" value="n/a"{{if eq .Value "n/a"}} checked{{end}}> Not applicable</label>{{end}}</div>
-        {{else if eq .Kind "number"}}<label>Reading{{if .Unit}} in {{.Unit}}{{end}}{{if or .Lower .Upper}} (passes {{if .Lower}}from {{.Lower}}{{end}}{{if .Upper}} up to {{.Upper}}{{end}}){{end}}
-          <input name="v_{{.ID}}" value="{{.Value}}" inputmode="decimal" size="10" autocomplete="off"></label>
-        {{else if eq .Kind "choice"}}<div class="choices">{{range .Options}}<label class="pill"><input type="radio" name="v_{{$s.ID}}" value="{{.Label}}"{{if eq .Label $s.Value}} checked{{end}}> {{.Label}}</label>{{end}}</div>
-        {{else if eq .Kind "multi"}}<div class="choices">{{range .Options}}<label class="pill"><input type="checkbox" name="v_{{$s.ID}}" value="{{.Label}}"{{if $s.Chosen .Label}} checked{{end}}> {{.Label}}</label>{{end}}</div>
-        {{else if eq .Kind "date"}}<label>Date <input type="date" name="v_{{.ID}}" value="{{.Value}}"></label>
-        {{else if eq .Kind "longtext"}}<label>Answer <textarea name="v_{{.ID}}" rows="3">{{.Value}}</textarea></label>
-        {{else}}<label>Answer <input name="v_{{.ID}}" value="{{.Value}}" maxlength="500"></label>{{end}}
-        <details class="cl-note"{{if .Note}} open{{end}}><summary>Add a note{{if .NoteOnFail}} (needed if it fails){{end}}</summary>
-          <label>Note <input name="n_{{.ID}}" value="{{.Note}}"></label></details>
-      {{else if and (not .Recorded) .Applies}}<p class="hint">Not answered yet.</p>{{end}}
-    </fieldset>{{end}}
-  {{end}}
-  {{if $edit}}{{template "nophi"}}<p class="buttons"><button>Save {{.Name}}</button></p>{{end}}
-  </form>
+  {{range $d.Checklists}}{{$total := 0}}{{$done := 0}}
+  <div class="cl-card">
+    <a class="cl-open" href="/work-orders/{{$w.ID}}/checklists/{{.ID}}">
+      <span class="cl-name">{{.Name}} <span class="hint">v{{.Version}}</span></span>
+      <span class="hint">{{.Answered}} of {{.Total}} answered{{with .Reference}} · follows {{.}}{{end}}{{with .AddedBy}} · added by {{.}}{{end}}</span>
+      <span class="button">{{if $edit}}Open and fill in{{else}}Open{{end}}</span>
+    </a>
+    {{if and $d.ChangeChecklists (eq .Answered 0)}}<form method="post" action="/work-orders/{{$w.ID}}/checklists/remove" class="inline">{{template "csrf" $.CSRF}}<input type="hidden" name="procedure" value="{{.ID}}"><button class="link">Remove this checklist</button></form>{{end}}
   </div>
   {{else}}<p>No checklist yet.{{if $d.ChangeChecklists}} Add one above: those made for this equipment are listed first.{{end}}</p>{{end}}
 </section>

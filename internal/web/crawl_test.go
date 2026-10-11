@@ -1,9 +1,11 @@
 package web
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"regexp"
 	"strings"
 	"testing"
@@ -137,6 +139,30 @@ func (e *env) seedEverything() {
 		}})
 	must(err)
 	must(e.app.AddChecklist(e.ctx, tessAct, richWO, esa))
+	// The sample portable X-ray checklist, for a GE AMX 4+, in progress.
+	file, err := os.ReadFile("../../deploy/sample-checklists/portable-x-ray.checklist.json")
+	must(err)
+	var sample checklistFile
+	must(json.Unmarshal(file, &sample))
+	xray, err := e.app.RegisterAsset(e.ctx, e.super, domain.AssetRegistered{Tag: "XRAY-1", LocationID: e.loc, Manufacturer: "GE", Model: "AMX 4+", MasterID: "GE-AMX-0451"})
+	must(err)
+	xrayProc, _, err := e.app.PublishChecklist(e.ctx, mid, domain.ProcedurePublished{Name: sample.Name, Description: sample.Description, Reference: sample.Reference,
+		Category: sample.Category, AppliesTo: []domain.EquipmentMatch{{Manufacturer: "GE", Model: "AMX 4+"}}, Steps: sample.Steps})
+	must(err)
+	xrayWO, _, err := e.app.OpenWorkOrder(e.ctx, mid, app.NewWorkOrder{Type: "pm", AssetID: xray, Priority: "normal", Title: "Yearly PM and QC", ProcedureID: xrayProc})
+	must(err)
+	_, err = e.app.AssignWorkOrder(e.ctx, mid, xrayWO, tess.ID)
+	must(err)
+	must(e.app.ChangeWorkOrderStatus(e.ctx, tessAct, xrayWO, domain.WOInProgress, ""))
+	for _, a := range [][3]string{{"power", "Battery", ""}, {"housing", "pass", ""}, {"tube", "pass", ""}, {"cables", "pass", ""},
+		{"kv80", "81.3", "Analyser RTI Piranha 657, calibration due 2027-03"}, {"kv60", "64.1", "high on three exposures"}} {
+		must(e.app.RecordStep(e.ctx, tessAct, xrayWO, a[0], a[1], a[2]))
+	}
+	// A checklist tess built, waiting for approval.
+	_, err = e.app.ProposeChecklist(e.ctx, tessAct, domain.ProcedurePublished{Name: "Bed scale check", Category: "Performance check",
+		Steps: []domain.Step{{ID: "s1", Text: "Reads 0.0 kg empty", Kind: domain.StepCheck, Required: true},
+			{ID: "s2", Text: "Reading with the 50 kg test weight", Kind: domain.StepNumber, Unit: "kg", Lower: "49.5", Upper: "50.5", Required: true}}}, "")
+	must(err)
 	propose("Ultrasound 3", "US-1")
 	must(e.app.ReviewLocation(e.ctx, e.super, propose("Closet B", "US-2"), false, "not a clinical area"))
 }

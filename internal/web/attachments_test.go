@@ -81,7 +81,7 @@ func TestAttachThroughTheUI(t *testing.T) {
 	}
 
 	_, page = b.upload("/assets/"+asset+"/attachments", "invoice.html", []byte("<html><script>alert(1)</script>"), nil)
-	if !strings.Contains(page, "only JPEG, PNG and PDF files are accepted") {
+	if !strings.Contains(page, "only JPEG, PNG, WebP and PDF files are accepted") {
 		t.Fatalf("HTML upload:\n%s", page)
 	}
 	_, page = b.upload("/assets/"+asset+"/attachments", "huge.pdf", append([]byte("%PDF-"), make([]byte, 11<<20)...), nil)

@@ -37,12 +37,13 @@ const (
 	StepChoice   = "choice"   // one of a list; some options may count as a fail
 	StepMulti    = "multi"    // any of a list (tick all that apply)
 	StepDate     = "date"     // YYYY-MM-DD
+	StepPhoto    = "photo"    // one or more photos; answered once one is added
 	StepHeading  = "heading"  // starts a section
 	StepInfo     = "info"     // an instruction or warning to read
 )
 
 // StepKinds are the kinds of step, in the order offered.
-var StepKinds = []string{StepCheck, StepNumber, StepChoice, StepMulti, StepText, StepLongText, StepDate, StepHeading, StepInfo}
+var StepKinds = []string{StepCheck, StepNumber, StepChoice, StepMulti, StepText, StepLongText, StepDate, StepPhoto, StepHeading, StepInfo}
 
 // Inputless reports whether a kind of step takes no answer.
 func Inputless(kind string) bool { return kind == StepHeading || kind == StepInfo }
@@ -195,7 +196,7 @@ func validateSteps(steps []Step) error {
 			return invalid("step %d: only choice steps have options", n)
 		}
 		switch st.Kind {
-		case StepCheck, StepText, StepLongText, StepDate:
+		case StepCheck, StepText, StepLongText, StepDate, StepPhoto:
 		case StepNumber:
 			for _, v := range []string{st.Lower, st.Upper} {
 				if v != "" {
@@ -285,21 +286,7 @@ func (ap *applier) procedurePublished(p *ProcedurePublished) error {
 	if err := ap.newEntity("procedures"); err != nil {
 		return err
 	}
-	if blank(p.Name) || len(p.Name) > 120 {
-		return invalid("a checklist needs a name of at most 120 characters")
-	}
-	if len(p.Description) > 4000 || len(p.Reference) > 300 || len(p.Category) > 80 {
-		return invalid("the description, reference or category is too long")
-	}
-	if len(p.AppliesTo) > 100 {
-		return invalid("a checklist can name at most 100 manufacturers and models")
-	}
-	for _, m := range p.AppliesTo {
-		if blank(m.Manufacturer) || len(m.Manufacturer) > 120 || len(m.Model) > 120 {
-			return invalid("each piece of equipment it is for needs a manufacturer (and, if only one model, the model)")
-		}
-	}
-	if err := validateSteps(p.Steps); err != nil {
+	if err := validateChecklist(*p); err != nil {
 		return err
 	}
 	var latest int
@@ -494,6 +481,11 @@ func evaluateStep(st Step, value string) (*bool, error) {
 	case StepDate:
 		if _, err := time.Parse(dateLayout, value); err != nil {
 			return nil, errors.New("enter a date")
+		}
+		return nil, nil
+	case StepPhoto:
+		if blank(value) {
+			return nil, errors.New("add a photo")
 		}
 		return nil, nil
 	case StepChoice:
@@ -788,6 +780,8 @@ type StepResult struct {
 	// Applies is false for a step that depends on an earlier answer it
 	// didn't get; such a step is skipped.
 	Applies bool
+	// Photos added to the step.
+	Photos []Attachment
 }
 
 // Display is the answer as people read it (a multi step's options joined).
@@ -827,6 +821,7 @@ type WorkOrderChecklist struct {
 	Steps    []StepResult
 	First    bool   // the work order's first checklist
 	Answered int    // steps with an answer
+	Total    int    // steps that take an answer and apply
 	AddedBy  string // who added it, for checklists added later
 }
 
@@ -871,6 +866,23 @@ func Checklists(ctx context.Context, q Querier, w WorkOrder) ([]WorkOrderCheckli
 		}
 		for i := range c.Steps {
 			c.Steps[i].Applies = Inputless(c.Steps[i].Kind) || StepApplies(c.Steps[i].Step, answers)
+			if c.Steps[i].Applies && !Inputless(c.Steps[i].Kind) {
+				c.Total++
+			}
+		}
+		photos, err := ListAttachments(ctx, q, EntityWorkOrder, w.ID)
+		if err != nil {
+			return nil, err
+		}
+		for _, ph := range photos {
+			if ph.ProcedureID != id || ph.Status != "attached" {
+				continue
+			}
+			for i := range c.Steps {
+				if c.Steps[i].ID == ph.StepID {
+					c.Steps[i].Photos = append(c.Steps[i].Photos, ph)
+				}
+			}
 		}
 		out = append(out, c)
 	}

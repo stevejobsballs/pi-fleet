@@ -1066,3 +1066,31 @@ func TestHomeSiteIncludesSatellites(t *testing.T) {
 		t.Fatalf("path on the Pi: %q", path)
 	}
 }
+
+// A checklist built on an employee Pi waits for approval on the master,
+// and the Pi gets the published version.
+func TestChecklistProposedOnAPi(t *testing.T) {
+	f := newFleet(t)
+	tess := f.enrol("tess", domain.RoleUser)
+	prop, err := tess.app.ProposeChecklist(f.ctx, tess.user, domain.ProcedurePublished{Name: "Portable X-ray PM",
+		Steps: []domain.Step{{ID: "s1", Text: "Collimator light works", Kind: domain.StepCheck, Required: true}}}, "")
+	f.must(err)
+	if r := tess.sync(); r.Flagged != 0 {
+		t.Fatalf("sync = %+v", r)
+	}
+	waiting, err := domain.ListProposals(f.ctx, f.app.Store.DB(), domain.ProposalPending, "")
+	f.must(err)
+	if len(waiting) != 1 || waiting[0].ID != prop {
+		t.Fatalf("central's waiting list: %+v", waiting)
+	}
+	pub, err := f.app.ReviewChecklist(f.ctx, f.mid, prop, true, "")
+	f.must(err)
+	tess.sync()
+	p, err := domain.GetProcedure(f.ctx, tess.app.Store.DB(), pub)
+	f.must(err)
+	r, err := domain.GetProposal(f.ctx, tess.app.Store.DB(), prop)
+	f.must(err)
+	if p.Name != "Portable X-ray PM" || r.Status != domain.ProposalApproved {
+		t.Fatalf("on the Pi: %+v / %+v", p, r)
+	}
+}

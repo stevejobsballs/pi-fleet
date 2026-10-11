@@ -106,3 +106,27 @@ func (a *App) ReverseLabor(ctx context.Context, actor Actor, id, reason string) 
 		return a.emit(ctx, tx, actor, domain.TypeLaborReversed, domain.EntityLabor, id, 0, "", domain.LaborReversed{Reason: reason})
 	})
 }
+
+// ProposeChecklist sends a checklist for approval by a mid-tier or super
+// user (basedOn: the version it was started from, if any).
+func (a *App) ProposeChecklist(ctx context.Context, actor Actor, p domain.ProcedurePublished, basedOn string) (string, error) {
+	id := newID()
+	p.Version = 0
+	return id, a.Store.Update(ctx, func(tx *store.Tx) error {
+		return a.emit(ctx, tx, actor, domain.TypeProcedureProposed, domain.EntityProposal, id, 0, "",
+			domain.ProcedureProposed{ProcedurePublished: p, BasedOn: basedOn})
+	})
+}
+
+// ReviewChecklist approves (publishing it) or rejects a proposed
+// checklist; it returns the published version's id when approved.
+func (a *App) ReviewChecklist(ctx context.Context, actor Actor, proposalID string, approved bool, note string) (string, error) {
+	pub := ""
+	if approved {
+		pub = newID()
+	}
+	return pub, a.Store.Update(ctx, func(tx *store.Tx) error {
+		return a.emit(ctx, tx, actor, domain.TypeProcedureProposalReviewed, domain.EntityProposal, proposalID, 0, "",
+			domain.ProcedureProposalReviewed{Approved: approved, Note: note, PublishedID: pub})
+	})
+}

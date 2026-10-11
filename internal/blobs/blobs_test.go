@@ -119,3 +119,80 @@ func TestStore(t *testing.T) {
 		t.Fatal("path traversal")
 	}
 }
+
+// A phone photo turned on its side keeps that (so it shows the right way
+// up), and nothing else from its Exif.
+func TestJPEGKeepsOrientationOnly(t *testing.T) {
+	var buf bytes.Buffer
+	jpeg.Encode(&buf, testImage(), nil)
+	plain := buf.Bytes()
+	// Exif, little-endian (as iPhones write it): IFD0 with Orientation 6,
+	// a make and a GPS pointer, then some "GPS" text.
+	tiff := []byte{'I', 'I', 42, 0, 8, 0, 0, 0, 3, 0,
+		0x12, 0x01, 3, 0, 1, 0, 0, 0, 6, 0, 0, 0, // Orientation = 6
+		0x0F, 0x01, 2, 0, 6, 0, 0, 0, 50, 0, 0, 0, // Make, at 50
+		0x25, 0x88, 4, 0, 1, 0, 0, 0, 56, 0, 0, 0, // GPS IFD pointer
+		0, 0, 0, 0}
+	tiff = append(tiff, []byte("Apple\x00GPS 40.7128N")...)
+	exif := append([]byte("Exif\x00\x00"), tiff...)
+	app1 := append([]byte{0xFF, 0xE1, 0, 0}, exif...)
+	binary.BigEndian.PutUint16(app1[2:], uint16(len(exif)+2))
+	dirty := append(append(append([]byte{}, plain[:2]...), app1...), plain[2:]...)
+
+	_, clean, err := Sanitize(dirty)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(clean, []byte("GPS")) || bytes.Contains(clean, []byte("Apple")) {
+		t.Fatal("metadata survived")
+	}
+	if jpegOrientation(clean) != 6 {
+		t.Fatalf("orientation = %d", jpegOrientation(clean))
+	}
+	if _, err := jpeg.Decode(bytes.NewReader(clean)); err != nil {
+		t.Fatalf("cleaned JPEG no longer decodes: %v", err)
+	}
+	// Upright photos get no Exif at all.
+	if _, clean, _ := Sanitize(plain); !bytes.Equal(clean, plain) {
+		t.Fatal("an upright photo was changed")
+	}
+}
+
+func webpChunk(typ string, data []byte) []byte {
+	c := make([]byte, 8, 8+len(data)+1)
+	copy(c, typ)
+	binary.LittleEndian.PutUint32(c[4:], uint32(len(data)))
+	c = append(c, data...)
+	if len(data)%2 == 1 {
+		c = append(c, 0)
+	}
+	return c
+}
+
+func TestStripWebPMetadata(t *testing.T) {
+	vp8x := webpChunk("VP8X", []byte{0x08 | 0x04, 0, 0, 0, 7, 0, 0, 7, 0, 0})
+	body := append(append(append(append([]byte("WEBP"), vp8x...), webpChunk("VP8 ", []byte("imagedata!"))...),
+		webpChunk("EXIF", []byte("GPS 40.7128N"))...), webpChunk("XMP ", []byte("<x>secret</x>"))...)
+	file := append([]byte("RIFF\x00\x00\x00\x00"), body...)
+	binary.LittleEndian.PutUint32(file[4:], uint32(len(body)))
+	mime, clean, err := Sanitize(file)
+	if err != nil || mime != WebP {
+		t.Fatalf("%s %v", mime, err)
+	}
+	if bytes.Contains(clean, []byte("GPS")) || bytes.Contains(clean, []byte("secret")) || !bytes.Contains(clean, []byte("imagedata!")) {
+		t.Fatalf("clean = %q", clean)
+	}
+	if clean[20]&(0x08|0x04) != 0 {
+		t.Fatal("VP8X still says EXIF/XMP are present")
+	}
+	if int(binary.LittleEndian.Uint32(clean[4:]))+8 != len(clean) {
+		t.Fatal("RIFF size not updated")
+	}
+}
+
+func TestHEICIsExplained(t *testing.T) {
+	heic := append([]byte{0, 0, 0, 24}, []byte("ftypheic\x00\x00\x00\x00mif1heic")...)
+	if _, _, err := Sanitize(heic); !errors.Is(err, ErrHEIC) || !bytes.Contains([]byte(err.Error()), []byte("Most Compatible")) {
+		t.Fatalf("err = %v", err)
+	}
+}

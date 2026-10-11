@@ -1,12 +1,15 @@
 package web
 
 import (
+	"html"
 	"net/http"
 	"net/url"
+	"os"
 	"regexp"
 	"strings"
 	"testing"
 
+	"pi-fleet/internal/app"
 	"pi-fleet/internal/domain"
 )
 
@@ -49,8 +52,8 @@ func TestChecklistAndLabourThroughTheUI(t *testing.T) {
 		t.Fatalf("unchanged answers saved again:\n%s", page)
 	}
 	// One step at a time still works too.
-	_, page = tess.post(wo+"/steps", url.Values{"step": {"s2"}, "value": {"120"}, "note": {"re-measured"}})
-	if !strings.Contains(page, "<strong>120 µA</strong> <span class=\"pass\">pass</span>") {
+	tess.post(wo+"/steps", url.Values{"step": {"s2"}, "value": {"120"}, "note": {"re-measured"}})
+	if _, _, page = tess.get(wo + "/checklists/" + procID); !strings.Contains(page, "<strong>120 µA</strong> <span class=\"pass\">pass</span>") {
 		t.Fatalf("re-recorded reading:\n%s", page)
 	}
 
@@ -77,8 +80,9 @@ func TestChecklistAndLabourThroughTheUI(t *testing.T) {
 	if code, _, _ := tess.get("/procedures"); code != http.StatusOK {
 		t.Fatal("users can't view checklists")
 	}
-	if code, _ := tess.post("/procedures", url.Values{"name": {"x"}}); code != http.StatusForbidden {
-		t.Fatalf("user published a checklist: %d", code)
+	// A user's checklist isn't published: it is sent for approval.
+	if _, page := tess.post("/procedures", url.Values{"name": {"Tess's PM"}, "count": {"1"}, "text_0": {"Check it"}, "kind_0": {"check"}}); !strings.Contains(page, "Sent for approval.") {
+		t.Fatalf("user's checklist:\n%s", page)
 	}
 }
 
@@ -121,7 +125,7 @@ func TestRichChecklistThroughTheUI(t *testing.T) {
 		bad[k] = v
 	}
 	bad.Set("fails_2", "Broken")
-	if code, page := mona.post("/procedures", bad); code != http.StatusUnprocessableEntity || !strings.Contains(page, "Not published: step 3: &#34;Broken&#34; counts as a fail") ||
+	if code, page := mona.post("/procedures", bad); code != http.StatusUnprocessableEntity || !strings.Contains(page, "Not saved: step 3: &#34;Broken&#34; counts as a fail") ||
 		!strings.Contains(page, `value="Battery voltage"`) {
 		t.Fatalf("mistake: %d\n%s", code, page)
 	}
@@ -173,8 +177,9 @@ func TestRichChecklistThroughTheUI(t *testing.T) {
 	wo := "/work-orders/" + regexp.MustCompile(`/work-orders/([0-9a-f-]{36})/assign`).FindStringSubmatch(page)[1]
 	mona.post(wo+"/assign", url.Values{"assignee": {tessID}})
 	tess.get(wo)
-	_, page = tess.post(wo+"/status", url.Values{"to": {"in_progress"}})
-	for _, want := range []string{`<h3 class="cl-heading">Before you start</h3>`, `<p class="cl-info">Discharge into the test load only.</p>`,
+	tess.post(wo+"/status", url.Values{"to": {"in_progress"}})
+	_, _, page = tess.get(wo + "/checklists/" + procID)
+	for _, want := range []string{`<h2 class="cl-heading">Before you start</h2>`, `<p class="cl-info">Discharge into the test load only.</p>`,
 		`type="radio" name="v_s3" value="Cracked"`, `type="checkbox" name="v_s7" value="Pads"`, `type="date" name="v_s8"`,
 		"Not needed: only when “Battery fitted?” is “Yes”."} {
 		if !strings.Contains(page, want) {
@@ -262,22 +267,25 @@ func TestChecklistsForEquipmentModels(t *testing.T) {
 	_, page = tess.post(wo+"/checklists", url.Values{"procedure": {ids["Zoll R PM"]}})
 	_, page = tess.post(wo+"/checklists", url.Values{"procedure": {ids["Electrical safety"]}})
 	_, page = tess.post(wo+"/checklists", url.Values{"procedure": {ids["Zoll cleaning"]}})
-	if !strings.Contains(page, "Checklist added.") || strings.Count(page, `class="cl-title"`) != 3 || strings.Count(page, "Remove this checklist") != 3 {
+	if !strings.Contains(page, "Checklist added.") || strings.Count(page, `class="cl-card"`) != 3 || strings.Count(page, "Remove this checklist") != 3 {
 		t.Fatalf("added:\n%s", page)
 	}
 	_, page = tess.post(wo+"/checklists/remove", url.Values{"procedure": {ids["Zoll cleaning"]}})
-	if strings.Count(page, `class="cl-title"`) != 2 {
+	if strings.Count(page, `class="cl-card"`) != 2 {
 		t.Fatalf("removed:\n%s", page)
 	}
 	tess.post(wo+"/status", url.Values{"to": {"in_progress"}})
 	// Each checklist is saved by its own button; both have a step "s1".
-	tess.post(wo+"/checklist", url.Values{"procedure": {ids["Zoll R PM"]}, "v_s1": {"pass"}})
-	_, page = tess.post(wo+"/checklist", url.Values{"procedure": {ids["Electrical safety"]}, "v_s1": {"fail"}, "n_s1": {"leakage high"}})
-	if strings.Count(page, "<strong>pass</strong>") != 1 || strings.Count(page, "<strong>fail</strong>") != 1 || !strings.Contains(page, "Save Electrical safety") {
-		t.Fatalf("two checklists:\n%s", page)
+	if _, page = tess.post(wo+"/checklist", url.Values{"procedure": {ids["Zoll R PM"]}, "v_s1": {"pass"}}); !strings.Contains(page, "<strong>pass</strong>") ||
+		!strings.Contains(page, "Every step is answered: go back to the work order to finish it.") {
+		t.Fatalf("first checklist:\n%s", page)
+	}
+	if _, page = tess.post(wo+"/checklist", url.Values{"procedure": {ids["Electrical safety"]}, "v_s1": {"fail"}, "n_s1": {"leakage high"}}); !strings.Contains(page, "<strong>fail</strong>") ||
+		strings.Contains(page, "<strong>pass</strong>") {
+		t.Fatalf("two checklists kept apart:\n%s", page)
 	}
 	// Answered checklists can't be removed.
-	if strings.Contains(page, "Remove this checklist") {
+	if _, _, page = tess.get(wo); strings.Contains(page, "Remove this checklist") {
 		t.Fatalf("remove offered on answered checklists:\n%s", page)
 	}
 	if _, _, print := tess.get(wo + "/print"); !strings.Contains(print, "Checklist: Zoll R PM v1") || !strings.Contains(print, "Checklist: Electrical safety v1") {
@@ -286,5 +294,151 @@ func TestChecklistsForEquipmentModels(t *testing.T) {
 	// Today: the three things people start most.
 	if _, _, page = tess.get("/"); !strings.Contains(page, `<nav class="quick" aria-label="Start something"><a class="button" href="/work-orders/new">New work order</a>`) {
 		t.Fatalf("today:\n%s", page)
+	}
+}
+
+// The checklist page: followed step by step during the visit, with photos.
+func TestChecklistPageDuringAVisit(t *testing.T) {
+	e := newEnv(t)
+	tessID := e.user("tess", "Tess Tech", domain.RoleUser)
+	asset, _ := e.app.RegisterAsset(e.ctx, e.super, domain.AssetRegistered{Tag: "XRAY-1", LocationID: e.loc, Manufacturer: "GE", Model: "AMX 4+"})
+	proc, _, err := e.app.PublishChecklist(e.ctx, e.super, domain.ProcedurePublished{Name: "Portable X-ray PM", Steps: []domain.Step{
+		{ID: "plate", Text: "Photo of the dataplate", Kind: domain.StepPhoto, Required: true},
+		{ID: "kv", Text: "kVp accuracy at 80 kV", Kind: domain.StepNumber, Unit: "kV", Lower: "76", Upper: "84", Required: true},
+		{ID: "stop", Text: "Emergency stop works", Kind: domain.StepCheck, Required: true},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wo, _, _ := e.app.OpenWorkOrder(e.ctx, e.super, app.NewWorkOrder{Type: "pm", AssetID: asset, Priority: "normal", Title: "PM", ProcedureID: proc})
+	e.app.AssignWorkOrder(e.ctx, e.super, wo, tessID)
+	tess := e.browser()
+	tess.login("tess", "brass-kettle-orchard-7")
+	tess.post("/work-orders/"+wo+"/status", url.Values{"to": {"in_progress"}})
+
+	// The work order shows a card that opens the checklist page.
+	_, _, page := tess.get("/work-orders/" + wo)
+	if !strings.Contains(page, `<a class="cl-open" href="/work-orders/`+wo+`/checklists/`+proc+`">`) || !strings.Contains(page, "Open and fill in") {
+		t.Fatalf("card:\n%s", page)
+	}
+	_, _, page = tess.get("/work-orders/" + wo + "/checklists/" + proc)
+	for _, want := range []string{`<a class="back" href="/work-orders/` + wo + `#checklist">Back to work order NYC-WO-`, `<progress value="0" max="3">`,
+		`enctype="multipart/form-data"`, `type="file" name="p_plate" accept="image/jpeg,image/png,image/webp" multiple`, "XRAY-1</strong> · GE AMX 4&#43;",
+		`<button>Save and continue</button>`, `id="step-kv"`} {
+		if !strings.Contains(page, want) {
+			t.Fatalf("checklist page lacks %s:\n%s", want, page)
+		}
+	}
+	// A reading, then Save and continue: back at the next step to answer.
+	code, loc := postNoFollow(t, tess, "/work-orders/"+wo+"/checklist", url.Values{"procedure": {proc}, "v_kv": {"81.2"}})
+	if code != http.StatusSeeOther || loc != "/work-orders/"+wo+"/checklists/"+proc+"#step-plate" {
+		t.Fatalf("after saving: %d %s", code, loc)
+	}
+	// An iPhone photo (taken sideways), and an iPhone HEIC file.
+	heic := append([]byte{0, 0, 0, 24}, []byte("ftypheic\x00\x00\x00\x00mif1heic")...)
+	_, page = tess.postMultipart("/work-orders/"+wo+"/checklist", url.Values{"procedure": {proc}, "v_stop": {"pass"}},
+		upFile{"p_plate", "IMG_4012.JPG", photoWithGPS()}, upFile{"p_stop", "IMG_4013.HEIC", heic})
+	if !strings.Contains(page, "Saved 1 answer and added 1 photo.") || !strings.Contains(page, "Most Compatible") ||
+		!strings.Contains(page, `<progress value="3" max="3">`) || !strings.Contains(page, "<strong>1 photo</strong>") || !strings.Contains(page, `?view=1" alt="Photo: IMG_4012.JPG"`) {
+		t.Fatalf("photos:\n%s", page)
+	}
+	// Save and go back to the work order.
+	if code, loc := postNoFollow(t, tess, "/work-orders/"+wo+"/checklist", url.Values{"procedure": {proc}, "after": {"back"}}); loc != "/work-orders/"+wo+"#checklist" {
+		t.Fatalf("back: %d %s", code, loc)
+	}
+}
+
+// postNoFollow posts a form and returns the redirect, without following it.
+func postNoFollow(t *testing.T, b *browser, path string, form url.Values) (int, string) {
+	t.Helper()
+	form.Set("csrf", b.csrf)
+	req, _ := http.NewRequest("POST", b.e.srv.URL+path, strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp, err := b.c.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	return resp.StatusCode, resp.Header.Get("Location")
+}
+
+// Anyone builds checklists; a user's wait for a mid-tier or super user.
+func TestChecklistApprovalThroughTheUI(t *testing.T) {
+	e := newEnv(t)
+	e.user("mona", "Mona Mid", domain.RoleMidTier)
+	e.user("tess", "Tess Tech", domain.RoleUser)
+	mona, tess := e.browser(), e.browser()
+	mona.login("mona", "brass-kettle-orchard-7")
+	tess.login("tess", "brass-kettle-orchard-7")
+	if _, _, page := tess.get("/procedures/new"); !strings.Contains(page, "<button>Send for approval</button>") || !strings.Contains(page, `<a class="back" href="/procedures">Back to checklists</a>`) {
+		t.Fatalf("user's builder:\n%s", page)
+	}
+	_, page := tess.post("/procedures", url.Values{"name": {"Portable X-ray PM"}, "count": {"1"}, "acount": {"1"}, "mfr_0": {"GE"}, "model_0": {"AMX 4+"},
+		"text_0": {"Collimator light works"}, "kind_0": {"check"}, "required_0": {"yes"}})
+	if !strings.Contains(page, "Sent for approval.") || !strings.Contains(page, "Waiting for approval by a mid-tier or super user") || strings.Contains(page, "Approve and publish") {
+		t.Fatalf("sent:\n%s", page)
+	}
+	if _, _, page = mona.get("/"); !strings.Contains(page, "1 checklist waiting for your approval") {
+		t.Fatalf("dashboard:\n%s", page)
+	}
+	_, _, page = mona.get("/procedures")
+	id := regexp.MustCompile(`<a href="/checklist-proposals/([0-9a-f-]{36})">Portable X-ray PM</a> <span class="hint">by Tess Tech`).FindStringSubmatch(page)
+	if id == nil {
+		t.Fatalf("library waiting list:\n%s", page)
+	}
+	if _, _, page = mona.get("/checklist-proposals/" + id[1]); !strings.Contains(page, "Approve and publish") || !strings.Contains(page, "GE AMX 4&#43;") {
+		t.Fatalf("proposal page:\n%s", page)
+	}
+	if _, page = mona.post("/checklist-proposals/"+id[1]+"/review", url.Values{"decision": {"approve"}}); !strings.Contains(page, "Approved and published.") || !strings.Contains(page, "Portable X-ray PM v1") {
+		t.Fatalf("approved:\n%s", page)
+	}
+	if _, _, page = tess.get("/procedures"); !strings.Contains(page, "Your checklists, decided") || !strings.Contains(page, "approved") {
+		t.Fatalf("tess's library:\n%s", page)
+	}
+	if code, _ := tess.post("/checklist-proposals/"+id[1]+"/review", url.Values{"decision": {"approve"}}); code != http.StatusForbidden {
+		t.Fatalf("a user reviewed: %d", code)
+	}
+}
+
+// The sample portable X-ray checklist opens in the builder and publishes
+// as it is.
+func TestSamplePortableXRayChecklist(t *testing.T) {
+	e := newEnv(t)
+	file, err := os.ReadFile("../../deploy/sample-checklists/portable-x-ray.checklist.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	admin := e.browser()
+	admin.login("admin", "tumbleweed-gasket-42")
+	admin.get("/procedures")
+	_, page := admin.postMultipart("/procedures/import", url.Values{}, upFile{"file", "portable-x-ray.checklist.json", file})
+	if !strings.Contains(page, `value="Portable X-ray: preventive maintenance and quality control"`) {
+		t.Fatalf("import:\n%s", page)
+	}
+	// Submit the builder exactly as it came back.
+	form := url.Values{}
+	for _, m := range regexp.MustCompile(`<input[^>]*name="([^"]+)"[^>]*value="([^"]*)"`).FindAllStringSubmatch(page, -1) {
+		form.Set(m[1], html.UnescapeString(m[2]))
+	}
+	for _, m := range regexp.MustCompile(`(?s)<textarea name="([^"]+)"[^>]*>(.*?)</textarea>`).FindAllStringSubmatch(page, -1) {
+		form.Set(m[1], html.UnescapeString(m[2]))
+	}
+	for _, m := range regexp.MustCompile(`(?s)<select name="([^"]+)">(.*?)</select>`).FindAllStringSubmatch(page, -1) {
+		if sel := regexp.MustCompile(`<option(?: value="([^"]*)")? selected>([^<]*)</option>`).FindStringSubmatch(m[2]); sel != nil {
+			v := sel[1]
+			if v == "" {
+				v = sel[2]
+			}
+			form.Set(m[1], html.UnescapeString(v))
+		}
+	}
+	form.Del("csrf")
+	if _, page = admin.post("/procedures", form); !strings.Contains(page, "Published Portable X-ray: preventive maintenance and quality control version 1") {
+		t.Fatalf("publish:\n%s", page)
+	}
+	for _, want := range []string{"Half-value layer at 80 kVp", "only when “What powers the drive and generator?” is “Battery”", "Fail: removed from service (fails)"} {
+		if !strings.Contains(html.UnescapeString(page), want) {
+			t.Errorf("published checklist lacks %q", want)
+		}
 	}
 }

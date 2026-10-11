@@ -110,6 +110,7 @@ type dashboardData struct {
 	Flags      int
 	Locations  int // proposed locations waiting for a super user
 	Requests   int // reported problems waiting (master Pi)
+	Proposals  int // checklists waiting for approval (mid-tier and super users)
 }
 
 func (s *Server) dashboard(w http.ResponseWriter, r *http.Request, sess *session) error {
@@ -128,6 +129,9 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request, sess *session
 	q.QueryRowContext(ctx, `SELECT count(*) FROM work_orders WHERE status = 'open'`).Scan(&d.Unassigned)
 	q.QueryRowContext(ctx, `SELECT count(*) FROM locations WHERE status = 'pending'`).Scan(&d.Locations)
 	q.QueryRowContext(ctx, `SELECT count(*) FROM service_requests WHERE status = 'new'`).Scan(&d.Requests)
+	if roleRank[sess.User.Role] >= roleRank[domain.RoleMidTier] {
+		q.QueryRowContext(ctx, `SELECT count(*) FROM procedure_proposals WHERE status = 'pending'`).Scan(&d.Proposals)
+	}
 	q.QueryRowContext(ctx, `SELECT count(*) FROM event_flags f WHERE NOT EXISTS (SELECT 1 FROM flag_resolutions r WHERE r.event_id = f.event_id)`).Scan(&d.Flags)
 	return s.render(w, r, sess, "dashboard", "Today", d)
 }

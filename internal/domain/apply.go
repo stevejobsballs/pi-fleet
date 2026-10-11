@@ -66,7 +66,7 @@ func (p *Projector) Reset(ctx context.Context, tx *sql.Tx) error {
 	for _, t := range []string{
 		"service_requests", "meter_readings", "labor_entries", "checklist_results", "work_order_checklists", "kiosk_members", "kiosks", "attachments", "signatures", "cal_standards", "cal_points", "calibration_records", "stock_txns", "stock_levels", "stock_locations", "parts",
 		"wo_leases", "work_orders", "pm_schedules", "assets", "locations", "sites",
-		"nodes", "user_lockouts", "user_password_history", "users", "backups", "durable_heads", "flag_resolutions", "procedures",
+		"nodes", "user_lockouts", "user_password_history", "users", "backups", "durable_heads", "flag_resolutions", "procedure_proposals", "procedures",
 	} {
 		if _, err := tx.ExecContext(ctx, `DELETE FROM `+t); err != nil {
 			return err
@@ -104,6 +104,10 @@ func (p *Projector) Apply(ctx context.Context, tx *sql.Tx, e *event.Event) error
 		return ap.siteCreated(pl)
 	case *SiteMoved:
 		return ap.siteMoved(pl)
+	case *ProcedureProposed:
+		return ap.procedureProposed(pl)
+	case *ProcedureProposalReviewed:
+		return ap.procedureProposalReviewed(pl)
 	case *WorkOrderChecklistAdded:
 		return ap.workOrderChecklistAdded(pl)
 	case *WorkOrderChecklistRemoved:

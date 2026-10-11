@@ -47,6 +47,7 @@
       <label class="grow">has the answer <input name="showif_value_{{$i}}" value="{{.ShowIfValue}}" placeholder="e.g. Yes"></label>
     </div>
   </fieldset>{{end}}
-  <p class="buttons"><button name="more" value="5" class="secondary" formnovalidate>Add 5 more steps</button><button>Publish checklist</button></p>
+  {{if not $d.CanPublish}}<p class="hint">When you send it, a mid-tier or super user checks and approves it on the master Pi. It can be used on work orders once approved.</p>{{end}}
+  <p class="buttons"><button name="more" value="5" class="secondary" formnovalidate>Add 5 more steps</button><button>{{if $d.CanPublish}}Publish checklist{{else}}Send for approval{{end}}</button></p>
 </form>
 {{end}}

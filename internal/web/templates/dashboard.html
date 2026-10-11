@@ -1,5 +1,6 @@
 {{define "content"}}
 <nav class="quick" aria-label="Start something"><a class="button" href="/work-orders/new">New work order</a><a class="button" href="/assets">Find equipment</a><a class="button" href="/assets/new">Register equipment</a></nav>
+{{if .Data.Proposals}}<p class="flash warn" role="status"><a href="/procedures#waiting">{{.Data.Proposals}} checklist{{if ne .Data.Proposals 1}}s{{end}} waiting for your approval</a></p>{{end}}
 {{if .Data.Requests}}<p class="flash warn" role="status"><a href="/requests">{{.Data.Requests}} reported problem{{if ne .Data.Requests 1}}s{{end}} waiting to be looked at</a></p>{{end}}
 {{if and .IsSuper .Data.Locations}}<p class="flash warn" role="status"><a href="/admin/sites#review">{{.Data.Locations}} new location{{if ne .Data.Locations 1}}s{{end}} awaiting your review</a></p>{{end}}
 <section>

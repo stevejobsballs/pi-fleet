@@ -28,7 +28,7 @@ func (s *Server) attachmentUpload(targetType string) handler {
 		}
 		_, hdr, err := r.FormFile("file")
 		if err != nil {
-			return s.done(w, r, sess, back, "Not saved: choose a file (JPEG, PNG or PDF, at most 10 MiB).")
+			return s.done(w, r, sess, back, "Not saved: choose a file (a photo or a PDF, at most 10 MiB).")
 		}
 		if err := s.attachTo(r, sess, targetType, id, hdr, strings.TrimSpace(r.PostFormValue("description"))); err != nil {
 			return s.failed(w, r, sess, back, err)
@@ -56,7 +56,7 @@ func (s *Server) attachTo(r *http.Request, sess *session, targetType, id string,
 		return err
 	}
 	_, err = s.App.AddAttachment(r.Context(), s.actor(sess), targetType, id, hdr.Filename, desc, data)
-	if errors.Is(err, blobs.ErrType) || errors.Is(err, blobs.ErrTooLarge) || errors.Is(err, blobs.ErrMalformed) {
+	if errors.Is(err, blobs.ErrType) || errors.Is(err, blobs.ErrTooLarge) || errors.Is(err, blobs.ErrMalformed) || errors.Is(err, blobs.ErrHEIC) {
 		return userErr("%s", strings.TrimPrefix(err.Error(), "blobs: "))
 	}
 	return err
@@ -88,7 +88,11 @@ func (s *Server) attachmentDownload(w http.ResponseWriter, r *http.Request, sess
 	}
 	h := w.Header()
 	h.Set("Content-Type", a.MIME)
-	h.Set("Content-Disposition", "attachment; filename*=UTF-8''"+url.PathEscape(a.Filename))
+	disposition := "attachment"
+	if r.URL.Query().Get("view") != "" && strings.HasPrefix(a.MIME, "image/") {
+		disposition = "inline" // a photo opened to look at
+	}
+	h.Set("Content-Disposition", disposition+"; filename*=UTF-8''"+url.PathEscape(a.Filename))
 	h.Set("Content-Security-Policy", "sandbox; default-src 'none'")
 	_, err = w.Write(data)
 	return err

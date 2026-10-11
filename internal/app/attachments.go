@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"pi-fleet/internal/blobs"
@@ -16,6 +17,45 @@ var ErrNoBlobStore = errors.New("app: no blob store configured")
 // work order or piece of equipment. On an employee Pi the file is queued
 // for upload to central.
 func (a *App) AddAttachment(ctx context.Context, actor Actor, targetType, targetID, filename, description string, data []byte) (string, error) {
+	return a.addAttachment(ctx, actor, domain.AttachmentAdded{TargetType: targetType, TargetID: targetID, Filename: filename, Description: description}, data)
+}
+
+// AddStepPhoto attaches a photo to a step of one of a work order's
+// checklists. For a photo step it also records the step as answered.
+func (a *App) AddStepPhoto(ctx context.Context, actor Actor, woID, procedureID, stepID, filename, description string, data []byte) (string, error) {
+	id, err := a.addAttachment(ctx, actor, domain.AttachmentAdded{TargetType: domain.EntityWorkOrder, TargetID: woID, Filename: filename,
+		Description: description, ProcedureID: procedureID, StepID: stepID}, data)
+	if err != nil {
+		return id, err
+	}
+	w, err := domain.GetWorkOrder(ctx, a.Store.DB(), woID)
+	if err != nil {
+		return id, err
+	}
+	all, err := domain.Checklists(ctx, a.Store.DB(), w)
+	if err != nil {
+		return id, err
+	}
+	for _, c := range all {
+		if c.ID != procedureID {
+			continue
+		}
+		for _, st := range c.Steps {
+			if st.ID == stepID && st.Kind == domain.StepPhoto {
+				n := len(st.Photos)
+				value := fmt.Sprintf("%d photos", n)
+				if n == 1 {
+					value = "1 photo"
+				}
+				return id, a.RecordChecklistStep(ctx, actor, woID, procedureID, stepID, value, st.Note)
+			}
+		}
+	}
+	return id, nil
+}
+
+func (a *App) addAttachment(ctx context.Context, actor Actor, p domain.AttachmentAdded, data []byte) (string, error) {
+	targetType, targetID := p.TargetType, p.TargetID
 	if a.Blobs == nil {
 		return "", ErrNoBlobStore
 	}
@@ -35,10 +75,8 @@ func (a *App) AddAttachment(ctx context.Context, actor Actor, targetType, target
 				lease = w.LeaseID
 			}
 		}
-		if err := a.emit(ctx, tx, actor, domain.TypeAttachmentAdded, domain.EntityAttachment, id, 0, lease, domain.AttachmentAdded{
-			SHA256: sha, MIME: mime, Size: int64(len(clean)), Filename: domain.CleanFilename(filename),
-			Description: description, TargetType: targetType, TargetID: targetID,
-		}); err != nil {
+		p.SHA256, p.MIME, p.Size, p.Filename = sha, mime, int64(len(clean)), domain.CleanFilename(p.Filename)
+		if err := a.emit(ctx, tx, actor, domain.TypeAttachmentAdded, domain.EntityAttachment, id, 0, lease, p); err != nil {
 			return err
 		}
 		if !a.QueueUploads {

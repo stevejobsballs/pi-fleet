@@ -1,0 +1,426 @@
+{
+  "format": "pi-fleet checklist",
+  "name": "Portable X-ray: preventive maintenance and quality control",
+  "description": "Yearly preventive maintenance and quality control for a mobile (portable) X-ray unit with a digital detector.\n\nA starting point: check every limit against the manufacturer's service manual and your state's radiation control regulations, then add the manufacturers and models it is for.",
+  "reference": "21 CFR 1020.30–1020.31; IEC 62353; the manufacturer's service manual",
+  "category": "Preventive maintenance",
+  "steps": [
+    {
+      "id": "start",
+      "text": "Before you start",
+      "kind": "heading",
+      "required": false
+    },
+    {
+      "id": "safety",
+      "text": "Wear your dosimeter. Make test exposures only with the room cleared, standing at the full length of the exposure switch cord, behind a protective barrier or wearing a lead apron.",
+      "kind": "info",
+      "required": false
+    },
+    {
+      "id": "plate",
+      "text": "Photo of the dataplate (model and serial number)",
+      "kind": "photo",
+      "required": false,
+      "help": "Take it with your phone or tablet; it is added to this work order."
+    },
+    {
+      "id": "power",
+      "text": "What powers the drive and generator?",
+      "kind": "choice",
+      "required": true,
+      "options": [
+        {
+          "label": "Battery"
+        },
+        {
+          "label": "Mains only"
+        }
+      ]
+    },
+    {
+      "id": "visual",
+      "text": "Look it over",
+      "kind": "heading",
+      "required": false
+    },
+    {
+      "id": "housing",
+      "text": "Housing, covers and warning labels are intact and readable",
+      "kind": "check",
+      "required": true
+    },
+    {
+      "id": "tube",
+      "text": "Tube head, collimator and arm: no cracks, dents or oil leaks",
+      "kind": "check",
+      "required": true,
+      "critical": true,
+      "note_on_fail": true,
+      "help": "An oil leak or cracked tube housing means the unit must not be used."
+    },
+    {
+      "id": "cables",
+      "text": "Power and high-voltage cables: no cuts, kinks or exposed conductors",
+      "kind": "check",
+      "required": true,
+      "critical": true,
+      "note_on_fail": true
+    },
+    {
+      "id": "drift",
+      "text": "The arm and tube head stay where they are set, without drifting",
+      "kind": "check",
+      "required": true,
+      "note_on_fail": true
+    },
+    {
+      "id": "motion",
+      "text": "Moving the unit",
+      "kind": "heading",
+      "required": false
+    },
+    {
+      "id": "wheels",
+      "text": "Wheels and casters roll freely; the parking brake holds the unit on a slope",
+      "kind": "check",
+      "required": true
+    },
+    {
+      "id": "drive",
+      "text": "Drive works forward and back; the unit stops as soon as the drive handle switch is let go",
+      "kind": "check",
+      "required": true,
+      "critical": true,
+      "note_on_fail": true,
+      "show_if": {
+        "step": "power",
+        "equals": "Battery"
+      }
+    },
+    {
+      "id": "bumper",
+      "text": "The unit stops when the collision bumper is pressed",
+      "kind": "check",
+      "required": true,
+      "critical": true,
+      "note_on_fail": true,
+      "show_if": {
+        "step": "power",
+        "equals": "Battery"
+      }
+    },
+    {
+      "id": "estop",
+      "text": "Emergency stop cuts power to the drive and to exposures",
+      "kind": "check",
+      "required": true,
+      "critical": true,
+      "note_on_fail": true
+    },
+    {
+      "id": "switch",
+      "text": "Exposure switch: two-stage, works only while held, on a cord at least 2 m long",
+      "kind": "check",
+      "required": true,
+      "critical": true,
+      "note_on_fail": true,
+      "help": "21 CFR 1020.31(i) asks for at least 1.8 m (6 ft) of cord for mobile units."
+    },
+    {
+      "id": "battery",
+      "text": "Battery and charging",
+      "kind": "heading",
+      "required": false
+    },
+    {
+      "id": "batvolt",
+      "text": "Battery voltage, fully charged",
+      "kind": "number",
+      "unit": "V",
+      "required": true,
+      "help": "Compare with the value in the manufacturer's service manual.",
+      "show_if": {
+        "step": "power",
+        "equals": "Battery"
+      }
+    },
+    {
+      "id": "charger",
+      "text": "Charger and charge indicator",
+      "kind": "choice",
+      "required": true,
+      "options": [
+        {
+          "label": "Charging normally"
+        },
+        {
+          "label": "Fault shown",
+          "fails": true
+        }
+      ],
+      "note_on_fail": true,
+      "show_if": {
+        "step": "power",
+        "equals": "Battery"
+      }
+    },
+    {
+      "id": "batdue",
+      "text": "Battery pack: next replacement due",
+      "kind": "date",
+      "required": false,
+      "show_if": {
+        "step": "power",
+        "equals": "Battery"
+      }
+    },
+    {
+      "id": "collimator",
+      "text": "Collimator and light field",
+      "kind": "heading",
+      "required": false
+    },
+    {
+      "id": "light",
+      "text": "Collimator light comes on and is bright enough to see in a lit room",
+      "kind": "check",
+      "required": true
+    },
+    {
+      "id": "align",
+      "text": "Light field to X-ray field: total edge misalignment at 100 cm",
+      "kind": "number",
+      "unit": "cm",
+      "required": true,
+      "upper": "2",
+      "note_on_fail": true,
+      "help": "The light and X-ray field edges may differ by at most 2% of the distance (2 cm at 100 cm) along each axis (21 CFR 1020.31(d))."
+    },
+    {
+      "id": "generator",
+      "text": "Generator performance (with a calibrated X-ray analyser)",
+      "kind": "heading",
+      "required": false
+    },
+    {
+      "id": "analyser",
+      "text": "Write the analyser's serial number and calibration due date in the note of the first reading.",
+      "kind": "info",
+      "required": false
+    },
+    {
+      "id": "kv60",
+      "text": "kVp at 60 kV set",
+      "kind": "number",
+      "unit": "kV",
+      "required": true,
+      "lower": "57",
+      "upper": "63",
+      "note_on_fail": true,
+      "help": "Typical acceptance ±5% of the setting; use the manufacturer's tolerance if it is tighter."
+    },
+    {
+      "id": "kv80",
+      "text": "kVp at 80 kV set",
+      "kind": "number",
+      "unit": "kV",
+      "required": true,
+      "lower": "76",
+      "upper": "84",
+      "note_on_fail": true
+    },
+    {
+      "id": "kv100",
+      "text": "kVp at 100 kV set",
+      "kind": "number",
+      "unit": "kV",
+      "required": true,
+      "lower": "95",
+      "upper": "105",
+      "note_on_fail": true
+    },
+    {
+      "id": "time",
+      "text": "Exposure time at 100 ms set",
+      "kind": "number",
+      "unit": "ms",
+      "required": true,
+      "lower": "90",
+      "upper": "110",
+      "note_on_fail": true
+    },
+    {
+      "id": "cov",
+      "text": "Output reproducibility: coefficient of variation of 5 exposures",
+      "kind": "number",
+      "unit": "",
+      "required": true,
+      "upper": "0.05",
+      "note_on_fail": true,
+      "help": "Same settings, five exposures; CV = standard deviation ÷ mean output. Limit 0.05 (21 CFR 1020.31(b))."
+    },
+    {
+      "id": "linearity",
+      "text": "mAs linearity: difference between adjacent mAs stations",
+      "kind": "number",
+      "unit": "",
+      "required": true,
+      "upper": "0.10",
+      "note_on_fail": true,
+      "help": "|X1 − X2| ≤ 0.10 × (X1 + X2), where X is output per mAs (21 CFR 1020.31(c))."
+    },
+    {
+      "id": "hvl",
+      "text": "Half-value layer at 80 kVp",
+      "kind": "number",
+      "unit": "mm Al",
+      "required": true,
+      "lower": "2.9",
+      "critical": true,
+      "note_on_fail": true,
+      "help": "At least 2.9 mm of aluminium at 80 kVp for equipment made after June 2006 (21 CFR 1020.30(m), table 1). Check the limit for older equipment."
+    },
+    {
+      "id": "detector",
+      "text": "Image receptor",
+      "kind": "heading",
+      "required": false
+    },
+    {
+      "id": "calib",
+      "text": "Detector calibration (gain and offset, or flat-field)",
+      "kind": "choice",
+      "required": true,
+      "options": [
+        {
+          "label": "Done today"
+        },
+        {
+          "label": "Not due yet"
+        },
+        {
+          "label": "Overdue",
+          "fails": true
+        }
+      ],
+      "note_on_fail": true
+    },
+    {
+      "id": "dethousing",
+      "text": "Detector housing, handle and battery undamaged; no drop alarm",
+      "kind": "check",
+      "required": true
+    },
+    {
+      "id": "phantom",
+      "text": "QC phantom image: no artefacts, lines or dead areas",
+      "kind": "check",
+      "required": true,
+      "help": "Use the unit's own QC phantom and protocol."
+    },
+    {
+      "id": "phantomphoto",
+      "text": "Photo of the phantom image or the QC result screen",
+      "kind": "photo",
+      "required": false
+    },
+    {
+      "id": "wireless",
+      "text": "Wireless detector pairs, and images arrive at the console",
+      "kind": "check",
+      "required": false
+    },
+    {
+      "id": "electrical",
+      "text": "Electrical safety (IEC 62353)",
+      "kind": "heading",
+      "required": false
+    },
+    {
+      "id": "pe",
+      "text": "Protective earth resistance, including the power cord",
+      "kind": "number",
+      "unit": "Ω",
+      "required": true,
+      "upper": "0.3",
+      "critical": true,
+      "note_on_fail": true
+    },
+    {
+      "id": "leak",
+      "text": "Equipment leakage current (direct or differential method)",
+      "kind": "number",
+      "unit": "µA",
+      "required": true,
+      "upper": "500",
+      "critical": true,
+      "note_on_fail": true,
+      "help": "Limit for Class I equipment: 500 µA (1000 µA with the alternative method)."
+    },
+    {
+      "id": "finish",
+      "text": "Finishing",
+      "kind": "heading",
+      "required": false
+    },
+    {
+      "id": "aprons",
+      "text": "Lead aprons and thyroid collars kept with the unit are present and undamaged",
+      "kind": "check",
+      "required": false
+    },
+    {
+      "id": "parts",
+      "text": "Parts replaced",
+      "kind": "multi",
+      "required": false,
+      "options": [
+        {
+          "label": "Battery pack"
+        },
+        {
+          "label": "Collimator lamp"
+        },
+        {
+          "label": "Exposure switch"
+        },
+        {
+          "label": "Wheel or caster"
+        },
+        {
+          "label": "Detector battery"
+        },
+        {
+          "label": "Other (say which in the note)"
+        }
+      ]
+    },
+    {
+      "id": "result",
+      "text": "Overall result",
+      "kind": "choice",
+      "required": true,
+      "options": [
+        {
+          "label": "Pass: safe to use"
+        },
+        {
+          "label": "Pass with remarks"
+        },
+        {
+          "label": "Fail: removed from service",
+          "fails": true
+        }
+      ],
+      "critical": true,
+      "note_on_fail": true
+    },
+    {
+      "id": "remarks",
+      "text": "Remarks",
+      "kind": "longtext",
+      "required": false
+    }
+  ]
+}

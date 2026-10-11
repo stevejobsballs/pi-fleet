@@ -1,18 +1,12 @@
 {{define "content"}}{{$p := .Data}}
 <dl class="facts">
   <dt>Status</dt><dd>{{$p.Status}}, published {{when $p.PublishedAt}}</dd>
-  <dt>Equipment</dt><dd>{{range $i, $m := $p.AppliesTo}}{{if $i}}; {{end}}{{$m.Manufacturer}} {{if $m.Model}}{{$m.Model}}{{else}}(every model){{end}}{{else}}any equipment{{end}}</dd>
+  <dt>Equipment</dt><dd>{{template "clwhere" $p.AppliesTo}}</dd>
   {{with $p.Category}}<dt>For</dt><dd>{{.}}</dd>{{end}}
   {{with $p.Reference}}<dt>Follows</dt><dd>{{.}}</dd>{{end}}
   {{with $p.Description}}<dt>About</dt><dd class="pre">{{.}}</dd>{{end}}
 </dl>
-<p class="buttons">{{if .IsMid}}<a class="button" href="/procedures/new?from={{$p.ID}}">Change it (publish the next version)</a>{{end}}<a class="button secondary" href="/procedures/{{$p.ID}}/export.json">Download, to copy to another pi-fleet</a></p>
-<ol class="cl-view">{{range $p.Steps}}
-  {{if eq .Kind "heading"}}<li class="cl-heading"><h3>{{.Text}}</h3></li>
-  {{else if eq .Kind "info"}}<li class="cl-info"><p>{{.Text}}</p></li>
-  {{else}}<li><strong>{{.Text}}</strong>{{if .Required}} <span class="tag">required</span>{{end}}{{if .Critical}} <span class="tag crit">critical</span>{{end}}
-    <br><span class="hint">{{kindLabel .Kind}}{{if eq .Kind "number"}}{{if .Unit}} in {{.Unit}}{{end}}{{if or .Lower .Upper}}, passes {{if .Lower}}from {{.Lower}}{{end}}{{if .Upper}} up to {{.Upper}}{{end}}{{end}}{{end}}{{if .Options}}: {{range $i, $o := .Options}}{{if $i}}, {{end}}{{$o.Label}}{{if $o.Fails}} (fails){{end}}{{end}}{{end}}{{if .NoteOnFail}}; a failure needs a note{{end}}{{with .ShowIf}}; only when “{{stepName $p.Steps .Step}}” is “{{.Equals}}”{{end}}</span>
-    {{with .Help}}<br><span class="hint pre">{{.}}</span>{{end}}</li>{{end}}
-{{end}}</ol>
+<p class="buttons"><a class="button" href="/procedures/new?from={{$p.ID}}">{{if .IsMid}}Change it (publish the next version){{else}}Suggest a change (sent for approval){{end}}</a><a class="button secondary" href="/procedures/{{$p.ID}}/export.json">Download, to copy to another pi-fleet</a></p>
+{{template "clsteps" $p.Steps}}
 {{if and .IsMid (eq $p.Status "active")}}<form method="post" action="/procedures/{{$p.ID}}/retire" class="inline">{{template "csrf" .CSRF}}<label>Reason <input name="reason" required></label><button class="danger">Retire this version</button></form>{{end}}
 {{end}}

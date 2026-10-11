@@ -23,7 +23,7 @@ const (
 	MaxAttachmentSize = 10 << 20
 )
 
-var attachmentTypes = map[string]bool{"image/jpeg": true, "image/png": true, "application/pdf": true}
+var attachmentTypes = map[string]bool{"image/jpeg": true, "image/png": true, "image/webp": true, "application/pdf": true}
 
 var sha256Hex = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
@@ -37,6 +37,9 @@ type AttachmentAdded struct {
 	Description string `json:"description"`
 	TargetType  string `json:"target_type"`
 	TargetID    string `json:"target_id"`
+	// A photo for a checklist step: the work order's checklist and step.
+	ProcedureID string `json:"procedure_id,omitempty"`
+	StepID      string `json:"step_id,omitempty"`
 }
 
 // AttachmentDetached removes an attachment from its record. With Purge
@@ -121,7 +124,7 @@ func (ap *applier) attachmentAdded(p *AttachmentAdded) error {
 		return err
 	}
 	if !sha256Hex.MatchString(p.SHA256) || !attachmentTypes[p.MIME] || p.Size < 1 || p.Size > MaxAttachmentSize {
-		return invalid("attachment must be a JPEG, PNG or PDF of at most 10 MiB, identified by its SHA-256")
+		return invalid("attachment must be a photo (JPEG, PNG, WebP) or PDF of at most 10 MiB, identified by its SHA-256")
 	}
 	if p.Filename != CleanFilename(p.Filename) {
 		return invalid("unsafe filename %q", p.Filename)
@@ -129,11 +132,40 @@ func (ap *applier) attachmentAdded(p *AttachmentAdded) error {
 	if err := ap.checkAttachTarget(p.TargetType, p.TargetID, true); err != nil {
 		return err
 	}
+	if p.StepID != "" || p.ProcedureID != "" {
+		if err := ap.checkPhotoStep(p); err != nil {
+			return err
+		}
+	}
 	return ap.exec(`INSERT INTO attachments (id, sha256, mime, size, filename, description, target_type, target_id,
-			added_by, added_at, status, detach_reason, version, last_event_id)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'attached', '', 1, ?)`,
+			added_by, added_at, status, detach_reason, version, last_event_id, procedure_id, step_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'attached', '', 1, ?, ?, ?)`,
 		ap.e.EntityID, p.SHA256, p.MIME, p.Size, p.Filename, p.Description, p.TargetType, p.TargetID,
-		ap.actor.id, ap.wall(), ap.e.EventID)
+		ap.actor.id, ap.wall(), ap.e.EventID, p.ProcedureID, p.StepID)
+}
+
+// checkPhotoStep checks a photo's checklist step is on its work order.
+func (ap *applier) checkPhotoStep(p *AttachmentAdded) error {
+	if p.TargetType != EntityWorkOrder || !strings.HasPrefix(p.MIME, "image/") {
+		return invalid("only photos on work orders belong to checklist steps")
+	}
+	w, err := GetWorkOrder(ap.ctx, ap.tx, p.TargetID)
+	if err != nil {
+		return err
+	}
+	if on, err := ap.checklistOn(w, p.ProcedureID); err != nil || !on {
+		return orInvalid(err, "that checklist isn't on %s", w.Number)
+	}
+	proc, err := GetProcedure(ap.ctx, ap.tx, p.ProcedureID)
+	if err != nil {
+		return err
+	}
+	for _, st := range proc.Steps {
+		if st.ID == p.StepID && !Inputless(st.Kind) {
+			return nil
+		}
+	}
+	return invalid("checklist %s has no step %q to add a photo to", proc.Name, p.StepID)
 }
 
 func (ap *applier) attachmentDetached(p *AttachmentDetached) error {
@@ -172,6 +204,7 @@ func (ap *applier) attachmentDetached(p *AttachmentDetached) error {
 // Attachment is a projected attachment.
 type Attachment struct {
 	ID, SHA256, MIME, Filename, Description, TargetType, TargetID string
+	ProcedureID, StepID                                           string // a checklist step's photo
 	AddedBy, Status, DetachReason                                 string
 	Size                                                          int64
 	AddedAt                                                       time.Time
@@ -180,7 +213,7 @@ type Attachment struct {
 // ListAttachments returns a record's attachments, oldest first.
 func ListAttachments(ctx context.Context, q Querier, targetType, targetID string) ([]Attachment, error) {
 	rows, err := q.QueryContext(ctx, `SELECT a.id, a.sha256, a.mime, a.filename, a.description, a.target_type, a.target_id,
-			coalesce(u.legal_name, a.added_by), a.status, a.detach_reason, a.size, a.added_at
+			coalesce(u.legal_name, a.added_by), a.status, a.detach_reason, a.size, a.added_at, a.procedure_id, a.step_id
 		FROM attachments a LEFT JOIN users u ON u.id = a.added_by
 		WHERE a.target_type = ? AND a.target_id = ? ORDER BY a.added_at, a.id`, targetType, targetID)
 	if err != nil {
@@ -192,7 +225,7 @@ func ListAttachments(ctx context.Context, q Querier, targetType, targetID string
 		var a Attachment
 		var at string
 		if err := rows.Scan(&a.ID, &a.SHA256, &a.MIME, &a.Filename, &a.Description, &a.TargetType, &a.TargetID,
-			&a.AddedBy, &a.Status, &a.DetachReason, &a.Size, &at); err != nil {
+			&a.AddedBy, &a.Status, &a.DetachReason, &a.Size, &at, &a.ProcedureID, &a.StepID); err != nil {
 			return nil, err
 		}
 		a.AddedAt, _ = time.Parse(time.RFC3339, at)

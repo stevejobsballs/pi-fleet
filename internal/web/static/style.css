@@ -240,3 +240,29 @@ section.maker h3 { margin: 1rem 0 .25rem; font-size: 1rem; }
 .cl-block { margin: 0 0 1.5rem; }
 .cl-title { margin: 1rem 0 .4rem; font-size: 1.1rem; }
 form.add-checklist { padding: .75rem 1rem; background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: var(--radius); }
+
+/* Back to where this screen was opened from, top left. */
+a.back { display: inline-flex; align-items: center; gap: .4rem; margin: 0 0 .5rem; font-weight: 700; text-decoration: none; }
+a.back::before { content: "‹"; font-size: 1.4em; line-height: 1; }
+a.back:hover { text-decoration: underline; }
+/* A work order's checklists: one card each, opening the checklist. */
+.cl-card { margin: 0 0 1rem; }
+a.cl-open { display: grid; grid-template-columns: 1fr auto; gap: .2rem 1rem; align-items: center; padding: .9rem 1.1rem; color: var(--fg);
+  text-decoration: none; background: var(--panel); border: 1px solid var(--line-strong); border-left: 4px solid var(--accent); border-radius: var(--radius); }
+a.cl-open:hover { background: var(--tint); color: var(--fg); }
+a.cl-open .cl-name { font-weight: 700; font-size: 1.1rem; }
+a.cl-open .hint { grid-column: 1; }
+a.cl-open .button { grid-column: 2; grid-row: 1 / span 2; }
+/* The checklist page: where it is, how far along, and a save bar that
+   stays in reach at the bottom of the screen. */
+.cl-head { margin: 0 0 1rem; }
+.cl-progress { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; }
+.cl-progress progress { width: min(24rem, 100%); height: 1rem; accent-color: var(--leaf); }
+.cl-step.done { border-left: 4px solid var(--line-strong); }
+.cl-step:target { outline: 3px solid var(--accent); outline-offset: 2px; }
+.savebar { position: sticky; bottom: 0; z-index: 1; padding: .5rem .9rem; background: var(--silver); border-top: 3px solid var(--leaf); }
+.savebar .buttons { margin: 0; gap: .6rem; }
+@media (max-width: 40rem) { .savebar .buttons { flex-wrap: nowrap; } .savebar button { flex: 1; padding-left: .5rem; padding-right: .5rem; } }
+.thumbs { display: flex; flex-wrap: wrap; gap: .5rem; }
+.thumbs img { width: 7rem; height: 7rem; object-fit: cover; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--panel); }
+label.photo-pick input[type="file"] { font-size: 14px; }

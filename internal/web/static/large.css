@@ -123,3 +123,13 @@ nav.quick .button { min-width: 14rem; text-align: center; }
 section.maker h3, .cl-title { font-size: 1.3rem; }
 ul.cl-list li { padding: .7rem 0; border-bottom-width: 2px; }
 form.add-checklist { border-width: 2px; border-left-width: 8px; padding: 1rem 1.25rem; }
+
+a.back { font-size: 1.15rem; min-height: 3rem; }
+a.cl-open { padding: 1.1rem 1.4rem; border-width: 2px; border-left-width: 8px; }
+a.cl-open .cl-name { font-size: 1.35rem; }
+.cl-progress progress { height: 1.4rem; }
+.savebar { padding: .6rem 1rem; border-top-width: 5px; }
+@media (max-width: 40rem) { .savebar button { font-size: 1.05rem; min-height: 3.25rem; } }
+.thumbs img { width: 9rem; height: 9rem; border-width: 2px; }
+label.photo-pick input[type="file"] { font-size: 1.1rem; }
+@media (max-width: 40rem) { a.cl-open { grid-template-columns: 1fr; } a.cl-open .button { grid-column: 1; grid-row: auto; justify-self: start; } }

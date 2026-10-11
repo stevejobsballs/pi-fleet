@@ -1,6 +1,9 @@
 package app
 
 import (
+	"bytes"
+	"image"
+	"image/jpeg"
 	"strings"
 	"testing"
 
@@ -118,7 +121,7 @@ func TestChecklistDefinitionsAreChecked(t *testing.T) {
 		"depends on a non-option": {{ID: "b", Text: "B", Kind: domain.StepChoice, Options: []domain.StepOption{{Label: "Yes"}, {Label: "No"}}},
 			{ID: "a", Text: "A", Kind: domain.StepText, ShowIf: &domain.StepCondition{Step: "b", Equals: "Maybe"}}},
 		"options on a reading": {{ID: "n", Text: "N", Kind: domain.StepNumber, Options: []domain.StepOption{{Label: "A"}, {Label: "B"}}}},
-		"unknown kind":         {{ID: "n", Text: "N", Kind: "photo"}},
+		"unknown kind":         {{ID: "n", Text: "N", Kind: "video"}},
 	} {
 		if _, _, err := e.app.PublishProcedure(e.ctx, mid, "Bad "+name, steps); err == nil {
 			t.Errorf("%s: accepted", name)
@@ -206,4 +209,101 @@ func TestAddingTheOnlyRequiredChecklistBlocksCompletion(t *testing.T) {
 func (e *env) assetMade(tag, manufacturer, model string) string {
 	e.t.Helper()
 	return e.must2(e.app.RegisterAsset(e.ctx, e.super, domain.AssetRegistered{Tag: tag, LocationID: e.loc, Manufacturer: manufacturer, Model: model}))
+}
+
+func TestPhotosInChecklists(t *testing.T) {
+	e := newEnv(t)
+	mid, tech := e.activeUser("mona", domain.RoleMidTier), e.activeUser("tess", domain.RoleUser)
+	asset := e.asset("XRAY-1")
+	proc, _, err := e.app.PublishChecklist(e.ctx, mid, domain.ProcedurePublished{Name: "X-ray PM", Steps: []domain.Step{
+		{ID: "plate", Text: "Photo of the dataplate", Kind: domain.StepPhoto, Required: true},
+		{ID: "cables", Text: "High-voltage cables intact", Kind: domain.StepCheck, Required: true},
+	}})
+	e.must(err)
+	wo, _, _ := e.app.OpenWorkOrder(e.ctx, mid, NewWorkOrder{Type: "pm", AssetID: asset, Priority: "normal", Title: "PM", ProcedureID: proc})
+	e.app.AssignWorkOrder(e.ctx, mid, wo, tech.UserID)
+	e.must(e.app.ChangeWorkOrderStatus(e.ctx, tech, wo, domain.WOInProgress, ""))
+	e.must(e.app.RecordStep(e.ctx, tech, wo, "cables", "pass", ""))
+	if err := e.sign(tech, wo, domain.MeaningPerformed); err == nil || !strings.Contains(err.Error(), "dataplate") {
+		t.Fatalf("completed without the photo: %v", err)
+	}
+	photo := jpegBytes()
+	e.must2(e.app.AddStepPhoto(e.ctx, tech, wo, proc, "plate", "IMG_0001.jpg", "Photo of the dataplate", photo))
+	e.must2(e.app.AddStepPhoto(e.ctx, tech, wo, proc, "cables", "IMG_0002.jpg", "", photo)) // a photo on any step
+	e.must2(e.app.AddStepPhoto(e.ctx, tech, wo, proc, "plate", "IMG_0003.jpg", "", photo))
+	if _, err := e.app.AddStepPhoto(e.ctx, tech, wo, proc, "nope", "x.jpg", "", photo); err == nil {
+		t.Fatal("photo on a step that isn't there")
+	}
+	w, _ := domain.GetWorkOrder(e.ctx, e.st.DB(), wo)
+	all, err := domain.Checklists(e.ctx, e.st.DB(), w)
+	e.must(err)
+	if v := all[0].Steps[0]; v.Value != "2 photos" || len(v.Photos) != 2 || len(all[0].Steps[1].Photos) != 1 {
+		t.Fatalf("steps: %+v", all[0].Steps)
+	}
+	e.must(e.sign(tech, wo, domain.MeaningPerformed))
+}
+
+func jpegBytes() []byte {
+	var buf bytes.Buffer
+	jpeg.Encode(&buf, image.NewGray(image.Rect(0, 0, 4, 4)), nil)
+	return buf.Bytes()
+}
+
+func TestChecklistsByUsersNeedApproval(t *testing.T) {
+	e := newEnv(t)
+	mid, tech := e.activeUser("mona", domain.RoleMidTier), e.activeUser("tess", domain.RoleUser)
+	draft := domain.ProcedurePublished{Name: "Portable X-ray PM", Category: "Preventive maintenance",
+		AppliesTo: []domain.EquipmentMatch{{Manufacturer: "GE", Model: "AMX 4+"}},
+		Steps:     []domain.Step{{ID: "s1", Text: "Collimator light works", Kind: domain.StepCheck, Required: true}}}
+	// A user can't publish, but can propose.
+	_, _, err := e.app.PublishChecklist(e.ctx, tech, draft)
+	wantRejection(t, err, domain.FlagNotAuthorized)
+	bad := draft
+	bad.Steps = nil
+	_, err = e.app.ProposeChecklist(e.ctx, tech, bad, "")
+	wantRejection(t, err, domain.FlagInvalid)
+	prop, err := e.app.ProposeChecklist(e.ctx, tech, draft, "")
+	e.must(err)
+	waiting, err := domain.ListProposals(e.ctx, e.st.DB(), domain.ProposalPending, "")
+	e.must(err)
+	if len(waiting) != 1 || waiting[0].ProposedBy != "Tess" || waiting[0].Steps[0].Text != "Collimator light works" {
+		t.Fatalf("waiting: %+v", waiting)
+	}
+	if all, _ := domain.ChecklistsFor(e.ctx, e.st.DB(), "GE", "AMX 4+"); len(all) != 0 {
+		t.Fatalf("published before approval: %+v", all)
+	}
+	// Only a mid-tier or super user approves.
+	_, err = e.app.ReviewChecklist(e.ctx, tech, prop, true, "")
+	wantRejection(t, err, domain.FlagNotAuthorized)
+	pub, err := e.app.ReviewChecklist(e.ctx, mid, prop, true, "Looks right")
+	e.must(err)
+	p, err := domain.GetProcedure(e.ctx, e.st.DB(), pub)
+	e.must(err)
+	if p.Name != "Portable X-ray PM" || p.Version != 1 || p.Status != "active" || len(p.AppliesTo) != 1 {
+		t.Fatalf("published: %+v", p)
+	}
+	_, err = e.app.ReviewChecklist(e.ctx, mid, prop, false, "no")
+	wantRejection(t, err, domain.FlagConflict)
+
+	// A proposed next version, rejected with a reason.
+	next := draft
+	next.Steps = append(next.Steps, domain.Step{ID: "s2", Text: "Tube head drifts", Kind: domain.StepCheck})
+	prop2, err := e.app.ProposeChecklist(e.ctx, tech, next, pub)
+	e.must(err)
+	_, err = e.app.ReviewChecklist(e.ctx, mid, prop2, false, " ")
+	wantRejection(t, err, domain.FlagInvalid)
+	_, err = e.app.ReviewChecklist(e.ctx, mid, prop2, false, "Use the manufacturer's wording")
+	e.must(err)
+	r, _ := domain.GetProposal(e.ctx, e.st.DB(), prop2)
+	if r.Status != domain.ProposalRejected || r.ReviewNote != "Use the manufacturer's wording" || r.BasedOn != pub {
+		t.Fatalf("rejected: %+v", r)
+	}
+	// Approved later, it becomes version 2.
+	prop3, _ := e.app.ProposeChecklist(e.ctx, tech, next, pub)
+	pub3, err := e.app.ReviewChecklist(e.ctx, mid, prop3, true, "")
+	e.must(err)
+	e.must(e.st.Rebuild(e.ctx))
+	if p, _ := domain.GetProcedure(e.ctx, e.st.DB(), pub3); p.Version != 2 || len(p.Steps) != 2 {
+		t.Fatalf("version 2 after rebuild: %+v", p)
+	}
 }

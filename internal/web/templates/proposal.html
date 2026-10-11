@@ -1,0 +1,20 @@
+{{define "content"}}{{$p := .Data}}
+{{if eq $p.Status "pending"}}<p class="flash warn" role="status">Waiting for approval by a mid-tier or super user. Until then it can't be added to work orders.</p>
+{{else if eq $p.Status "approved"}}<p class="flash" role="status">Approved{{with $p.ReviewedBy}} by {{.}}{{end}}{{with $p.ReviewNote}}: {{.}}{{end}}. <a href="/procedures/{{$p.PublishedID}}">See the published checklist</a>.</p>
+{{else}}<p class="error" role="alert">Not approved{{with $p.ReviewedBy}} by {{.}}{{end}}: {{$p.ReviewNote}}</p>{{end}}
+<dl class="facts">
+  <dt>Made by</dt><dd>{{$p.ProposedBy}}, {{when $p.ProposedAt}}</dd>
+  {{with $p.BasedOn}}<dt>Changes</dt><dd><a href="/procedures/{{.}}">the published version it started from</a></dd>{{end}}
+  <dt>Equipment</dt><dd>{{template "clwhere" $p.AppliesTo}}</dd>
+  {{with $p.Category}}<dt>For</dt><dd>{{.}}</dd>{{end}}
+  {{with $p.Reference}}<dt>Follows</dt><dd>{{.}}</dd>{{end}}
+  {{with $p.Description}}<dt>About</dt><dd class="pre">{{.}}</dd>{{end}}
+</dl>
+{{template "clsteps" $p.Steps}}
+{{if .Data.CanReview}}<section><h2>Your decision</h2>
+<form method="post" action="/checklist-proposals/{{$p.ID}}/review" class="inline">{{template "csrf" .CSRF}}<input type="hidden" name="decision" value="approve">
+  <label>Note (optional) <input name="note"></label><button>Approve and publish</button></form>
+<form method="post" action="/checklist-proposals/{{$p.ID}}/review" class="inline">{{template "csrf" .CSRF}}<input type="hidden" name="decision" value="reject">
+  <label>Reason (they see it) <input name="note" required></label><button class="danger">Reject</button></form>
+</section>{{end}}
+{{end}}

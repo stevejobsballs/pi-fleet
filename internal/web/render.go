@@ -31,7 +31,13 @@ type page struct {
 	Here       string // this page's path and query, to come back to
 	Path       string // the page's URL path, to mark the current menu item
 	Data       any
+	// BackHref and BackLabel: a Back link at the top left, to the screen
+	// this one was opened from (pages whose data has a BackLink).
+	BackHref, BackLabel string
 }
+
+// backLinker is page data that has a Back link.
+type backLinker interface{ BackLink() (href, label string) }
 
 func (p page) IsMid() bool   { return roleRank[p.User.Role] >= roleRank[domain.RoleMidTier] }
 func (p page) IsSuper() bool { return p.User.Role == domain.RoleSuperUser }
@@ -222,6 +228,9 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, sess *session, n
 		if s.Notices != nil && p.IsMid() {
 			p.Notices = s.Notices(r.Context())
 		}
+	}
+	if b, ok := data.(backLinker); ok {
+		p.BackHref, p.BackLabel = b.BackLink()
 	}
 	t, ok := s.pages[name]
 	if !ok {

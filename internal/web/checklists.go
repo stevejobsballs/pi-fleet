@@ -4,8 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"slices"
@@ -13,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"pi-fleet/internal/blobs"
 	"pi-fleet/internal/domain"
 )
 
@@ -52,6 +55,8 @@ type libraryModel struct {
 }
 
 type libraryData struct {
+	Waiting []domain.Proposal // for mid-tier and super users: everyone's; for others: their own
+	Mine    []domain.Proposal // this person's recently decided ones
 	Search  string
 	Any     []domain.ChecklistMatch // for any equipment
 	Makers  []libraryGroup
@@ -76,6 +81,20 @@ func (s *Server) procedureList(w http.ResponseWriter, r *http.Request, sess *ses
 	all, err := domain.ChecklistsFor(r.Context(), s.App.Store.DB(), "", "")
 	if err != nil {
 		return err
+	}
+	who := sess.User.ID
+	if roleRank[sess.User.Role] >= roleRank[domain.RoleMidTier] {
+		who = ""
+	}
+	if d.Waiting, err = domain.ListProposals(r.Context(), s.App.Store.DB(), domain.ProposalPending, who); err != nil {
+		return err
+	}
+	for _, st := range []string{domain.ProposalRejected, domain.ProposalApproved} {
+		mine, err := domain.ListProposals(r.Context(), s.App.Store.DB(), st, sess.User.ID)
+		if err != nil {
+			return err
+		}
+		d.Mine = append(d.Mine, mine...)
 	}
 	lq := strings.ToLower(q)
 	hit := func(parts ...string) bool {
@@ -132,12 +151,50 @@ func (s *Server) procedureList(w http.ResponseWriter, r *http.Request, sess *ses
 	return s.render(w, r, sess, "procedures", "Checklists", d)
 }
 
+// procedureData is a published checklist version, on its page.
+type procedureData struct{ domain.Procedure }
+
+func (procedureData) BackLink() (string, string) { return "/procedures", "checklists" }
+
 func (s *Server) procedureView(w http.ResponseWriter, r *http.Request, sess *session) error {
 	p, err := domain.GetProcedure(r.Context(), s.App.Store.DB(), r.PathValue("id"))
 	if err != nil {
 		return err
 	}
-	return s.render(w, r, sess, "procedure", fmt.Sprintf("%s v%d", p.Name, p.Version), p)
+	return s.render(w, r, sess, "procedure", fmt.Sprintf("%s v%d", p.Name, p.Version), procedureData{p})
+}
+
+// proposalData is a checklist waiting for approval, on its page.
+type proposalData struct {
+	domain.Proposal
+	CanReview bool
+}
+
+func (proposalData) BackLink() (string, string) { return "/procedures", "checklists" }
+
+func (s *Server) proposalView(w http.ResponseWriter, r *http.Request, sess *session) error {
+	p, err := domain.GetProposal(r.Context(), s.App.Store.DB(), r.PathValue("id"))
+	if err != nil {
+		return err
+	}
+	isMid := roleRank[sess.User.Role] >= roleRank[domain.RoleMidTier]
+	if !isMid && p.ProposedByID != sess.User.ID {
+		return domain.ErrNotFound
+	}
+	return s.render(w, r, sess, "proposal", p.Name, proposalData{Proposal: p, CanReview: isMid && p.Status == domain.ProposalPending})
+}
+
+func (s *Server) proposalReview(w http.ResponseWriter, r *http.Request, sess *session) error {
+	id := r.PathValue("id")
+	approve := r.PostFormValue("decision") == "approve"
+	pub, err := s.App.ReviewChecklist(r.Context(), s.actor(sess), id, approve, strings.TrimSpace(r.PostFormValue("note")))
+	if err != nil {
+		return s.failed(w, r, sess, "/checklist-proposals/"+id, err)
+	}
+	if approve {
+		return s.done(w, r, sess, "/procedures/"+pub, "Approved and published.")
+	}
+	return s.done(w, r, sess, "/checklist-proposals/"+id, "Rejected. The person who made it sees the reason.")
 }
 
 // --- the checklist builder ---
@@ -158,7 +215,10 @@ type builderData struct {
 	Kinds, Categories                      []string
 	From                                   string // the version this starts from, if any
 	Error                                  string
+	CanPublish                             bool // mid-tier and super users; others send it for approval
 }
+
+func (builderData) BackLink() (string, string) { return "/procedures", "checklists" }
 
 // kindLabels are what each kind of step is called in the builder.
 var kindLabels = map[string]string{
@@ -202,6 +262,7 @@ func withBlankSteps(steps []formStep, extra, min int) []formStep {
 
 func (s *Server) renderBuilder(w http.ResponseWriter, r *http.Request, sess *session, d builderData) error {
 	d.Kinds, d.Categories = domain.StepKinds, domain.CategoryOptions
+	d.CanPublish = roleRank[sess.User.Role] >= roleRank[domain.RoleMidTier]
 	for len(d.AppliesTo) < 3 || d.AppliesTo[len(d.AppliesTo)-1].Manufacturer != "" {
 		d.AppliesTo = append(d.AppliesTo, domain.EquipmentMatch{})
 	}
@@ -327,6 +388,7 @@ func (s *Server) procedurePublish(w http.ResponseWriter, r *http.Request, sess *
 	}
 	var id string
 	var version int
+	canPublish := roleRank[sess.User.Role] >= roleRank[domain.RoleMidTier]
 	if err == nil {
 		var applies []domain.EquipmentMatch
 		for _, m := range d.AppliesTo {
@@ -334,15 +396,22 @@ func (s *Server) procedurePublish(w http.ResponseWriter, r *http.Request, sess *
 				applies = append(applies, m)
 			}
 		}
-		id, version, err = s.App.PublishChecklist(r.Context(), s.actor(sess), domain.ProcedurePublished{Name: d.Name, Description: d.Description,
-			Reference: d.Reference, Category: d.Category, AppliesTo: applies, Steps: steps})
+		p := domain.ProcedurePublished{Name: d.Name, Description: d.Description, Reference: d.Reference, Category: d.Category, AppliesTo: applies, Steps: steps}
+		if !canPublish {
+			// Others' checklists wait for a mid-tier or super user.
+			if id, err = s.App.ProposeChecklist(r.Context(), s.actor(sess), p, d.From); err == nil {
+				return s.done(w, r, sess, "/checklist-proposals/"+id, "Sent for approval. A mid-tier or super user approves it on the master Pi; until then it can't be used.")
+			}
+		} else {
+			id, version, err = s.App.PublishChecklist(r.Context(), s.actor(sess), p)
+		}
 	}
 	if err != nil {
 		msg := message(err)
 		if msg == "" {
 			return err
 		}
-		d.Error = "Not published: " + msg
+		d.Error = "Not saved: " + msg
 		w.WriteHeader(http.StatusUnprocessableEntity)
 		return s.renderBuilder(w, r, sess, d)
 	}
@@ -479,13 +548,14 @@ func (s *Server) workOrderStep(w http.ResponseWriter, r *http.Request, sess *ses
 	return s.done(w, r, sess, back+"#checklist", "Step recorded.")
 }
 
-// workOrderChecklist saves the checklist form: every answer that is new
+// workOrderChecklist saves a checklist's page: every answer that is new
 // or changed, in order (so a step that depends on an earlier one sees its
-// new answer). Steps that can't be saved are listed; the others are kept.
+// new answer), and any photos added to steps. Steps that can't be saved
+// are listed; the others are kept. It then goes back to the checklist at
+// the next step to answer (or, asked, to the work order).
 func (s *Server) workOrderChecklist(w http.ResponseWriter, r *http.Request, sess *session) error {
 	ctx := r.Context()
 	id := r.PathValue("id")
-	back := "/work-orders/" + id
 	wo, err := domain.GetWorkOrder(ctx, s.App.Store.DB(), id)
 	if err != nil {
 		return err
@@ -501,10 +571,33 @@ func (s *Server) workOrderChecklist(w http.ResponseWriter, r *http.Request, sess
 			steps, procID = c.Steps, c.ID
 		}
 	}
-	saved := 0
+	saved, photos := 0, 0
 	var problems []string
+	problem := func(err error) error {
+		msg := message(err)
+		if msg == "" {
+			return err
+		}
+		problems = append(problems, msg)
+		return nil
+	}
 	for _, st := range steps {
 		if domain.Inputless(st.Kind) {
+			continue
+		}
+		// Photos first, so a photo step is answered by them.
+		if r.MultipartForm != nil {
+			for _, h := range r.MultipartForm.File["p_"+st.ID] {
+				if err := s.addStepPhoto(r, sess, id, procID, st, h); err != nil {
+					if err := problem(err); err != nil {
+						return err
+					}
+					continue
+				}
+				photos++
+			}
+		}
+		if st.Kind == domain.StepPhoto {
 			continue
 		}
 		var value string
@@ -530,23 +623,68 @@ func (s *Server) workOrderChecklist(w http.ResponseWriter, r *http.Request, sess
 			err = s.App.RecordChecklistStep(ctx, s.actor(sess), id, procID, st.ID, value, note)
 		}
 		if err != nil {
-			msg := message(err)
-			if msg == "" {
+			if err := problem(err); err != nil {
 				return err
 			}
-			problems = append(problems, msg)
 			continue
 		}
 		saved++
 	}
-	msg := fmt.Sprintf("Saved %d answer%s.", saved, map[bool]string{true: "", false: "s"}[saved == 1])
-	if saved == 0 && len(problems) == 0 {
+	var parts []string
+	if saved > 0 {
+		parts = append(parts, fmt.Sprintf("Saved %d answer%s", saved, map[bool]string{true: "", false: "s"}[saved == 1]))
+	}
+	if photos > 0 {
+		parts = append(parts, fmt.Sprintf("added %d photo%s", photos, map[bool]string{true: "", false: "s"}[photos == 1]))
+	}
+	msg := strings.Join(parts, " and ") + "."
+	if len(parts) == 0 && len(problems) == 0 {
 		msg = "Nothing new to save."
 	}
 	if len(problems) > 0 {
-		msg += " Not saved: " + strings.Join(problems, "; ") + "."
+		msg = strings.TrimSuffix(msg, ".") + ". Not saved: " + strings.Join(problems, "; ") + "."
+		msg = strings.TrimPrefix(msg, ". ")
 	}
-	return s.done(w, r, sess, back+"#checklist", msg)
+	if r.PostFormValue("after") == "back" {
+		return s.done(w, r, sess, "/work-orders/"+id+"#checklist", msg)
+	}
+	// Back to the checklist, at the next step to answer.
+	anchor := "#done"
+	if now, err := domain.GetWorkOrder(ctx, s.App.Store.DB(), id); err == nil {
+		if cs, err := domain.Checklists(ctx, s.App.Store.DB(), now); err == nil {
+			for _, c := range cs {
+				if c.ID == procID {
+					if next := nextUnanswered(c.Steps); next != "" {
+						anchor = "#step-" + next
+					} else if len(problems) == 0 {
+						msg += " Every step is answered: go back to the work order to finish it."
+					}
+				}
+			}
+		}
+	}
+	return s.done(w, r, sess, "/work-orders/"+id+"/checklists/"+procID+anchor, msg)
+}
+
+// addStepPhoto attaches an uploaded photo to a checklist step.
+func (s *Server) addStepPhoto(r *http.Request, sess *session, woID, procID string, st domain.StepResult, hdr *multipart.FileHeader) error {
+	f, err := hdr.Open()
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	data, err := io.ReadAll(io.LimitReader(f, blobs.MaxSize+1))
+	if err != nil {
+		return err
+	}
+	if err := s.phiCheck(r, hdr.Filename); err != nil {
+		return err
+	}
+	_, err = s.App.AddStepPhoto(r.Context(), s.actor(sess), woID, procID, st.ID, hdr.Filename, "Checklist photo: "+st.Text, data)
+	if errors.Is(err, blobs.ErrType) || errors.Is(err, blobs.ErrTooLarge) || errors.Is(err, blobs.ErrMalformed) || errors.Is(err, blobs.ErrHEIC) {
+		return userErr("photo %s: %s", hdr.Filename, strings.TrimPrefix(err.Error(), "blobs: "))
+	}
+	return err
 }
 
 func (s *Server) laborLog(w http.ResponseWriter, r *http.Request, sess *session) error {
