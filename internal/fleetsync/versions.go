@@ -19,8 +19,9 @@ import (
 // columns it doesn't know), or event types and payload fields.
 // v0.4.0 added the assets' merge columns and work orders' opened_at;
 // v0.7.0 locations' review columns and the location.proposed and
-// location.reviewed events.
-const MinNodeVersion = "v0.7.0"
+// location.reviewed events; v0.9.0 checklists' new kinds of step and
+// settings, and their description columns.
+const MinNodeVersion = "v0.9.0"
 
 const (
 	// On the master Pi: a newer version a super user requires, and when.

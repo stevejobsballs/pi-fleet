@@ -67,17 +67,38 @@
 
 <section id="checklist">
   <h2>Checklist</h2>
-  {{with $d.Procedure}}<p><a href="/procedures/{{.ID}}">{{.Name}} v{{.Version}}</a></p>
-  <table class="checklist"><thead><tr><th>Step</th><th>Result</th><th>Note</th>{{if and $d.Holder (eq $w.Status "in_progress")}}<th>Record</th>{{end}}</tr></thead><tbody>
-  {{range $d.Steps}}<tr>
-    <td>{{.Text}}{{if .Required}} <span class="tag">required</span>{{end}}{{if eq .Kind "number"}}<br><small>{{if .Lower}}{{.Lower}}{{else}}…{{end}} to {{if .Upper}}{{.Upper}}{{else}}…{{end}} {{.Unit}}</small>{{end}}</td>
-    <td class="{{.Outcome}}">{{if .Recorded}}{{.Value}} {{if eq .Kind "number"}}{{.Unit}}{{end}}<br><small>{{.RecordedBy}} {{when .RecordedAt}}</small>{{else}}—{{end}}</td>
-    <td>{{.Note}}</td>
-    {{if and $d.Holder (eq $w.Status "in_progress")}}<td><form method="post" action="/work-orders/{{$w.ID}}/steps" class="inline">{{template "csrf" $.CSRF}}<input type="hidden" name="step" value="{{.ID}}">
-      {{if eq .Kind "check"}}<button name="value" value="pass">Pass</button><button name="value" value="fail" class="danger">Fail</button>{{if not .Required}}<button name="value" value="n/a">N/A</button>{{end}}
-      {{else}}<input name="value" {{if eq .Kind "number"}}inputmode="decimal" size="8"{{end}} aria-label="Value" required><button>Record</button>{{end}}
-      <label>Note (optional) <input name="note" size="14"></label></form></td>{{end}}
-  </tr>{{end}}</tbody></table>
+  {{with $d.Procedure}}{{$edit := and $d.Holder (eq $w.Status "in_progress")}}{{$proc := .}}
+  <p><a href="/procedures/{{.ID}}">{{.Name}} v{{.Version}}</a>{{with .Reference}} · follows {{.}}{{end}}</p>
+  {{if and $d.Holder (ne $w.Status "in_progress")}}<p class="hint">Start the work to fill in the checklist.</p>{{end}}
+  <form method="post" action="/work-orders/{{$w.ID}}/checklist" class="checklist">{{template "csrf" $.CSRF}}
+  {{range $d.Steps}}
+    {{if eq .Kind "heading"}}<h3 class="cl-heading">{{.Text}}</h3>
+    {{else if eq .Kind "info"}}<p class="cl-info">{{.Text}}</p>
+    {{else}}<fieldset class="cl-step{{if not .Applies}} skipped{{end}}{{if eq .Outcome "fail"}} failed{{else if eq .Outcome "pass"}} passed{{end}}">
+      <legend>{{.Text}}{{if .Required}} <span class="tag">required</span>{{end}}{{if .Critical}} <span class="tag crit">critical</span>{{end}}</legend>
+      {{with .Help}}<p class="hint pre">{{.}}</p>{{end}}
+      {{if not .Applies}}<p class="hint">Not needed: only when “{{stepName $proc.Steps .ShowIf.Step}}” is “{{.ShowIf.Equals}}”.</p>{{end}}
+      {{if .Recorded}}<p class="cl-answer"><strong>{{.Display}}{{if eq .Kind "number"}} {{.Unit}}{{end}}</strong>{{if eq .Outcome "pass"}} <span class="pass">pass</span>{{else if eq .Outcome "fail"}} <span class="fail">fail</span>{{end}}
+        <span class="hint">· {{.RecordedBy}}, {{when .RecordedAt}}</span>{{with .Note}}<br>Note: {{.}}{{end}}</p>{{end}}
+      {{if and $edit .Applies}}{{$s := .}}
+        {{if eq .Kind "check"}}<div class="choices">
+          <label class="pill"><input type="radio" name="v_{{.ID}}" value="pass"{{if eq .Value "pass"}} checked{{end}}> Pass</label>
+          <label class="pill"><input type="radio" name="v_{{.ID}}" value="fail"{{if eq .Value "fail"}} checked{{end}}> Fail</label>
+          {{if not .Required}}<label class="pill"><input type="radio" name="v_{{.ID}}" value="n/a"{{if eq .Value "n/a"}} checked{{end}}> Not applicable</label>{{end}}</div>
+        {{else if eq .Kind "number"}}<label>Reading{{if .Unit}} in {{.Unit}}{{end}}{{if or .Lower .Upper}} (passes {{if .Lower}}from {{.Lower}}{{end}}{{if .Upper}} up to {{.Upper}}{{end}}){{end}}
+          <input name="v_{{.ID}}" value="{{.Value}}" inputmode="decimal" size="10" autocomplete="off"></label>
+        {{else if eq .Kind "choice"}}<div class="choices">{{range .Options}}<label class="pill"><input type="radio" name="v_{{$s.ID}}" value="{{.Label}}"{{if eq .Label $s.Value}} checked{{end}}> {{.Label}}</label>{{end}}</div>
+        {{else if eq .Kind "multi"}}<div class="choices">{{range .Options}}<label class="pill"><input type="checkbox" name="v_{{$s.ID}}" value="{{.Label}}"{{if $s.Chosen .Label}} checked{{end}}> {{.Label}}</label>{{end}}</div>
+        {{else if eq .Kind "date"}}<label>Date <input type="date" name="v_{{.ID}}" value="{{.Value}}"></label>
+        {{else if eq .Kind "longtext"}}<label>Answer <textarea name="v_{{.ID}}" rows="3">{{.Value}}</textarea></label>
+        {{else}}<label>Answer <input name="v_{{.ID}}" value="{{.Value}}" maxlength="500"></label>{{end}}
+        <details class="cl-note"{{if .Note}} open{{end}}><summary>Add a note{{if .NoteOnFail}} (needed if it fails){{end}}</summary>
+          <label>Note <input name="n_{{.ID}}" value="{{.Note}}"></label></details>
+      {{else if and (not .Recorded) .Applies}}<p class="hint">Not answered yet.</p>{{end}}
+    </fieldset>{{end}}
+  {{end}}
+  {{if $edit}}{{template "nophi"}}<p class="buttons"><button>Save checklist</button></p>{{end}}
+  </form>
   {{else}}<p>No checklist.</p>
   {{if $d.Procedures}}<form method="post" action="/work-orders/{{$w.ID}}/procedure" class="inline">{{template "csrf" .CSRF}}
     <label>Use checklist <select name="procedure">{{range $d.Procedures}}<option value="{{.ID}}">{{.Label}}</option>{{end}}</select></label><button>Set</button></form>{{end}}

@@ -99,6 +99,36 @@ func (e *env) seedEverything() {
 	must(err)
 	_, _, err = e.app.ConvertRequest(e.ctx, mid, reqID, "corrective", "high")
 	must(err)
+	// A checklist using every kind of step, being filled in by tess.
+	defib, err := e.app.RegisterAsset(e.ctx, e.super, domain.AssetRegistered{Tag: "DEFIB-1", LocationID: e.loc, Manufacturer: "Zoll", Model: "R Series", MasterID: "ZL-77"})
+	must(err)
+	richProc, _, err := e.app.PublishChecklist(e.ctx, mid, domain.ProcedurePublished{Name: "Defibrillator inspection", Category: "Performance check",
+		Reference: "IEC 60601-2-4", Description: "Yearly, and after any drop.", Steps: []domain.Step{
+			{ID: "start", Text: "Before you start", Kind: domain.StepHeading},
+			{ID: "warn", Text: "Discharge into the test load only. Keep clear of the paddles.", Kind: domain.StepInfo},
+			{ID: "condition", Text: "Housing condition", Kind: domain.StepChoice, Required: true, NoteOnFail: true,
+				Options: []domain.StepOption{{Label: "Good"}, {Label: "Worn"}, {Label: "Cracked", Fails: true}}},
+			{ID: "battery", Text: "Battery fitted?", Kind: domain.StepChoice, Required: true, Options: []domain.StepOption{{Label: "Yes"}, {Label: "No"}}},
+			{ID: "volts", Text: "Battery voltage", Kind: domain.StepNumber, Unit: "V", Lower: "11.5", Upper: "13", Required: true,
+				ShowIf: &domain.StepCondition{Step: "battery", Equals: "Yes"}},
+			{ID: "tests", Text: "Energy tests", Kind: domain.StepHeading},
+			{ID: "energy", Text: "Delivered energy at 200 J", Kind: domain.StepNumber, Unit: "J", Lower: "170", Upper: "230", Required: true, Critical: true,
+				Help: "Average of three discharges into the analyser."},
+			{ID: "alarm", Text: "Alarms sound", Kind: domain.StepCheck, Required: true},
+			{ID: "parts", Text: "Parts replaced", Kind: domain.StepMulti, Options: []domain.StepOption{{Label: "Pads"}, {Label: "Battery"}, {Label: "Cable"}}},
+			{ID: "expiry", Text: "Pads expiry date", Kind: domain.StepDate},
+			{ID: "notes", Text: "Observations", Kind: domain.StepLongText},
+		}})
+	must(err)
+	richWO, _, err := e.app.OpenWorkOrder(e.ctx, mid, app.NewWorkOrder{Type: "inspection", AssetID: defib, Priority: "normal", Title: "Yearly inspection", ProcedureID: richProc})
+	must(err)
+	_, err = e.app.AssignWorkOrder(e.ctx, mid, richWO, tess.ID)
+	must(err)
+	tessAct := app.Actor{UserID: tess.ID, SessionID: "t"}
+	must(e.app.ChangeWorkOrderStatus(e.ctx, tessAct, richWO, domain.WOInProgress, ""))
+	must(e.app.RecordStep(e.ctx, tessAct, richWO, "condition", "Worn", ""))
+	must(e.app.RecordStep(e.ctx, tessAct, richWO, "battery", "No", ""))
+	must(e.app.RecordStep(e.ctx, tessAct, richWO, "energy", "150", "low on all three"))
 	propose("Ultrasound 3", "US-1")
 	must(e.app.ReviewLocation(e.ctx, e.super, propose("Closet B", "US-2"), false, "not a clinical area"))
 }

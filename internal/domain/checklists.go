@@ -5,7 +5,10 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"regexp"
+	"slices"
+	"strings"
 	"time"
 
 	"pi-fleet/internal/store"
@@ -13,36 +16,84 @@ import (
 
 // Event types for checklists and labour (DESIGN.md §4.3–4.4).
 const (
-	TypeProcedurePublished          = "procedure.published"
-	TypeProcedureRetired            = "procedure.retired"
-	TypeWorkOrderProcedureSet       = "workorder.procedure_set"
-	TypeWorkOrderStepRecorded       = "workorder.step_recorded"
-	TypeLaborLogged                 = "labor.logged"
-	TypeLaborReversed               = "labor.reversed"
-	EntityProcedure                 = "procedure_version"
-	EntityLabor                     = "labor_entry"
-	StepCheck, StepNumber, StepText = "check", "number", "text"
+	TypeProcedurePublished    = "procedure.published"
+	TypeProcedureRetired      = "procedure.retired"
+	TypeWorkOrderProcedureSet = "workorder.procedure_set"
+	TypeWorkOrderStepRecorded = "workorder.step_recorded"
+	TypeLaborLogged           = "labor.logged"
+	TypeLaborReversed         = "labor.reversed"
+	EntityProcedure           = "procedure_version"
+	EntityLabor               = "labor_entry"
 )
+
+// Kinds of checklist step. Headings and instructions take no answer.
+const (
+	StepCheck    = "check"    // pass, fail or n/a
+	StepNumber   = "number"   // a reading, with optional limits
+	StepText     = "text"     // a short answer
+	StepLongText = "longtext" // notes, several lines
+	StepChoice   = "choice"   // one of a list; some options may count as a fail
+	StepMulti    = "multi"    // any of a list (tick all that apply)
+	StepDate     = "date"     // YYYY-MM-DD
+	StepHeading  = "heading"  // starts a section
+	StepInfo     = "info"     // an instruction or warning to read
+)
+
+// StepKinds are the kinds of step, in the order offered.
+var StepKinds = []string{StepCheck, StepNumber, StepChoice, StepMulti, StepText, StepLongText, StepDate, StepHeading, StepInfo}
+
+// Inputless reports whether a kind of step takes no answer.
+func Inputless(kind string) bool { return kind == StepHeading || kind == StepInfo }
+
+// CategoryOptions suggest what a checklist is for.
+var CategoryOptions = []string{"Preventive maintenance", "Electrical safety", "Performance check", "Calibration", "Inspection",
+	"Incoming inspection", "Repair", "Decommissioning", "Other"}
 
 var stepIDRE = regexp.MustCompile(`^[a-z0-9_-]{1,32}$`)
 
 // Step is one checklist step.
 type Step struct {
-	ID       string `json:"id"`
-	Text     string `json:"text"`
-	Kind     string `json:"kind"`            // check, number or text
-	Unit     string `json:"unit,omitempty"`  // number
-	Lower    string `json:"lower,omitempty"` // number: inclusive limits, decimals
-	Upper    string `json:"upper,omitempty"`
-	Required bool   `json:"required"`
+	ID    string `json:"id"`
+	Text  string `json:"text"`
+	Kind  string `json:"kind"`            // one of StepKinds
+	Help  string `json:"help,omitempty"`  // how to do it, shown under the step
+	Unit  string `json:"unit,omitempty"`  // number
+	Lower string `json:"lower,omitempty"` // number: inclusive limits, decimals
+	Upper string `json:"upper,omitempty"`
+	// Options are the answers to a choice or multi step.
+	Options  []StepOption `json:"options,omitempty"`
+	Required bool         `json:"required"`
+	// Critical: if it fails, the work order can't be completed while the
+	// equipment is in service (take it out of service first).
+	Critical bool `json:"critical,omitempty"`
+	// NoteOnFail: a failing answer needs a note saying why.
+	NoteOnFail bool `json:"note_on_fail,omitempty"`
+	// ShowIf: the step applies only when an earlier step has this answer
+	// (for a multi step, when it includes it).
+	ShowIf *StepCondition `json:"show_if,omitempty"`
+}
+
+// StepOption is one answer to a choice or multi step.
+type StepOption struct {
+	Label string `json:"label"`
+	Fails bool   `json:"fails,omitempty"` // choosing it fails the step
+}
+
+// StepCondition makes a step depend on an earlier step's answer.
+type StepCondition struct {
+	Step   string `json:"step"`
+	Equals string `json:"equals"`
 }
 
 // ProcedurePublished publishes a checklist version. Versions are
 // immutable; to change a checklist, publish the next version.
 type ProcedurePublished struct {
-	Name    string `json:"name"`
-	Version int    `json:"version"`
-	Steps   []Step `json:"steps"`
+	Name        string `json:"name"`
+	Version     int    `json:"version"`
+	Description string `json:"description,omitempty"`
+	Reference   string `json:"reference,omitempty"` // the standard or manual it follows
+	Category    string `json:"category,omitempty"`
+	Steps       []Step `json:"steps"`
 }
 
 type ProcedureRetired struct {
@@ -90,28 +141,32 @@ func init() {
 }
 
 func validateSteps(steps []Step) error {
-	if len(steps) == 0 || len(steps) > 200 {
-		return invalid("a checklist needs 1 to 200 steps")
+	if len(steps) == 0 || len(steps) > 300 {
+		return invalid("a checklist needs 1 to 300 steps")
 	}
-	seen := map[string]bool{}
+	seen := map[string]Step{}
+	answers := 0
 	for i, st := range steps {
-		if !stepIDRE.MatchString(st.ID) || seen[st.ID] {
-			return invalid("step %d: id %q must be unique, 1-32 lowercase letters, digits, - or _", i+1, st.ID)
+		n := i + 1
+		if !stepIDRE.MatchString(st.ID) || seen[st.ID].ID != "" {
+			return invalid("step %d: id %q must be unique, 1-32 lowercase letters, digits, - or _", n, st.ID)
 		}
-		seen[st.ID] = true
-		if blank(st.Text) {
-			return invalid("step %d needs text", i+1)
+		if blank(st.Text) || len(st.Text) > 500 || len(st.Help) > 2000 {
+			return invalid("step %d needs text (at most 500 characters; help at most 2000)", n)
+		}
+		if st.Kind != StepNumber && (st.Unit != "" || st.Lower != "" || st.Upper != "") {
+			return invalid("step %d: only reading steps have units and limits", n)
+		}
+		if st.Kind != StepChoice && st.Kind != StepMulti && len(st.Options) > 0 {
+			return invalid("step %d: only choice steps have options", n)
 		}
 		switch st.Kind {
-		case StepCheck, StepText:
-			if st.Unit != "" || st.Lower != "" || st.Upper != "" {
-				return invalid("step %d: only number steps have units and limits", i+1)
-			}
+		case StepCheck, StepText, StepLongText, StepDate:
 		case StepNumber:
 			for _, v := range []string{st.Lower, st.Upper} {
 				if v != "" {
 					if _, err := parseDecimal(v); err != nil {
-						return invalid("step %d limit: %v", i+1, err)
+						return invalid("step %d limit: %v", n, err)
 					}
 				}
 			}
@@ -119,14 +174,74 @@ func validateSteps(steps []Step) error {
 				lo, _ := parseDecimal(st.Lower)
 				hi, _ := parseDecimal(st.Upper)
 				if lo.Cmp(hi) > 0 {
-					return invalid("step %d: lower limit exceeds upper limit", i+1)
+					return invalid("step %d: lower limit exceeds upper limit", n)
 				}
 			}
+		case StepChoice, StepMulti:
+			if len(st.Options) < 2 || len(st.Options) > 40 {
+				return invalid("step %d: a choice needs 2 to 40 options", n)
+			}
+			labels := map[string]bool{}
+			for _, o := range st.Options {
+				if blank(o.Label) || len(o.Label) > 120 || labels[o.Label] {
+					return invalid("step %d: options must be different and not empty", n)
+				}
+				labels[o.Label] = true
+			}
+		case StepHeading, StepInfo:
+			if st.Required || st.Critical || st.NoteOnFail {
+				return invalid("step %d: headings and instructions take no answer, so they can't be required or critical", n)
+			}
 		default:
-			return invalid("step %d: kind must be check, number or text", i+1)
+			return invalid("step %d: unknown kind %q", n, st.Kind)
 		}
+		if !Inputless(st.Kind) {
+			answers++
+		}
+		if (st.Critical || st.NoteOnFail) && !canFail(st) {
+			return invalid("step %d: only steps that can fail (pass/fail, readings with limits, choices with failing options) can be critical or need a note on failing", n)
+		}
+		if c := st.ShowIf; c != nil {
+			parent, ok := seen[c.Step]
+			if !ok || Inputless(parent.Kind) {
+				return invalid("step %d: it can only depend on an earlier step that takes an answer", n)
+			}
+			if blank(c.Equals) {
+				return invalid("step %d: say which answer of the earlier step it depends on", n)
+			}
+			if parent.Kind == StepChoice || parent.Kind == StepMulti {
+				found := false
+				for _, o := range parent.Options {
+					found = found || o.Label == c.Equals
+				}
+				if !found {
+					return invalid("step %d depends on %q, which isn't one of step %q's options", n, c.Equals, parent.Text)
+				}
+			}
+		}
+		seen[st.ID] = st
+	}
+	if answers == 0 {
+		return invalid("a checklist needs at least one step that takes an answer")
 	}
 	return nil
+}
+
+// canFail reports whether a step has a failing answer.
+func canFail(st Step) bool {
+	switch st.Kind {
+	case StepCheck:
+		return true
+	case StepNumber:
+		return st.Lower != "" || st.Upper != ""
+	case StepChoice, StepMulti:
+		for _, o := range st.Options {
+			if o.Fails {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (ap *applier) procedurePublished(p *ProcedurePublished) error {
@@ -139,6 +254,9 @@ func (ap *applier) procedurePublished(p *ProcedurePublished) error {
 	if blank(p.Name) || len(p.Name) > 120 {
 		return invalid("a checklist needs a name of at most 120 characters")
 	}
+	if len(p.Description) > 4000 || len(p.Reference) > 300 || len(p.Category) > 80 {
+		return invalid("the description, reference or category is too long")
+	}
 	if err := validateSteps(p.Steps); err != nil {
 		return err
 	}
@@ -150,8 +268,9 @@ func (ap *applier) procedurePublished(p *ProcedurePublished) error {
 		return store.Reject(FlagConflict, "%s is at version %d; this would publish version %d", p.Name, latest, p.Version)
 	}
 	steps, _ := json.Marshal(p.Steps)
-	return ap.exec(`INSERT INTO procedures (id, name, version, steps, status, published_by, published_at, last_event_id)
-		VALUES (?, ?, ?, ?, 'active', ?, ?, ?)`, ap.e.EntityID, p.Name, p.Version, string(steps), ap.actor.id, ap.wall(), ap.e.EventID)
+	return ap.exec(`INSERT INTO procedures (id, name, version, steps, status, published_by, published_at, last_event_id, description, reference, category)
+		VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?)`, ap.e.EntityID, p.Name, p.Version, string(steps), ap.actor.id, ap.wall(), ap.e.EventID,
+		p.Description, p.Reference, p.Category)
 }
 
 func (ap *applier) procedureRetired(p *ProcedureRetired) error {
@@ -196,18 +315,19 @@ func (ap *applier) workOrderProcedureSet(p *WorkOrderProcedureSet) error {
 
 // Procedure is a projected checklist version.
 type Procedure struct {
-	ID, Name, Status string
-	Version          int
-	Steps            []Step
-	PublishedAt      time.Time
+	ID, Name, Status                 string
+	Description, Reference, Category string
+	Version                          int
+	Steps                            []Step
+	PublishedAt                      time.Time
 }
 
 // GetProcedure returns a checklist version.
 func GetProcedure(ctx context.Context, q Querier, id string) (Procedure, error) {
 	var p Procedure
 	var steps, at string
-	err := q.QueryRowContext(ctx, `SELECT id, name, version, steps, status, published_at FROM procedures WHERE id = ?`, id).
-		Scan(&p.ID, &p.Name, &p.Version, &steps, &p.Status, &at)
+	err := q.QueryRowContext(ctx, `SELECT id, name, version, steps, status, published_at, description, reference, category FROM procedures WHERE id = ?`, id).
+		Scan(&p.ID, &p.Name, &p.Version, &steps, &p.Status, &at, &p.Description, &p.Reference, &p.Category)
 	if errors.Is(err, sql.ErrNoRows) {
 		return p, ErrNotFound
 	}
@@ -245,9 +365,22 @@ func (ap *applier) workOrderStepRecorded(p *WorkOrderStepRecorded) error {
 	if step == nil {
 		return invalid("checklist %s v%d has no step %q", proc.Name, proc.Version, p.StepID)
 	}
+	if Inputless(step.Kind) {
+		return invalid("%q takes no answer", step.Text)
+	}
+	answers, err := ap.stepAnswers(w.ID)
+	if err != nil {
+		return err
+	}
+	if !StepApplies(*step, answers) {
+		return invalid("%q only applies when %q is %q", step.Text, stepText(proc.Steps, step.ShowIf.Step), step.ShowIf.Equals)
+	}
 	pass, err := evaluateStep(*step, p.Value)
 	if err != nil {
-		return invalid("step %q: %v", step.ID, err)
+		return invalid("%q: %v", step.Text, err)
+	}
+	if pass != nil && !*pass && step.NoteOnFail && blank(p.Note) {
+		return invalid("%q failed: say why in the note", step.Text)
 	}
 	if err := ap.exec(`INSERT INTO checklist_results (wo_id, step_id, value, pass, note, recorded_by, recorded_at, event_id)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (wo_id, step_id) DO UPDATE SET value = excluded.value, pass = excluded.pass,
@@ -294,16 +427,112 @@ func evaluateStep(st Step, value string) (*bool, error) {
 			ok = ok && v.Cmp(hi) <= 0
 		}
 		return &ok, nil
-	case StepText:
+	case StepText, StepLongText:
 		if blank(value) {
 			return nil, errors.New("enter some text")
 		}
 		return nil, nil
+	case StepDate:
+		if _, err := time.Parse(dateLayout, value); err != nil {
+			return nil, errors.New("enter a date")
+		}
+		return nil, nil
+	case StepChoice:
+		for _, o := range st.Options {
+			if o.Label == value {
+				if !canFail(st) {
+					return nil, nil
+				}
+				ok := !o.Fails
+				return &ok, nil
+			}
+		}
+		return nil, errors.New("choose one of the options")
+	case StepMulti:
+		chosen, err := MultiValues(value)
+		if err != nil || (st.Required && len(chosen) == 0) {
+			return nil, errors.New("tick at least one option")
+		}
+		ok := true
+		for _, c := range chosen {
+			found := false
+			for _, o := range st.Options {
+				if o.Label == c {
+					found, ok = true, ok && !o.Fails
+				}
+			}
+			if !found {
+				return nil, fmt.Errorf("%q isn't one of the options", c)
+			}
+		}
+		if !canFail(st) {
+			return nil, nil
+		}
+		return &ok, nil
 	}
 	return nil, errors.New("unknown step kind")
 }
 
-// checkChecklist requires every required step before completion.
+// MultiValues reads the answer to a multi step: a JSON list of options.
+func MultiValues(value string) ([]string, error) {
+	var out []string
+	err := json.Unmarshal([]byte(value), &out)
+	return out, err
+}
+
+// StepApplies reports whether a step applies given the answers so far.
+func StepApplies(st Step, answers map[string]string) bool {
+	c := st.ShowIf
+	if c == nil {
+		return true
+	}
+	v, ok := answers[c.Step]
+	if !ok {
+		return false
+	}
+	if v == c.Equals {
+		return true
+	}
+	if chosen, err := MultiValues(v); err == nil {
+		for _, x := range chosen {
+			if x == c.Equals {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func stepText(steps []Step, id string) string {
+	for _, s := range steps {
+		if s.ID == id {
+			return s.Text
+		}
+	}
+	return id
+}
+
+// stepAnswers are a work order's recorded answers, by step.
+func (ap *applier) stepAnswers(woID string) (map[string]string, error) {
+	rows, err := ap.tx.QueryContext(ap.ctx, `SELECT step_id, value FROM checklist_results WHERE wo_id = ?`, woID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]string{}
+	for rows.Next() {
+		var id, v string
+		if err := rows.Scan(&id, &v); err != nil {
+			return nil, err
+		}
+		out[id] = v
+	}
+	return out, rows.Err()
+}
+
+// checkChecklist requires every required step that applies before
+// completion, and that equipment which failed a critical step is out of
+// service.
 func (ap *applier) checkChecklist(w WorkOrder) error {
 	if w.ProcedureID == "" {
 		return nil
@@ -312,12 +541,36 @@ func (ap *applier) checkChecklist(w WorkOrder) error {
 	if err != nil {
 		return err
 	}
+	answers, err := ap.stepAnswers(w.ID)
+	if err != nil {
+		return err
+	}
 	for _, st := range proc.Steps {
-		if !st.Required {
+		if Inputless(st.Kind) || !StepApplies(st, answers) {
 			continue
 		}
-		if ok, err := ap.exists(`SELECT 1 FROM checklist_results WHERE wo_id = ? AND step_id = ?`, w.ID, st.ID); err != nil || !ok {
-			return orInvalid(err, "required checklist step %q is not recorded", st.Text)
+		if _, done := answers[st.ID]; st.Required && !done {
+			return invalid("required checklist step %q is not recorded", st.Text)
+		}
+		if !st.Critical {
+			continue
+		}
+		var failed bool
+		err := ap.tx.QueryRowContext(ap.ctx, `SELECT pass = 0 FROM checklist_results WHERE wo_id = ? AND step_id = ? AND pass IS NOT NULL`, w.ID, st.ID).Scan(&failed)
+		if errors.Is(err, sql.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if failed {
+			var status string
+			if err := ap.tx.QueryRowContext(ap.ctx, `SELECT status FROM assets WHERE id = ?`, w.AssetID).Scan(&status); err != nil {
+				return err
+			}
+			if status == AssetInService {
+				return invalid("critical step %q failed: take the equipment out of service before completing the work order", st.Text)
+			}
 		}
 	}
 	return nil
@@ -377,6 +630,28 @@ type StepResult struct {
 	Pass                    *bool
 	RecordedAt              time.Time
 	Recorded                bool
+	// Applies is false for a step that depends on an earlier answer it
+	// didn't get; such a step is skipped.
+	Applies bool
+}
+
+// Display is the answer as people read it (a multi step's options joined).
+func (r StepResult) Display() string {
+	if r.Kind == StepMulti {
+		if chosen, err := MultiValues(r.Value); err == nil {
+			if len(chosen) == 0 {
+				return "none"
+			}
+			return strings.Join(chosen, ", ")
+		}
+	}
+	return r.Value
+}
+
+// Chosen reports whether a multi step's answer includes option o.
+func (r StepResult) Chosen(o string) bool {
+	chosen, _ := MultiValues(r.Value)
+	return slices.Contains(chosen, o)
 }
 
 // Outcome is "pass", "fail", or "" when the step has no pass/fail or
@@ -419,6 +694,15 @@ func Checklist(ctx context.Context, q Querier, w WorkOrder) (*Procedure, []StepR
 			out[i].Pass = &b
 		}
 		out[i].RecordedAt, _ = time.Parse(time.RFC3339, at)
+	}
+	answers := map[string]string{}
+	for _, r := range out {
+		if r.Recorded {
+			answers[r.ID] = r.Value
+		}
+	}
+	for i := range out {
+		out[i].Applies = Inputless(out[i].Kind) || StepApplies(out[i].Step, answers)
 	}
 	return &proc, out, nil
 }

@@ -110,3 +110,10 @@ table.stack form label { width: 100%; max-width: 32rem; }
 /* Details of a proposed location. */
 dl.details dt { font-size: 1.05rem; color: var(--muted); }
 dl.details { gap: .35rem 1.25rem; }
+
+/* Checklists, larger. */
+.cl-heading { font-size: 1.5rem; }
+.cl-info { font-size: 1.15rem; padding: 1rem 1.25rem; border-left-width: 8px; }
+.cl-step.passed, .cl-step.failed { border-left-width: 8px; }
+label.pill { min-height: 3.25rem; padding: .5rem 1.15rem; font-size: 1.15rem; border-width: 2px; }
+label.pill input { margin: 0; }

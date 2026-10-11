@@ -132,7 +132,10 @@ var funcs = template.FuncMap{
 		}
 		return t.In(loc).Format("2006-01-02 15:04 MST")
 	},
-	"label": func(s string) string { return strings.ReplaceAll(s, "_", " ") },
+	"label":     func(s string) string { return strings.ReplaceAll(s, "_", " ") },
+	"kindLabel": func(k string) string { return kindLabels[k] },
+	"inputless": domain.Inputless,
+	"lines":     func(s string) []string { return strings.Split(s, "\n") },
 	// qrpop is what the QR label pop-up (layout.html) needs.
 	"qrpop": func(id, code, text, base string) map[string]string {
 		return map[string]string{"ID": id, "Code": code, "Text": text, "URL": reportURL(base, code)}
@@ -140,10 +143,20 @@ var funcs = template.FuncMap{
 	"urlquery":    urlQuery,
 	"meaningText": func(m string) string { return domain.MeaningText[m] },
 	"add":         func(a, b int) int { return a + b },
-	"dict2":       func(a, b any) struct{ A, B any } { return struct{ A, B any }{a, b} },
-	"dict3":       func(a, b, c, d any) struct{ A, B, C, D any } { return struct{ A, B, C, D any }{a, b, c, d} },
-	"slice3":      func(a ...string) []string { return a },
-	"hhmm":        hhmm,
+	"sub":         func(a, b int) int { return a - b },
+	// stepName is the text of the step with this id.
+	"stepName": func(steps []domain.Step, id string) string {
+		for _, s := range steps {
+			if s.ID == id {
+				return s.Text
+			}
+		}
+		return id
+	},
+	"dict2":  func(a, b any) struct{ A, B any } { return struct{ A, B any }{a, b} },
+	"dict3":  func(a, b, c, d any) struct{ A, B, C, D any } { return struct{ A, B, C, D any }{a, b, c, d} },
+	"slice3": func(a ...string) []string { return a },
+	"hhmm":   hhmm,
 	"kib": func(n int64) string {
 		if n < 1<<20 {
 			return fmt.Sprintf("%.0f KiB", float64(n)/1024)

@@ -1,0 +1,42 @@
+{{define "content"}}{{$d := .Data}}
+<form method="post" action="/procedures" class="builder">{{template "csrf" .CSRF}}
+  <input type="hidden" name="count" value="{{len $d.Steps}}"><input type="hidden" name="from" value="{{$d.From}}">
+  {{with $d.Error}}<p class="error" role="alert">{{.}}</p>{{end}}
+  {{if $d.From}}<p class="hint">Starting from the published version. Keep the name to publish its next version, or change it to make a new checklist.</p>{{end}}
+  <fieldset class="about"><legend>About this checklist</legend>
+    <label>Name <input name="name" value="{{$d.Name}}" required maxlength="120" placeholder="e.g. Infusion pump preventive maintenance"></label>
+    <label>What it's for <select name="category"><option value="">choose</option>{{range $d.Categories}}<option{{if eq . $d.Category}} selected{{end}}>{{.}}</option>{{end}}</select></label>
+    <label>Standard or manual it follows <input name="reference" value="{{$d.Reference}}" maxlength="300" placeholder="e.g. IEC 62353, or the service manual's section"></label>
+    <label>Description <textarea name="description" rows="2" maxlength="4000" placeholder="e.g. yearly inspection, after any drop, and before first use">{{$d.Description}}</textarea></label>
+  </fieldset>
+  <p class="hint">Fill in as many steps as you need; empty ones are left out. Section headings and instructions take no answer. A step can be asked only when an earlier step has a certain answer, such as a battery voltage only when a battery is fitted.</p>
+  {{range $d.Steps}}{{$i := sub .Num 1}}
+  <fieldset class="bstep">
+    <legend>Step {{.Num}}</legend><input type="hidden" name="id_{{$i}}" value="{{.ID}}">
+    <div class="row">
+      <label class="grow">What to do or check <input name="text_{{$i}}" value="{{.Text}}" maxlength="500"></label>
+      <label>Kind of answer <select name="kind_{{$i}}">{{$k := .Kind}}{{range $d.Kinds}}<option value="{{.}}"{{if eq . $k}} selected{{end}}>{{kindLabel .}}</option>{{end}}</select></label>
+    </div>
+    <label>How to do it (optional) <textarea name="help_{{$i}}" rows="1" maxlength="2000">{{.Help}}</textarea></label>
+    <div class="row for-number">
+      <label>Unit <input name="unit_{{$i}}" value="{{.Unit}}" size="6" placeholder="e.g. µA"></label>
+      <label>Lowest passing <input name="lower_{{$i}}" value="{{.Lower}}" size="8" inputmode="decimal"></label>
+      <label>Highest passing <input name="upper_{{$i}}" value="{{.Upper}}" size="8" inputmode="decimal"></label>
+    </div>
+    <div class="row for-choice">
+      <label class="grow">Options, one per line <textarea name="options_{{$i}}" rows="3">{{.Options}}</textarea></label>
+      <label class="grow">Options that count as a fail, one per line <textarea name="fails_{{$i}}" rows="3">{{.Fails}}</textarea></label>
+    </div>
+    <div class="row for-answer">
+      <label>Must be answered <select name="required_{{$i}}"><option value="no">no</option><option value="yes"{{if .Required}} selected{{end}}>yes</option></select></label>
+      <label>Critical (failing it takes the equipment out of service) <select name="critical_{{$i}}"><option value="no">no</option><option value="yes"{{if .Critical}} selected{{end}}>yes</option></select></label>
+      <label>Note when it fails <select name="notefail_{{$i}}"><option value="no">not needed</option><option value="yes"{{if .NoteOnFail}} selected{{end}}>needed</option></select></label>
+    </div>
+    <div class="row for-answer">
+      <label>Only ask when step number <input name="showif_step_{{$i}}" value="{{.ShowIfStep}}" size="3" inputmode="numeric" placeholder="e.g. 4"></label>
+      <label class="grow">has the answer <input name="showif_value_{{$i}}" value="{{.ShowIfValue}}" placeholder="e.g. Yes"></label>
+    </div>
+  </fieldset>{{end}}
+  <p class="buttons"><button name="more" value="5" class="secondary" formnovalidate>Add 5 more steps</button><button>Publish checklist</button></p>
+</form>
+{{end}}

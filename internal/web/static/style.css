@@ -197,3 +197,37 @@ ul.files li { padding: .45rem 0; border-bottom: 1px solid var(--line); word-brea
   table { display: block; overflow-x: auto; }
 }
 form[action="/login"] { padding: 1.25rem; background: var(--panel); border: 1px solid var(--line); border-top: 3px solid var(--accent); border-radius: var(--radius); }
+
+/* Checklists: filling one in. Sections, instructions, one box per step,
+   big choices; a failed step is marked in red, a passed one in green. */
+form.checklist { display: grid; gap: .75rem; max-width: 52rem; }
+.cl-heading { margin: 1.25rem 0 0; font-size: 1.15rem; }
+.cl-info { margin: 0; padding: .6rem .9rem; border-left: 4px solid var(--warn); background: var(--panel); border-radius: var(--radius); font-weight: 700; }
+.cl-step { margin: 0; display: grid; gap: .5rem; }
+.cl-step legend { font-weight: 700; }
+.cl-step.passed { border-left: 4px solid var(--good); }
+.cl-step.failed { border-left: 4px solid var(--bad); }
+.cl-step.skipped { opacity: .65; }
+.cl-answer { margin: 0; }
+details.cl-note { margin: 0; }
+details.cl-note label { margin-top: .4rem; }
+.choices { display: flex; flex-wrap: wrap; gap: .5rem; }
+label.pill { display: inline-flex; align-items: center; gap: .45rem; padding: .4rem .8rem; border: 1px solid var(--line-strong); border-radius: 999px;
+  background: var(--panel); color: var(--fg); font-weight: 700; cursor: pointer; }
+label.pill:has(input:checked) { border-color: var(--accent); background: var(--tint); }
+.tag.crit { color: var(--bad); border-color: var(--bad); }
+ol.cl-view { padding-left: 1.5rem; }
+ol.cl-view li { margin: .5rem 0; }
+ol.cl-view li.cl-heading, ol.cl-view li.cl-info { list-style: none; margin-left: -1.5rem; }
+ol.cl-view li.cl-info p { margin: 0; }
+
+/* Checklists: the builder. One box per step; fields that don't apply to
+   the chosen kind of answer are hidden (where the browser can). */
+form.builder { display: grid; gap: 1rem; max-width: 60rem; }
+form.builder fieldset { margin: 0; display: grid; gap: .6rem; }
+form.builder .row { display: flex; flex-wrap: wrap; gap: .6rem 1rem; align-items: end; }
+form.builder .grow { flex: 1 1 16rem; }
+form.builder textarea { width: 100%; }
+fieldset.bstep:not(:has(option[value="number"]:checked)) .for-number,
+fieldset.bstep:not(:has(option[value="choice"]:checked, option[value="multi"]:checked)) .for-choice,
+fieldset.bstep:has(option[value="heading"]:checked, option[value="info"]:checked) .for-answer { display: none; }

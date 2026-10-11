@@ -9,16 +9,20 @@ import (
 
 // PublishProcedure publishes the next version of a named checklist.
 func (a *App) PublishProcedure(ctx context.Context, actor Actor, name string, steps []domain.Step) (string, int, error) {
+	return a.PublishChecklist(ctx, actor, domain.ProcedurePublished{Name: name, Steps: steps})
+}
+
+// PublishChecklist publishes the next version of the checklist named in
+// p, with its description, reference and category (p.Version is set).
+func (a *App) PublishChecklist(ctx context.Context, actor Actor, p domain.ProcedurePublished) (string, int, error) {
 	id := newID()
-	var version int
 	err := a.Store.Update(ctx, func(tx *store.Tx) error {
-		if err := tx.QueryRowContext(ctx, `SELECT coalesce(max(version), 0) + 1 FROM procedures WHERE name = ?`, name).Scan(&version); err != nil {
+		if err := tx.QueryRowContext(ctx, `SELECT coalesce(max(version), 0) + 1 FROM procedures WHERE name = ?`, p.Name).Scan(&p.Version); err != nil {
 			return err
 		}
-		return a.emit(ctx, tx, actor, domain.TypeProcedurePublished, domain.EntityProcedure, id, 0, "",
-			domain.ProcedurePublished{Name: name, Version: version, Steps: steps})
+		return a.emit(ctx, tx, actor, domain.TypeProcedurePublished, domain.EntityProcedure, id, 0, "", p)
 	})
-	return id, version, err
+	return id, p.Version, err
 }
 
 // RetireProcedure stops a checklist version being chosen for new work.
