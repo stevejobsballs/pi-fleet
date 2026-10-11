@@ -153,3 +153,16 @@ func TestApproveAProposedLocation(t *testing.T) {
 		t.Fatalf("approved:\n%s", page)
 	}
 }
+
+// Example text in empty boxes is styled apart from what people type.
+func TestExampleTextLooksDifferentFromTypedText(t *testing.T) {
+	css, err := assets.ReadFile("static/style.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"::placeholder { color: var(--hint-fg); font-style: italic;", "opacity: 1;", "--hint-fg: #4f6a8f;", "--hint-fg: #8fa9cc;"} {
+		if !strings.Contains(string(css), want) {
+			t.Errorf("style.css lacks %q", want)
+		}
+	}
+}

@@ -12,7 +12,7 @@
     <p class="hint">A super user reviews it. You can register equipment there straight away. If the location isn't approved, its equipment moves to the Unallocated site, where it can still be found.</p>
     {{with .Data.LocError}}<p class="error" role="alert">{{.}}</p>{{end}}
     <label>Site <select name="loc_site">{{range .Data.Sites}}<option value="{{.ID}}"{{if eq .ID ($f.Get "loc_site")}} selected{{end}}>{{.Label}}</option>{{end}}</select></label>
-    <label>Location name <input name="loc_name" value="{{$f.Get "loc_name"}}" placeholder="Ultrasound room 3"></label>
+    <label>Location name <input name="loc_name" value="{{$f.Get "loc_name"}}" placeholder="e.g. Ultrasound room 3"></label>
     <label>Kind <select name="loc_kind">{{range .Data.Kinds}}<option{{if eq . ($f.Get "loc_kind")}} selected{{end}}>{{.}}</option>{{end}}</select></label>
     <label>Building <input name="loc_building" value="{{$f.Get "loc_building"}}"></label>
     <label>Floor <input name="loc_floor" value="{{$f.Get "loc_floor"}}"></label>
@@ -20,9 +20,9 @@
     <label>Department <input name="loc_department" value="{{$f.Get "loc_department"}}"></label>
     <label>Contact person there <input name="loc_contact" value="{{$f.Get "loc_contact"}}"></label>
     <label>Contact phone <input name="loc_phone" value="{{$f.Get "loc_phone"}}" type="tel"></label>
-    <label>Directions <textarea name="loc_directions" rows="2" placeholder="Past the nurses' station, second door on the left">{{$f.Get "loc_directions"}}</textarea></label>
-    <p><button formaction="/assets/new/location" formnovalidate>Submit for review</button>
-      <button type="button" class="link" popovertarget="new-location" popovertargetaction="hide">Cancel</button></p>
+    <label>Directions <textarea name="loc_directions" rows="2" placeholder="e.g. past the nurses' station, second door on the left">{{$f.Get "loc_directions"}}</textarea></label>
+    <p class="buttons"><button formaction="/assets/new/location" formnovalidate>Submit for review</button>
+      <button type="button" class="secondary" popovertarget="new-location" popovertargetaction="hide">Cancel</button></p>
   </div>
   <label>Manufacturer <input name="manufacturer" value="{{$f.Get "manufacturer"}}" required></label>
   <label>Model <input name="model" value="{{$f.Get "model"}}" required></label>

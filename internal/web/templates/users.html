@@ -16,7 +16,7 @@
   <label>Work email <input name="email" type="email" required></label>
   <label>Role <select name="role">{{range .Data.Roles}}<option>{{.}}</option>{{end}}</select></label>
   <label>Home sites <select name="home_sites" multiple size="3">{{range .Data.Sites}}<option value="{{.ID}}">{{.Label}}</option>{{end}}</select></label>
-  <label>How you verified their identity (Part 11 §11.100(b)) <input name="verified" required placeholder="in person, badge 4411"></label>
+  <label>How you verified their identity (Part 11 §11.100(b)) <input name="verified" required placeholder="e.g. in person, badge 4411"></label>
   <button>Create user</button>
 </form></section>
 {{end}}

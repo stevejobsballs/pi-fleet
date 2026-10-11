@@ -47,7 +47,7 @@
 {{range .Data.Meters}}<tr><td>{{.Name}}</td><td>{{.Latest}}</td><td>{{.Total}}</td><td>{{.ReadAt}}</td></tr>{{end}}</tbody></table>{{else}}<p>No readings yet.</p>{{end}}
 {{range .Data.Usage}}<p>{{.Schedule.Title}}: {{.Status.Used}} of {{.Status.Interval}} {{.Schedule.Meter}} since the last service{{if .Status.Due}} <span class="warn">due</span>{{end}}.</p>{{end}}
 {{if and (ne $a.Status "retired") (not $merged)}}<form method="post" action="/assets/{{$a.ID}}/meters" class="inline">{{template "csrf" .CSRF}}
-  <label>Meter <input name="meter" list="meter-names" required pattern="[a-z][a-z0-9_]{0,31}" placeholder="hours" size="8"></label>
+  <label>Meter <input name="meter" list="meter-names" required pattern="[a-z][a-z0-9_]{0,31}" placeholder="e.g. hours" size="8"></label>
   <datalist id="meter-names">{{range .Data.Meters}}<option value="{{.Name}}">{{end}}</datalist>
   <label>Reading <input name="value" inputmode="decimal" required size="8"></label>
   <label>Read at ({{.Data.Site.Timezone}}) <input name="read_at" type="datetime-local" value="{{.Data.Now}}" required></label>
@@ -55,7 +55,7 @@
   <button>Record</button></form>{{end}}
 {{if .Data.Readings}}<details><summary>Recent readings</summary><table><thead><tr><th>Meter</th><th>Reading</th><th>Read at (UTC)</th><th>By</th><th></th></tr></thead><tbody>
 {{range .Data.Readings}}<tr class="{{if eq .Status "voided"}}old{{end}}"><td>{{.Meter}}</td><td>{{.Value}}{{if .Reset}} (after reset){{end}}</td><td>{{.ReadAt}}</td><td>{{.RecordedBy}}</td>
-  <td>{{if eq .Status "voided"}}voided: {{.VoidReason}}{{else if or $.IsMid (eq .RecordedByID $.User.ID)}}<form method="post" action="/meters/{{.ID}}/void" class="inline">{{template "csrf" $.CSRF}}<input name="reason" required placeholder="reason" size="10"><button class="link">void</button></form>{{end}}</td></tr>{{end}}
+  <td>{{if eq .Status "voided"}}voided: {{.VoidReason}}{{else if or $.IsMid (eq .RecordedByID $.User.ID)}}<form method="post" action="/meters/{{.ID}}/void" class="inline">{{template "csrf" $.CSRF}}<label>Reason <input name="reason" required size="10"></label><button class="link">void</button></form>{{end}}</td></tr>{{end}}
 </tbody></table></details>{{end}}
 </section>
 <section><h2>Schedules</h2>

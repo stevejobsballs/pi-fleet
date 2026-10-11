@@ -1,9 +1,11 @@
 /* pi-fleet: plain, dense and hardware-flavoured, in Raspberry Pi colours.
    Raspberry red marks actions and the current place; leaf green marks
    what is working. Everything is set from the variables below. */
+/* --hint-fg: example text in empty boxes, a different colour (and italic)
+   from what people type, still easy to read (5.5:1, dark mode 7.3:1). */
 :root {
   --raspberry: #c51a4a; --raspberry-dark: #9b1239; --leaf: #75a928;
-  --fg: #15181b; --bg: #f4f4f2; --panel: #fff; --muted: #5b6168; --line: #d9dcdf; --line-strong: #b9bec3;
+  --fg: #15181b; --bg: #f4f4f2; --panel: #fff; --muted: #5b6168; --line: #d9dcdf; --line-strong: #b9bec3; --hint-fg: #4f6a8f;
   --accent: var(--raspberry); --accent-hover: var(--raspberry-dark); --on-accent: #fff;
   --good: #3b7a17; --warn: #a35f00; --bad: #b3261e; --tint: #fbeef2;
   --bar: #15181b; --bar-fg: #e9eaeb; --bar-muted: #9aa1a8;
@@ -13,7 +15,7 @@
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --fg: #e7e8e9; --bg: #0f1113; --panel: #171a1d; --muted: #9aa1a8; --line: #2a2f34; --line-strong: #3b4248;
+    --fg: #e7e8e9; --bg: #0f1113; --panel: #171a1d; --muted: #9aa1a8; --line: #2a2f34; --line-strong: #3b4248; --hint-fg: #8fa9cc;
     --accent: #e8457a; --accent-hover: #f0709a; --on-accent: #0f1113;
     --good: #8fcb4a; --warn: #e3a23b; --bad: #ef6f66; --tint: #2a1820;
     --bar: #0a0b0c;
@@ -71,8 +73,10 @@ form.narrow { max-width: 34rem; display: grid; gap: .75rem; }
 form.inline { display: inline-flex; flex-wrap: wrap; gap: .5rem; align-items: end; margin: .25rem .5rem .25rem 0; }
 label { display: grid; gap: .2rem; font-size: 13px; font-weight: 600; color: var(--muted); }
 label.check { display: flex; gap: .45rem; align-items: center; font-weight: 400; color: var(--fg); font-size: 14px; }
-input, select, textarea { font: inherit; font-size: 15px; font-weight: 400; color: var(--fg); padding: .4rem .55rem;
+input, select, textarea { font: inherit; font-size: 15px; font-weight: 500; color: var(--fg); padding: .4rem .55rem;
   border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--panel); }
+/* Example text in an empty box: never mistaken for something typed. */
+::placeholder { color: var(--hint-fg); font-style: italic; font-weight: 400; opacity: 1; }
 input:focus, select:focus, textarea:focus { border-color: var(--accent); outline: 2px solid color-mix(in srgb, var(--accent) 30%, transparent); outline-offset: 0; }
 input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); width: 1rem; height: 1rem; }
 fieldset { border: 1px solid var(--line); border-radius: var(--radius); padding: .6rem .9rem; margin: .75rem 0; background: var(--panel); }
@@ -83,13 +87,16 @@ button, .button { font: 600 14px/1.2 system-ui, sans-serif; display: inline-bloc
 button:hover, .button:hover { background: var(--accent-hover); border-color: var(--accent-hover); color: var(--on-accent); }
 button.danger { background: transparent; color: var(--bad); border-color: var(--bad); }
 button.danger:hover { background: var(--bad); color: #fff; }
+button.secondary { background: var(--panel); color: var(--fg); border-color: var(--line-strong); }
+button.secondary:hover { background: var(--tint); color: var(--fg); border-color: var(--fg); }
+p.buttons { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; margin: .25rem 0 0; }
 button.link { background: none; border: none; color: var(--accent); padding: 0; font-weight: 400; text-decoration: underline; text-underline-offset: 2px; }
 button.link:hover { background: none; color: var(--accent-hover); }
 details { margin: .5rem 0; }
 /* A pop-up panel (the popover attribute: no script needed). */
 .popup { max-width: 34rem; width: calc(100% - 2rem); max-height: calc(100% - 2rem); overflow: auto; padding: 1rem 1.25rem;
   color: var(--fg); background: var(--panel); border: 1px solid var(--line-strong); border-radius: var(--radius); }
-.popup:popover-open { display: grid; gap: .75rem; }
+.popup:popover-open { display: grid; gap: 1rem; }
 .popup::backdrop { background: rgb(0 0 0 / .35); }
 .popup h2 { margin: 0; }
 dl.details { display: grid; grid-template-columns: max-content 1fr; gap: .2rem .9rem; margin: .5rem 0; }

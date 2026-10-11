@@ -76,7 +76,7 @@
     {{if and $d.Holder (eq $w.Status "in_progress")}}<td><form method="post" action="/work-orders/{{$w.ID}}/steps" class="inline">{{template "csrf" $.CSRF}}<input type="hidden" name="step" value="{{.ID}}">
       {{if eq .Kind "check"}}<button name="value" value="pass">Pass</button><button name="value" value="fail" class="danger">Fail</button>{{if not .Required}}<button name="value" value="n/a">N/A</button>{{end}}
       {{else}}<input name="value" {{if eq .Kind "number"}}inputmode="decimal" size="8"{{end}} aria-label="Value" required><button>Record</button>{{end}}
-      <input name="note" placeholder="note" aria-label="Note" size="14"></form></td>{{end}}
+      <label>Note (optional) <input name="note" size="14"></label></form></td>{{end}}
   </tr>{{end}}</tbody></table>
   {{else}}<p>No checklist.</p>
   {{if $d.Procedures}}<form method="post" action="/work-orders/{{$w.ID}}/procedure" class="inline">{{template "csrf" .CSRF}}
@@ -92,7 +92,7 @@
     <td>{{if and (eq .Status "logged") (or $.IsMid (eq .UserID $.User.ID))}}<details><summary>Reverse</summary><form method="post" action="/labor/{{.ID}}/reverse">{{template "csrf" $.CSRF}}<label>Reason <input name="reason" required></label><button class="danger">Reverse</button></form></details>{{end}}</td></tr>{{end}}
   </tbody></table>{{end}}
   {{if ne $w.Status "cancelled"}}<form method="post" action="/work-orders/{{$w.ID}}/labor" class="inline">{{template "csrf" .CSRF}}
-    <label>Time <input name="time" placeholder="45, 1:30 or 1.5h" size="10" required></label>
+    <label>Time <input name="time" placeholder="e.g. 45, 1:30 or 1.5h" size="10" required></label>
     <label>Date <input name="date" type="date" value="{{$d.Today}}" required></label>
     <label>Note <input name="note"></label><button>Log my time</button></form>{{end}}
 </section>

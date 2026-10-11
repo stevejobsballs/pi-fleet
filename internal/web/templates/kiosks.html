@@ -13,6 +13,6 @@
 <section><h2>New kiosk</h2>
 <form method="post" action="/admin/kiosks" class="inline">{{template "csrf" .CSRF}}
   <label>Site <select name="site">{{range .Data.Sites}}<option value="{{.ID}}">{{.Label}}</option>{{end}}</select></label>
-  <label>Name <input name="name" required pattern="[a-z0-9][a-z0-9-]{2,31}" placeholder="nyc-biomed-shop"></label>
+  <label>Name <input name="name" required pattern="[a-z0-9][a-z0-9-]{2,31}" placeholder="e.g. nyc-biomed-shop"></label>
   <button>Create kiosk</button></form></section>
 {{end}}

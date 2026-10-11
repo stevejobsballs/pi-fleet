@@ -225,11 +225,12 @@ func (s *Server) userUnlock(w http.ResponseWriter, r *http.Request, sess *sessio
 type sitesData struct {
 	Pending []domain.ProposedLocation
 	Sites   []siteRow
+	Kinds   []string
 }
 
 func (s *Server) siteList(w http.ResponseWriter, r *http.Request, sess *session) error {
 	ctx, q := r.Context(), s.App.Store.DB()
-	var d sitesData
+	d := sitesData{Kinds: locationKinds}
 	var err error
 	if d.Pending, err = domain.PendingLocations(ctx, q); err != nil {
 		return err

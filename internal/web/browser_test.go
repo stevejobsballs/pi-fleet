@@ -226,6 +226,11 @@ func checkPage(t reporter, req *http.Request, resp *http.Response, body string) 
 			if k == "style" {
 				fail("<%s style=…> inline style is ignored under the CSP", name)
 			}
+			// Example text in an empty box must read as an example, not
+			// as something already filled in (for people who see poorly).
+			if k == "placeholder" && !strings.HasPrefix(v, "e.g. ") && !strings.HasPrefix(v, "leave empty") {
+				fail("<%s placeholder=%q> should start with \"e.g. \" or \"leave empty\"", name, v)
+			}
 			if (k == "href" || k == "src" || k == "action" || k == "formaction") && strings.HasPrefix(strings.ToLower(strings.TrimSpace(v)), "javascript:") {
 				fail("<%s %s=%q> javascript: URL", name, k, v)
 			}

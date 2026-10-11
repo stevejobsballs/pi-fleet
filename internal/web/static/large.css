@@ -65,7 +65,8 @@ form.narrow { max-width: 40rem; gap: 1.25rem; }
 /* Fields: large text, clear labels, big tick boxes. */
 label { font-size: 1.15rem; font-weight: 700; color: var(--fg); gap: .35rem; }
 label.check { font-size: 1.15rem; font-weight: 500; gap: .75rem; min-height: 3rem; }
-input, select, textarea { min-height: 3.5rem; font-size: 1.25rem; padding: .6rem .8rem; border-width: 2px; border-radius: 6px; }
+input, select, textarea { min-height: 3.5rem; font-size: 1.25rem; padding: .6rem .8rem; border-width: 2px; border-radius: 6px; font-weight: 600; }
+::placeholder { font-weight: 400; }
 input[type="checkbox"], input[type="radio"] { width: 1.75rem; height: 1.75rem; min-height: 0; flex: none; }
 input:focus, select:focus, textarea:focus { outline-width: 4px; }
 fieldset { padding: 1rem 1.25rem; border-width: 2px; }
