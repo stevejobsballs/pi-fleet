@@ -317,6 +317,10 @@ type PMScheduleCreated struct {
 	Meter         string `json:"meter,omitempty"`
 	MeterInterval string `json:"meter_interval,omitempty"` // decimal
 	MeterLead     string `json:"meter_lead,omitempty"`     // decimal; default 10% of the interval
+	// FromModel: the catalogued model whose schedule this is. Anyone may
+	// set up a schedule exactly as the catalogue has it for the
+	// equipment's model; any other schedule needs a mid-tier user.
+	FromModel string `json:"from_model,omitempty"`
 }
 
 type PMScheduleChanged struct {

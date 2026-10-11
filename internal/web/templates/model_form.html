@@ -1,0 +1,27 @@
+{{define "content"}}{{$d := .Data}}
+<form autocomplete="off" method="post" action="{{if $d.ID}}/models/{{$d.ID}}{{else}}/models{{end}}" class="narrow">
+  {{template "csrf" .CSRF}}<input type="hidden" name="version" value="{{$d.Version}}">
+  {{with $d.Error}}<p class="error" role="alert">{{.}}</p>{{end}}
+  <label>Manufacturer <input name="manufacturer" value="{{$d.M.Manufacturer}}" required></label>
+  <label>Model <input name="model" value="{{$d.M.Model}}" required></label>
+  <p class="hint">Written as on the equipment's records: equipment is matched to its model by these two, ignoring capitals and spaces.</p>
+  <label>What it is <input name="kind" value="{{$d.M.Kind}}" required placeholder="e.g. Infusion pump"></label>
+  <label>Usual risk class <select name="risk_class"><option value="">not set</option>{{range $c := slice3 "low" "medium" "high"}}<option{{if eq $c $d.M.RiskClass}} selected{{end}}>{{$c}}</option>{{end}}</select></label>
+  <label>Notes <textarea name="notes" rows="3" placeholder="e.g. service manual chapter 5; battery replaced every 2 years">{{$d.M.Notes}}</textarea></label>
+  <h2>Schedules its equipment should have</h2>
+  {{$n := len $d.M.Schedules}}<input type="hidden" name="rows" value="{{add $n 1}}">
+  {{range $i, $s := $d.M.Schedules}}{{template "modelsched" (dict3 $i $s $d false)}}{{end}}
+  {{template "modelsched" (dict3 $n false $d true)}}
+  <button>Save</button>
+</form>
+{{end}}
+
+{{define "modelsched"}}{{$i := .A}}{{$d := .C}}{{$new := .D}}{{$s := .B}}
+<fieldset><legend>{{if $new}}Add a schedule (optional){{else}}Schedule {{add $i 1}}{{end}}</legend>
+  <label>Title <input name="sched_{{$i}}_title" value="{{if not $new}}{{$s.Title}}{{end}}" placeholder="e.g. Yearly PM"></label>
+  <label>Type <select name="sched_{{$i}}_type">{{range $d.Types}}<option{{if and (not $new) (eq . $s.WOType)}} selected{{end}}>{{.}}</option>{{end}}</select></label>
+  <label>Every (days) <input name="sched_{{$i}}_every" inputmode="numeric" value="{{if not $new}}{{$s.IntervalDays}}{{end}}" placeholder="e.g. 365"></label>
+  <label>Grace (days) <input name="sched_{{$i}}_grace" inputmode="numeric" value="{{if not $new}}{{$s.GraceDays}}{{else}}0{{end}}"></label>
+  <label>Checklist <select name="sched_{{$i}}_checklist"><option value="">none</option>{{range $d.Checklists}}<option{{if and (not $new) (eq . $s.Checklist)}} selected{{end}}>{{.}}</option>{{end}}</select></label>
+  {{if not $new}}<label class="check"><input type="checkbox" name="sched_{{$i}}_remove" value="yes"> Remove this schedule</label>{{end}}
+</fieldset>{{end}}

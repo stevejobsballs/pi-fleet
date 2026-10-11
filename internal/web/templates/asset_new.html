@@ -1,5 +1,16 @@
 {{define "content"}}
-{{$f := .Data.F}}
+{{$f := .Data.F}}{{$d := .Data}}
+{{if and $d.Catalogue (not $d.Model)}}<section class="catalogue-pick">
+<form autocomplete="off" method="get" action="/assets/new" role="search" class="find find-home">
+  <label for="model-q">Is it a model in the catalogue? Search for it</label>
+  <span class="find-row"><input id="model-q" name="modelq" type="search" value="{{$d.ModelQ}}" required placeholder="e.g. a manufacturer, model or kind of equipment"><button>Search</button></span>
+</form>
+{{if $d.ModelQ}}{{if $d.ModelResults}}<ul class="cards">{{range $d.ModelResults}}
+  <li><a class="pick" href="/assets/new?model={{.ID}}"><span class="pick-name">{{.Manufacturer}} {{.Model}}</span><span>{{.Kind}}</span>
+    <span class="hint">{{len .Schedules}} schedule{{if ne (len .Schedules) 1}}s{{end}} set up when registered</span><span class="button">Choose</span></a></li>{{end}}
+</ul>{{else}}<p>No model in the catalogue matches “{{$d.ModelQ}}”. Type the manufacturer and model below instead.</p>{{end}}
+{{else}}<p class="hint">Choosing one fills in the details and sets up its schedules. Or just type the details below.</p>{{end}}
+</section>{{end}}
 <form autocomplete="off" method="post" action="/assets" class="narrow" enctype="multipart/form-data">
   {{template "csrf" .CSRF}}
   {{/* First, so Enter in a field means Register, not the new location's button below. */}}<button hidden tabindex="-1">Register</button>
@@ -25,6 +36,12 @@
     <p class="buttons"><button formaction="/assets/new/location" formnovalidate>Submit for review</button>
       <button type="button" class="secondary" popovertarget="new-location" popovertargetaction="hide">Cancel</button></p>
   </div>
+  {{with $d.Model}}<div class="chosen"><span class="chosen-label">Model from the catalogue</span><strong>{{.Manufacturer}} {{.Model}}</strong>
+    <span class="hint">{{.Kind}}</span><a href="/assets/new">Choose a different model, or none</a></div>
+  <input type="hidden" name="model_id" value="{{.ID}}">
+  {{if .Schedules}}<input type="hidden" name="model_schedules_offered" value="yes">
+  <fieldset><legend>Schedules from the catalogue</legend><ul>{{range .Schedules}}<li>{{.Title}}: {{.WOType}} every {{.IntervalDays}} days{{with .Checklist}}, checklist {{.}}{{end}}</li>{{end}}</ul>
+    <label class="check"><input type="checkbox" name="model_schedules" value="yes"{{if or (ne ($f.Get "model_schedules_offered") "yes") (eq ($f.Get "model_schedules") "yes")}} checked{{end}}> Set up these schedules, each first due one interval from today</label></fieldset>{{end}}{{end}}
   <label>Manufacturer <input name="manufacturer" value="{{$f.Get "manufacturer"}}" required></label>
   <label>Model <input name="model" value="{{$f.Get "model"}}" required></label>
   <label>Serial number <input name="serial" value="{{$f.Get "serial"}}" autocomplete="off"></label>

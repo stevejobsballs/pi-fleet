@@ -50,6 +50,10 @@ func (e *env) seedEverything() {
 	must(err)
 	wo, _, err := e.app.OpenWorkOrder(e.ctx, mid, app.NewWorkOrder{Type: "pm", AssetID: vent, Priority: "normal", Title: "PM", ProcedureID: proc})
 	must(err)
+	// The catalogue: the ventilator's model, with a schedule it lacks.
+	_, err = e.app.DefineModel(e.ctx, mid, domain.ModelDefined{Manufacturer: "Hamilton", Model: "C6", Kind: "Ventilator", RiskClass: "high",
+		Schedules: []domain.ModelSchedule{{WOType: "pm", Title: "Yearly PM", IntervalDays: 365, GraceDays: 14, Checklist: "Ventilator PM"}}})
+	must(err)
 	_, err = e.app.AssignWorkOrder(e.ctx, mid, wo, tess.ID)
 	must(err)
 	_, err = e.app.AddAttachment(e.ctx, e.super, domain.EntityAsset, vent, "manual.pdf", "service manual", []byte("%PDF-1.4 test"))

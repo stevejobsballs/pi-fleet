@@ -386,7 +386,11 @@ func checkInterval(interval, grace int) error {
 }
 
 func (ap *applier) scheduleCreated(p *PMScheduleCreated) error {
-	if err := ap.require(RoleMidTier); err != nil {
+	if p.FromModel == "" {
+		if err := ap.require(RoleMidTier); err != nil {
+			return err
+		}
+	} else if err := ap.require(RoleUser); err != nil {
 		return err
 	}
 	if err := ap.newEntity("pm_schedules"); err != nil {
@@ -398,6 +402,11 @@ func (ap *applier) scheduleCreated(p *PMScheduleCreated) error {
 	}
 	if err != nil {
 		return err
+	}
+	if p.FromModel != "" && !ap.actor.atLeast(RoleMidTier) {
+		if err := ap.fromModel(p, a); err != nil {
+			return err
+		}
 	}
 	if a.Status == AssetRetired {
 		return invalid("asset %s is retired", a.Tag)

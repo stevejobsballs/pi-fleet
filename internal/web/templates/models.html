@@ -1,0 +1,14 @@
+{{define "content"}}{{$d := .Data}}
+<p class="hint">Each model says what it is and which schedules its equipment should have. Registering a catalogued model sets up those schedules for you.</p>
+{{if .IsMid}}<p><a class="button" href="/models/new">Add a model</a></p>{{end}}
+{{if $d.Models}}<ul class="cards">{{range $d.Models}}
+  <li>{{$n := .Equipment}}{{with .M}}<a class="pick" href="/models/{{.ID}}"><span class="pick-name">{{.Manufacturer}} {{.Model}}</span><span>{{.Kind}}{{with .RiskClass}} · {{.}} risk{{end}}</span>
+    <span class="hint">{{$n}} piece{{if ne $n 1}}s{{end}} of equipment · {{len .Schedules}} schedule{{if ne (len .Schedules) 1}}s{{end}}</span></a>{{end}}</li>{{end}}
+</ul>{{else}}<p>The catalogue is empty.{{if .IsMid}} Add the models you have most of first: they're listed below.{{end}}</p>{{end}}
+{{with $d.Uncatalogued}}<section><h2>Equipment not in the catalogue yet <span class="count">{{len .}}</span></h2>
+<p class="hint">Models of registered equipment that have no catalogue entry, most equipment first.{{if not $.IsMid}} A mid-tier user can add them.{{end}}</p>
+<ul class="cards">{{range .}}
+  <li>{{if $.IsMid}}<a class="pick" href="{{.AddHref}}">{{else}}<div class="pick">{{end}}<span class="pick-name">{{.Manufacturer}} {{.Model}}</span>
+    <span class="hint">{{.Equipment}} piece{{if ne .Equipment 1}}s{{end}} of equipment</span>{{if $.IsMid}}<span class="button secondary">Add to the catalogue</span></a>{{else}}</div>{{end}}</li>{{end}}
+</ul></section>{{end}}
+{{end}}

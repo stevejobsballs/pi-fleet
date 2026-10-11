@@ -1,0 +1,26 @@
+{{define "content"}}{{$d := .Data}}{{$m := $d.Model}}
+<dl class="facts">
+  <dt>What it is</dt><dd>{{$m.Kind}}</dd>
+  <dt>Risk class</dt><dd>{{or $m.RiskClass "not set"}}</dd>
+  {{with $m.Notes}}<dt>Notes</dt><dd class="pre">{{.}}</dd>{{end}}
+</dl>
+{{if .IsMid}}<p class="buttons"><a class="button secondary" href="/models/{{$m.ID}}/edit">Change this model</a></p>{{end}}
+<section id="schedules"><h2>Schedules its equipment should have</h2>
+{{if $m.Schedules}}<table class="stack-narrow"><thead><tr><th>Schedule</th><th>Type</th><th>Every</th><th>Grace</th><th>Checklist</th></tr></thead><tbody>
+{{range $m.Schedules}}<tr><td data-label="Schedule">{{.Title}}</td><td data-label="Type">{{.WOType}}</td><td data-label="Every">{{.IntervalDays}} days</td><td data-label="Grace">{{.GraceDays}} days</td><td data-label="Checklist">{{or .Checklist "none"}}</td></tr>{{end}}
+</tbody></table>
+{{if $d.Missing}}<p class="warn">{{len $d.Missing}} piece{{if ne (len $d.Missing) 1}}s{{end}} of this model's equipment {{if eq (len $d.Missing) 1}}is{{else}}are{{end}} missing some of these schedules.</p>
+{{if .IsMid}}<form autocomplete="off" method="post" action="/models/{{$m.ID}}/apply">{{template "csrf" .CSRF}}<button>Set them up now</button>
+  <p class="hint">Each is first due one interval from today. Schedules the equipment already has, with the same type and title, are left alone.</p></form>{{end}}{{end}}
+{{else}}<p>None yet.{{if .IsMid}} <a href="/models/{{$m.ID}}/edit">Add one</a>.{{end}}</p>{{end}}
+</section>
+<section><h2>Checklists for it</h2>
+{{with $d.Checklists}}<ul class="cl-list">{{range .}}<li><a href="/procedures/{{.ID}}">{{.Name}}</a> <span class="hint">v{{.Version}} · {{if eq .Fit "model"}}for this model{{else}}for all {{$m.Manufacturer}} equipment{{end}}</span></li>{{end}}</ul>
+{{else}}<p>None made for it yet.</p>{{end}}
+</section>
+<section><h2>Its equipment <span class="count">{{len $d.Equipment}}</span></h2>
+{{if $d.Equipment}}<ul class="cards">{{range $d.Equipment}}
+  <li><a class="pick" href="/assets/{{.ID}}"><span class="pick-name">{{.Tag}}</span><span class="hint">{{.Location}}, {{.Site}} · {{label .Status}}</span></a></li>{{end}}
+</ul>{{else}}<p>None registered yet. <a href="/assets/new?model={{$m.ID}}">Register one</a>.</p>{{end}}
+</section>
+{{end}}

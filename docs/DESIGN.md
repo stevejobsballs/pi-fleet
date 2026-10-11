@@ -376,6 +376,7 @@ erDiagram
 | `location` | C | id, site_id, parent_id, name, kind | Tree |
 | `manufacturer`, `model` | C | | Shared catalog |
 | `asset` | C | id, tag (the physical asset tag, unique fleet-wide; a duplicate is a conflict), master_id (optional; records with the same MasterID are the same equipment), merged_into (set when the record was merged into another), manufacturer and model (text in v1; a shared `model` catalog comes later), serial, location_id (implies site), status (`in_service`, `out_of_service`, `retired`, `missing`), risk_class, is_reference_standard, custom fields (schema-checked JSON) | Field edits from nodes are merged by central (§5.4). Moving an asset to another site is a relocation. No two-phase transfer is needed because central holds authority. |
+| `model` (catalogue) | C (mid-tier) | manufacturer, model (matched to equipment by these, ignoring case and spacing), kind, usual risk class, notes, default schedules (type, title, interval, grace, checklist name) | On the master Pi only; employee Pis don't receive it. Registering equipment of a catalogued model sets up its schedules (`pm_schedule.created` with `from_model`), which any user may do as long as the schedule is exactly as catalogued; any other schedule needs mid-tier. |
 | `procedure_version` (checklist) | C (mid-tier) | name, version, steps[] (pass/fail check, number with optional decimal limits, text; each optionally required), status (active/retired) | Immutable once published. Changing a checklist publishes the next version. Schedules and work orders name the version they follow; retired versions can't be chosen for new work. |
 | `pm_schedule` | C | asset_id, wo_type (pm / calibration / inspection), procedure, checklist, interval_days, grace_days, next_due (projection), open_wo_id; optional usage trigger: meter, meter_interval, meter_lead (default 10%), meter_baseline | Central's `system:scheduler` opens a WO for each schedule due within 31 days that has none outstanding. With a usage trigger, work is also generated once usage since the last completion comes within the lead of the meter interval: whichever comes first, with the calendar interval as a backstop. Completing it sets next_due = completion date (site time zone) + interval and the meter baseline to the meter's total at completion. Cancelling it lets the scheduler regenerate. |
 | `work_order` | C to create/assign, **L** to perform | id, number, type (`pm`, `corrective`, `calibration`, `inspection`, `install`, `retire`), asset_id, priority, status, problem, findings, resolution, due_at, assigned_to | §4.5 |
@@ -410,6 +411,7 @@ history.
 - `pm_schedule.created`, `pm_schedule.changed`, `pm_schedule.ended`
 - `procedure.published`, `procedure.retired`, `workorder.procedure_set`,
   `workorder.step_recorded`
+- `model.defined`, `model.changed`
 - `part.created`, `stock_location.created`, `stock.txn_recorded`, `stock.txn_reversed`, `meter.read`, `meter.voided`, `labor.logged`,
   `labor.reversed`
 - `attachment.added`, `attachment.detached`

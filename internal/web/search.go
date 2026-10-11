@@ -51,6 +51,7 @@ var searchers = []searcher{
 	{title: "Equipment", minRole: domain.RoleUser, find: findEquipment},
 	{title: "Work orders", minRole: domain.RoleUser, find: findWorkOrders},
 	{title: "Reported problems", minRole: domain.RoleUser, central: true, find: findRequests},
+	{title: "Models", minRole: domain.RoleUser, central: true, find: findModelHits},
 	{title: "Checklists", minRole: domain.RoleUser, find: findChecklists},
 	{title: "Checklists waiting for approval", minRole: domain.RoleMidTier, find: findProposals},
 	{title: "Schedules", minRole: domain.RoleUser, find: findSchedules},
@@ -155,6 +156,16 @@ func findRequests(ctx context.Context, q domain.Querier, _, like string, _ *sess
 		WHERE r.number LIKE ?1 OR r.description LIKE ?1 OR r.category LIKE ?1 OR r.requester_name LIKE ?1
 			OR r.requester_department LIKE ?1 OR a.tag LIKE ?1 OR a.master_id LIKE ?1
 		ORDER BY r.status != 'new', r.submitted_at DESC LIMIT ?2`, like, searchLimit+1)
+}
+
+func findModelHits(ctx context.Context, q domain.Querier, text, _ string, _ *session) ([]hit, error) {
+	models, err := findModels(ctx, q, text)
+	var out []hit
+	for _, m := range models {
+		out = append(out, hit{Href: "/models/" + m.ID, Name: m.Manufacturer + " " + m.Model, Detail: m.Kind,
+			Note: fmt.Sprintf("%d schedule%s", len(m.Schedules), plural(len(m.Schedules)))})
+	}
+	return out, err
 }
 
 func findChecklists(ctx context.Context, q domain.Querier, text, _ string, _ *session) ([]hit, error) {

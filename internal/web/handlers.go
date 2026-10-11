@@ -211,6 +211,12 @@ type assetNewData struct {
 	F                url.Values // what was typed, kept when the page comes back
 	Error, LocError  string
 	Proposed         string // a location just sent for review
+	// The catalogue: whether it has any models, a search of it, and the
+	// model chosen, whose details fill the form.
+	Catalogue    bool
+	ModelQ       string
+	ModelResults []domain.Model
+	Model        *domain.Model
 }
 
 var locationKinds = []string{"room", "department", "ward", "clinic", "workshop", "storage", "building", "area", "other"}
@@ -226,6 +232,29 @@ func (s *Server) renderAssetNew(w http.ResponseWriter, r *http.Request, sess *se
 	}
 	if d.F == nil {
 		d.F = url.Values{}
+	}
+	models, err := domain.Models(ctx, q)
+	if err != nil {
+		return err
+	}
+	d.Catalogue = len(models) > 0
+	modelID := d.F.Get("model_id")
+	if r.Method == http.MethodGet {
+		modelID, d.ModelQ = r.URL.Query().Get("model"), strings.TrimSpace(r.URL.Query().Get("modelq"))
+	}
+	if modelID != "" {
+		if m, err := domain.GetModel(ctx, q, modelID); err == nil {
+			d.Model = &m
+			for k, v := range map[string]string{"manufacturer": m.Manufacturer, "model": m.Model, "risk_class": m.RiskClass} {
+				if d.F.Get(k) == "" {
+					d.F.Set(k, v)
+				}
+			}
+		}
+	} else if d.ModelQ != "" {
+		if d.ModelResults, err = findModels(ctx, q, d.ModelQ); err != nil {
+			return err
+		}
 	}
 	d.Kinds, d.RiskClasses, d.MaxFiles = locationKinds, []string{"low", "medium", "high"}, maxFiles
 	return s.render(w, r, sess, "asset_new", "Register equipment", d)
@@ -291,6 +320,20 @@ func (s *Server) assetCreate(w http.ResponseWriter, r *http.Request, sess *sessi
 		}
 		return s.renderAssetNew(w, r, sess, assetNewData{F: r.PostForm, Error: "Not saved: " + msg})
 	}
+	// Equipment of a catalogued model gets the model's schedules, unless
+	// the person registering it unticked them.
+	scheduled := ""
+	if m, err := domain.ModelOf(r.Context(), s.App.Store.DB(), f("manufacturer"), f("model")); err == nil &&
+		!(f("model_schedules_offered") == "yes" && f("model_schedules") != "yes") && len(m.Schedules) > 0 {
+		n, err := s.App.SetUpModelSchedules(r.Context(), s.actor(sess), m.ID, id)
+		if msg := message(err); err != nil && msg == "" {
+			return err
+		} else if err != nil {
+			scheduled = " Its schedules weren't set up (" + msg + "): set them up on its page."
+		} else if n > 0 {
+			scheduled = fmt.Sprintf(" %d schedule%s from the catalogue set up.", n, plural(n))
+		}
+	}
 	var problems []string
 	if r.MultipartForm != nil {
 		for _, rf := range registrationFiles {
@@ -306,9 +349,9 @@ func (s *Server) assetCreate(w http.ResponseWriter, r *http.Request, sess *sessi
 		}
 	}
 	if len(problems) > 0 {
-		return s.done(w, r, sess, "/assets/"+id, "Equipment registered, but not attached: "+strings.Join(problems, "; ")+". Add files below.")
+		return s.done(w, r, sess, "/assets/"+id, "Equipment registered, but not attached: "+strings.Join(problems, "; ")+". Add files below."+scheduled)
 	}
-	return s.done(w, r, sess, "/assets/"+id, "Equipment registered. Its QR label is ready: choose its MasterID below to see and print it.")
+	return s.done(w, r, sess, "/assets/"+id, "Equipment registered. Its QR label is ready: choose its MasterID below to see and print it."+scheduled)
 }
 
 func countFiles(r *http.Request) int {
@@ -346,6 +389,10 @@ type assetData struct {
 	// What needs doing: its work still to be done, and the next scheduled.
 	Open []jobCard
 	Next *scheduleRow
+	// Its model in the catalogue, if catalogued, and the model's
+	// schedules it hasn't got.
+	CatModel *domain.Model
+	Missing  []domain.ModelSchedule
 }
 
 func (s *Server) assetView(w http.ResponseWriter, r *http.Request, sess *session) error {
@@ -371,6 +418,16 @@ func (s *Server) assetView(w http.ResponseWriter, r *http.Request, sess *session
 				DueAt: wo.DueAt, Tag: wo.Asset, Who: wo.AssignedTo}
 			j.When, j.Late = dueWords(wo.DueAt, day)
 			d.Open = append(d.Open, j)
+		}
+	}
+	if s.Role == "central" && d.Asset.MergedInto == "" && d.Asset.Status != domain.AssetRetired {
+		if m, err := domain.ModelOf(r.Context(), s.App.Store.DB(), d.Asset.Manufacturer, d.Asset.Model); err == nil {
+			d.CatModel = &m
+			if d.Missing, err = app.MissingModelSchedules(r.Context(), s.App.Store.DB(), m, d.Asset.ID); err != nil {
+				return err
+			}
+		} else if !errors.Is(err, domain.ErrNotFound) {
+			return err
 		}
 	}
 	for i, sc := range d.Schedules {
