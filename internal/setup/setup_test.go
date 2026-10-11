@@ -329,6 +329,9 @@ func TestNewMasterReusesADataDrive(t *testing.T) {
 	if sys.ran("wipefs") || sys.ran("mkfs") || sys.ran("runuser -u pifleet -- /opt/pi-fleet/current/pi-fleet init") || sys.ran("runuser -u pifleet -- /opt/pi-fleet/current/pi-fleet bootstrap -data /srv/pi-fleet -username") {
 		t.Fatalf("changed the reused drive:\n%s", strings.Join(sys.calls, "\n"))
 	}
+	if !sys.ran("chown -R pifleet:pifleet /srv/pi-fleet") {
+		t.Errorf("kept records not given to pi-fleet's (possibly new) user:\n%s", strings.Join(sys.calls, "\n"))
+	}
 	if !strings.Contains(string(sys.files["/etc/fstab"]), "UUID=keep-me") || !strings.Contains(out.String(), "Found the master Pi's records") {
 		t.Fatalf("output:\n%s", out)
 	}
