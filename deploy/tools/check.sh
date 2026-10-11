@@ -18,6 +18,6 @@ if [ "$ROLE" = master ]; then
   run sudo -u pifleet "$PF" nodes -data "$DATA"
 fi
 echo "files not owned by pifleet:"
-find "$DATA" ! -user pifleet -printf '  %u %p\n' | grep . || echo "  none"
+find "$DATA" -path "$DATA/lost+found" -prune -o ! -user pifleet -printf '  %u %p\n' | grep . || echo "  none"
 echo "recent log:"
 journalctl -u pi-fleet -n 10 --no-pager 2>/dev/null | sed 's/^/  /'
