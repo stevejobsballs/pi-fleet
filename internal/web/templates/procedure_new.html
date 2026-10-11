@@ -1,8 +1,10 @@
 {{define "content"}}{{$d := .Data}}
 <form method="post" action="/procedures" class="builder">{{template "csrf" .CSRF}}
+  {{/* First, so Enter in a field shows the builder again rather than pressing a step's button. */}}<button name="stay" value="1" hidden tabindex="-1" formnovalidate>Show again</button>
   <input type="hidden" name="count" value="{{len $d.Steps}}"><input type="hidden" name="from" value="{{$d.From}}">
   <input type="hidden" name="mode" value="{{$d.Mode}}"><input type="hidden" name="template" value="{{$d.Template}}"><input type="hidden" name="template_name" value="{{$d.TemplateName}}">
   {{with $d.Error}}<p class="error" role="alert">{{.}}</p>{{end}}
+  {{with $d.Notice}}<p class="flash" role="status">{{.}}</p>{{end}}
   {{if eq $d.Mode "custom"}}<p class="flash" role="status">Configuring a custom checklist from the generic template <strong>{{$d.TemplateName}}</strong>. Give it its own name, and change the steps, limits and equipment to suit. The template stays as it is.</p>
   {{else if eq $d.Mode "amend"}}<p class="flash" role="status">{{if $d.Custom}}Changing this custom checklist{{else}}Amending the generic template{{end}}: {{if $d.CanPublish}}publishing makes its next version{{else}}your amendment is sent for approval, and becomes its next version once approved{{end}}. Keep the name.</p>{{end}}
   {{if or (ne $d.Mode "new") (not $d.CanPublish)}}<input type="hidden" name="custom" value="{{if $d.Custom}}yes{{else}}no{{end}}">{{end}}
@@ -23,9 +25,9 @@
     <datalist id="manufacturers">{{range $d.Manufacturers}}<option value="{{.}}">{{end}}</datalist>
     <datalist id="models">{{range $d.Models}}<option value="{{.}}">{{end}}</datalist>
   </fieldset>
-  <p class="hint">Fill in as many steps as you need; empty ones are left out. Section headings and instructions take no answer. A step can be asked only when an earlier step has a certain answer, such as a battery voltage only when a battery is fitted.</p>
+  <p class="hint">Add steps one at a time with “Add a step below”, and take out any you don't need with “Remove”. Empty steps are left out. Section headings and instructions take no answer. A step can be asked only when an earlier step has a certain answer, such as a battery voltage only when a battery is fitted.</p>
   {{range $d.Steps}}{{$i := sub .Num 1}}
-  <fieldset class="bstep">
+  <fieldset class="bstep" id="step-{{.Num}}">
     <legend>Step {{.Num}}</legend><input type="hidden" name="id_{{$i}}" value="{{.ID}}">
     <div class="row">
       <label class="grow">What to do or check <input name="text_{{$i}}" value="{{.Text}}" maxlength="500"></label>
@@ -52,8 +54,10 @@
       <label>Only ask when step number <input name="showif_step_{{$i}}" value="{{.ShowIfStep}}" size="3" inputmode="numeric" placeholder="e.g. 4"></label>
       <label class="grow">has the answer <input name="showif_value_{{$i}}" value="{{.ShowIfValue}}" placeholder="e.g. Yes"></label>
     </div>
-  </fieldset>{{end}}
+    <p class="buttons step-edit"><button name="add" value="{{.Num}}" formaction="/procedures#step-{{add .Num 1}}" class="secondary" formnovalidate>Add a step below</button><button name="remove" value="{{.Num}}" formaction="/procedures#step-{{if eq .Num (len $d.Steps)}}{{sub .Num 1}}{{else}}{{.Num}}{{end}}" class="danger" formnovalidate>Remove step {{.Num}}</button></p>
+  </fieldset>{{else}}
+  <p class="buttons"><button name="add" value="0" formaction="/procedures#step-1" class="secondary" formnovalidate>Add a step</button></p>{{end}}
   {{if not $d.CanPublish}}<p class="hint">When you send it, a mid-tier or super user checks and approves it on the master Pi. It can be used on work orders once approved.</p>{{end}}
-  <p class="buttons"><button name="more" value="5" class="secondary" formnovalidate>Add 5 more steps</button><button>{{if $d.CanPublish}}Publish checklist{{else if eq $d.Mode "amend"}}Send amendment for approval{{else}}Send for approval{{end}}</button></p>
+  <p class="buttons"><button>{{if $d.CanPublish}}Publish checklist{{else if eq $d.Mode "amend"}}Send amendment for approval{{else}}Send for approval{{end}}</button></p>
 </form>
 {{end}}

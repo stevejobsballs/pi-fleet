@@ -25,7 +25,7 @@ func TestChecklistAndLabourThroughTheUI(t *testing.T) {
 	tess.login("tess", "brass-kettle-orchard-7")
 
 	// Publish a checklist through the builder.
-	if _, _, page := mona.get("/procedures/new"); !strings.Contains(page, `name="text_7"`) || !strings.Contains(page, ">Tick all that apply</option>") {
+	if _, _, page := mona.get("/procedures/new"); !strings.Contains(page, `name="text_0"`) || strings.Contains(page, `name="text_1"`) || !strings.Contains(page, ">Tick all that apply</option>") {
 		t.Fatalf("builder:\n%s", page)
 	}
 	_, page := mona.post("/procedures", url.Values{"name": {"Infusion pump PM"}, "count": {"4"}, "category": {"Preventive maintenance"},
@@ -131,14 +131,34 @@ func TestRichChecklistThroughTheUI(t *testing.T) {
 		!strings.Contains(page, `value="Battery voltage"`) {
 		t.Fatalf("mistake: %d\n%s", code, page)
 	}
-	// "Add 5 more steps" keeps what was typed.
-	more := url.Values{}
-	for k, v := range form {
-		more[k] = v
+	// Adding or removing one step keeps what was typed, and keeps "only
+	// ask when step N" pointing at the same step.
+	edit := func(k, v string) string {
+		f := url.Values{}
+		for k, v := range form {
+			f[k] = v
+		}
+		f.Set(k, v)
+		code, page := mona.post("/procedures", f)
+		if code != http.StatusOK || !strings.Contains(page, `value="Delivered energy"`) {
+			t.Fatalf("%s %s: %d\n%s", k, v, code, page)
+		}
+		return page
 	}
-	more.Set("more", "5")
-	if _, page := mona.post("/procedures", more); !strings.Contains(page, `name="text_12"`) || !strings.Contains(page, `value="Delivered energy"`) {
-		t.Fatalf("more steps:\n%s", page)
+	if page := edit("add", "2"); !strings.Contains(page, `name="text_8"`) || strings.Contains(page, `name="text_9"`) ||
+		!strings.Contains(page, `name="text_2" value=""`) || !strings.Contains(page, `name="showif_step_5" value="5"`) {
+		t.Fatalf("step added after step 2:\n%s", page)
+	}
+	if page := edit("remove", "1"); strings.Contains(page, `name="text_7"`) || strings.Contains(page, "Before you start") ||
+		!strings.Contains(page, `name="showif_step_3" value="3"`) {
+		t.Fatalf("step 1 removed:\n%s", page)
+	}
+	if page := edit("remove", "4"); strings.Contains(page, "Battery fitted?") || !strings.Contains(page, `name="showif_step_3" value=""`) ||
+		!strings.Contains(page, "Step 4 removed. Step 4 was asked only when it had a certain answer") {
+		t.Fatalf("step 4 removed:\n%s", page)
+	}
+	if page := edit("stay", "1"); !strings.Contains(page, `name="text_7"`) || strings.Contains(page, `name="text_8"`) {
+		t.Fatalf("Enter in a field:\n%s", page)
 	}
 	_, page := mona.post("/procedures", form)
 	for _, want := range []string{"Published Defibrillator inspection version 1", "<h3>Before you start</h3>", "Good, Worn, Cracked (fails)",
@@ -561,5 +581,13 @@ func TestCustomChecklistFromAGenericTemplate(t *testing.T) {
 	if iCustom < 0 || !strings.Contains(page[iCustom:], "Portable X-ray PM: ICU") || strings.Contains(page[:iCustom], "Portable X-ray PM: ICU") ||
 		!strings.Contains(page[:iCustom], "Portable X-ray PM</a> <span class=\"hint\">v2") {
 		t.Fatalf("library after approval:\n%s", page)
+	}
+}
+
+func TestEveryStepKindHasALabel(t *testing.T) {
+	for _, k := range domain.StepKinds {
+		if kindLabels[k] == "" {
+			t.Errorf("step kind %q has no label in the builder", k)
+		}
 	}
 }

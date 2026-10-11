@@ -305,7 +305,7 @@ type builderData struct {
 	Steps                                  []formStep
 	Kinds, Categories                      []string
 	From                                   string // the version this starts from, if any
-	Error                                  string
+	Error, Notice                          string
 	CanPublish                             bool // mid-tier and super users; others send it for approval
 	// Custom: a custom checklist (configured from Template, if set);
 	// otherwise a generic template. Mode: "new", "amend" (the next version
@@ -322,7 +322,7 @@ func (builderData) BackLink() (string, string) { return "/procedures", "checklis
 var kindLabels = map[string]string{
 	domain.StepCheck: "Pass / fail", domain.StepNumber: "Reading (a number)", domain.StepChoice: "Choose one",
 	domain.StepMulti: "Tick all that apply", domain.StepText: "Short answer", domain.StepLongText: "Notes (several lines)",
-	domain.StepDate: "Date", domain.StepHeading: "Section heading", domain.StepInfo: "Instruction or warning (no answer)",
+	domain.StepDate: "Date", domain.StepPhoto: "Photo", domain.StepHeading: "Section heading", domain.StepInfo: "Instruction or warning (no answer)",
 }
 
 // stepsToForm turns a published checklist's steps into builder rows.
@@ -354,6 +354,68 @@ func withBlankSteps(steps []formStep, extra, min int) []formStep {
 	for len(steps) < min || extra > 0 {
 		steps = append(steps, formStep{Num: len(steps) + 1, Kind: domain.StepCheck})
 		extra--
+	}
+	return steps
+}
+
+// insertStep adds an empty step after step n (0: before the first).
+func insertStep(steps []formStep, n int) []formStep {
+	n = min(max(n, 0), len(steps))
+	out := slices.Insert(slices.Clone(steps), n, formStep{Num: 0, Kind: domain.StepCheck})
+	return renumberSteps(out, func(old int) int {
+		if old > n {
+			return old + 1
+		}
+		return old
+	}, nil)
+}
+
+// removeStep takes out step n. A step asked only when step n had a
+// certain answer is then always asked; the note says which.
+func removeStep(steps []formStep, n int) ([]formStep, string) {
+	if n < 1 || n > len(steps) {
+		return steps, ""
+	}
+	out := slices.Delete(slices.Clone(steps), n-1, n)
+	var always []string
+	out = renumberSteps(out, func(old int) int {
+		switch {
+		case old == n:
+			return 0
+		case old > n:
+			return old - 1
+		}
+		return old
+	}, func(f formStep) { always = append(always, strconv.Itoa(f.Num)) })
+	switch len(always) {
+	case 0:
+		return out, ""
+	case 1:
+		return out, fmt.Sprintf("Step %d removed. Step %s was asked only when it had a certain answer, so it is now always asked; change that if needed.", n, always[0])
+	}
+	return out, fmt.Sprintf("Step %d removed. Steps %s and %s were asked only when it had a certain answer, so they are now always asked; change that if needed.",
+		n, strings.Join(always[:len(always)-1], ", "), always[len(always)-1])
+}
+
+// renumberSteps numbers the steps 1, 2, … and moves each "only ask when
+// step N" to N's new number (0: N is gone, so cleared, and lost is told).
+func renumberSteps(steps []formStep, moved func(old int) int, lost func(formStep)) []formStep {
+	for i := range steps {
+		steps[i].Num = i + 1
+	}
+	for i, f := range steps {
+		old, err := strconv.Atoi(f.ShowIfStep)
+		if err != nil {
+			continue // empty, or not a number: left as typed
+		}
+		if n := moved(old); n > 0 {
+			steps[i].ShowIfStep = strconv.Itoa(n)
+		} else {
+			steps[i].ShowIfStep, steps[i].ShowIfValue = "", ""
+			if lost != nil {
+				lost(steps[i])
+			}
+		}
 	}
 	return steps
 }
@@ -404,7 +466,11 @@ func (s *Server) procedureNew(w http.ResponseWriter, r *http.Request, sess *sess
 			}
 		}
 	}
-	d.Steps = withBlankSteps(d.Steps, min(max(more, 3), 50), 8)
+	blank := 0
+	if d.From == "" && d.Template == "" {
+		blank = 1 // a new checklist starts with one step to fill in
+	}
+	d.Steps = withBlankSteps(d.Steps, min(max(more, 0), 50), blank)
 	return s.renderBuilder(w, r, sess, d)
 }
 
@@ -494,8 +560,15 @@ func readBuilder(f url.Values) (builderData, []domain.Step, error) {
 // builder comes back as typed, with what to fix.
 func (s *Server) procedurePublish(w http.ResponseWriter, r *http.Request, sess *session) error {
 	d, steps, err := readBuilder(r.PostForm)
-	if err == nil && r.PostFormValue("more") != "" {
-		d.Steps = withBlankSteps(d.Steps, 5, 0) // "Add 5 more steps"
+	// Adding or removing a step (or Enter in a field) shows the builder
+	// again, as typed, with that change.
+	if err == nil && (r.PostForm.Has("add") || r.PostForm.Has("remove") || r.PostForm.Has("stay")) {
+		if n, err := strconv.Atoi(r.PostFormValue("add")); err == nil {
+			d.Steps = insertStep(d.Steps, n)
+		}
+		if n, err := strconv.Atoi(r.PostFormValue("remove")); err == nil {
+			d.Steps, d.Notice = removeStep(d.Steps, n)
+		}
 		return s.renderBuilder(w, r, sess, d)
 	}
 	var id string
@@ -581,7 +654,6 @@ func (s *Server) procedureImport(w http.ResponseWriter, r *http.Request, sess *s
 		return s.done(w, r, sess, "/procedures", "Not opened: that isn't a checklist downloaded from pi-fleet.")
 	}
 	d := builderData{Name: c.Name, Description: c.Description, Reference: c.Reference, Category: c.Category, AppliesTo: c.AppliesTo, Steps: stepsToForm(c.Steps)}
-	d.Steps = withBlankSteps(d.Steps, 3, 0)
 	return s.renderBuilder(w, r, sess, d)
 }
 
