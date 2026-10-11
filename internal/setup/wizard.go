@@ -172,7 +172,9 @@ func (w *Wizard) newMaster() error {
 		return err
 	}
 	if now {
-		if err := w.backups(port); err != nil {
+		if err := w.backups(port); errors.Is(err, errSkipBackups) {
+			now = false
+		} else if err != nil {
 			return err
 		}
 	}
@@ -495,9 +497,9 @@ func (w *Wizard) existingMaster(unit string) error {
 		if w.Sys.Exists(BackupDir + "/.pi-fleet-backup-drive") {
 			choices = append(choices,
 				choice{"Add off-site disks", func() error { u.Step("Backups"); return w.offsiteDisks() }},
-				choice{"Set up backups again (a new backup drive or new backup keys)", func() error { return w.backups(port) }})
+				choice{"Set up backups again (a new backup drive or new backup keys)", func() error { return skipped(w.backups(port)) }})
 		} else {
-			choices = append(choices, choice{"Set up backups (backup drive, backup keys, off-site disks)", func() error { return w.backups(port) }})
+			choices = append(choices, choice{"Set up backups (backup drive, backup keys, off-site disks)", func() error { return skipped(w.backups(port)) }})
 		}
 	}
 	choices = append(choices, choice{"Add a network name or address to the master's certificate (for Pis at other sites)", func() error { return w.addCertNames(unit, port) }})

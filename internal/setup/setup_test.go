@@ -1026,3 +1026,20 @@ func TestErasingADriveForgetsItsFstabLines(t *testing.T) {
 		t.Fatalf("got:\n%s", got)
 	}
 }
+
+// Choosing backups by mistake isn't a dead end: "skip" at the backup
+// drive finishes setup without them.
+func TestBackupsCanBeSkippedAtTheDrive(t *testing.T) {
+	sys := newFake()
+	outputs(sys, map[string]string{"lsblk": piDisks, "hostname": "raspberrypi\n", "blkid": "new-uuid\n", "id pifleet": "uid=999"})
+	w, out := wizard(sys, "1", "", "", "2", "ERASE", "", "jsmith", "Jo Smith", "jo@example.org",
+		"y",    // backups now
+		"skip", // ...no, later
+	)
+	if err := w.Run(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	if !strings.Contains(out.String(), "Backups aren't set up yet") || sys.ran("backup-config") {
+		t.Fatalf("output:\n%s", out)
+	}
+}

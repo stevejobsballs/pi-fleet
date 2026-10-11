@@ -1,6 +1,7 @@
 package setup
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strconv"
@@ -79,6 +80,17 @@ func (w *Wizard) backups(port int) error {
 	return nil
 }
 
+// errSkipBackups: the user chose to set up backups another time.
+var errSkipBackups = errors.New("backups skipped for now")
+
+// skipped treats setting up backups another time as done.
+func skipped(err error) error {
+	if errors.Is(err, errSkipBackups) {
+		return nil
+	}
+	return err
+}
+
 // backupDrive prepares and mounts the backup drive at BackupDir.
 func (w *Wizard) backupDrive() error {
 	u := w.UI
@@ -90,8 +102,12 @@ func (w *Wizard) backupDrive() error {
 	}
 	u.Say("Plug the backup drive into another USB port, leaving the data drive in.")
 	for {
-		if err := u.Pause("Press Enter when the backup drive is plugged in."); err != nil {
+		a, err := u.line("Press Enter when the backup drive is plugged in (or type skip to set up backups later): ")
+		if err != nil {
 			return err
+		}
+		if strings.EqualFold(strings.TrimSpace(a), "skip") {
+			return errSkipBackups
 		}
 		w.Sleep(2 * time.Second)
 		d, err := w.pickDisk("Which drive should hold the backups? (The data drive isn't listed.)")
