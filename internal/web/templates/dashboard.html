@@ -1,26 +1,35 @@
-{{define "content"}}
-<nav class="quick" aria-label="Start something"><a class="button" href="/work-orders/new">New work order</a><a class="button" href="/assets">Find equipment</a><a class="button" href="/assets/new">Register equipment</a></nav>
-{{if .Data.Proposals}}<p class="flash warn" role="status"><a href="/procedures#waiting">{{.Data.Proposals}} checklist{{if ne .Data.Proposals 1}}s{{end}} waiting for your approval</a></p>{{end}}
-{{if .Data.Requests}}<p class="flash warn" role="status"><a href="/requests">{{.Data.Requests}} reported problem{{if ne .Data.Requests 1}}s{{end}} waiting to be looked at</a></p>{{end}}
-{{if and .IsSuper .Data.Locations}}<p class="flash warn" role="status"><a href="/admin/sites#review">{{.Data.Locations}} new location{{if ne .Data.Locations 1}}s{{end}} awaiting your review</a></p>{{end}}
-<section>
-  <h2>My work</h2>
-  {{template "worows" .Data.Mine}}
+{{define "content"}}{{$d := .Data}}
+{{template "findbox" "home"}}
+<nav class="quick" aria-label="Start something"><a class="button" href="/work-orders/new">New work order</a><a class="button secondary" href="/assets/new">Register equipment</a></nav>
+{{if $d.Proposals}}<p class="flash warn" role="status"><a href="/procedures#waiting">{{$d.Proposals}} checklist{{if ne $d.Proposals 1}}s{{end}} waiting for your approval</a></p>{{end}}
+{{if $d.Requests}}<p class="flash warn" role="status"><a href="/requests">{{$d.Requests}} reported problem{{if ne $d.Requests 1}}s{{end}} waiting to be looked at</a></p>{{end}}
+{{if and .IsSuper $d.Locations}}<p class="flash warn" role="status"><a href="/admin/sites#review">{{$d.Locations}} new location{{if ne $d.Locations 1}}s{{end}} awaiting your review</a></p>{{end}}
+<section class="jobs">
+  <h2>My jobs{{with $d.Jobs}} <span class="count">{{len .}}{{if $d.Late}}, {{$d.Late}} overdue{{end}}</span>{{end}}</h2>
+  {{if $d.Jobs}}<ul class="cards">{{range $d.Jobs}}
+  <li><a class="job prio-{{.Priority}}{{if .Late}} late{{end}}" href="/work-orders/{{.ID}}">
+    <span class="job-when">{{.When}}{{if or (eq .Priority "urgent") (eq .Priority "high")}} {{template "prio" .Priority}}{{end}}</span>
+    <span class="job-title">{{.Title}}</span>
+    <span class="job-what">{{.Tag}}{{with .Equipment}} · {{.}}{{end}}</span>
+    <span class="job-where">{{.Place}}</span>
+    <span class="job-meta">{{.Number}} · {{label .Type}} · {{label .Status}}</span>
+  </a></li>{{end}}</ul>
+  {{else}}<p>Nothing is assigned to you. <a href="/work-orders?view=unassigned">See work waiting for someone</a>.</p>{{end}}
 </section>
 <section>
   <h2>Due in the next 31 days</h2>
-  {{if .Data.Due}}
-  <table><thead><tr><th>Due</th><th>Equipment</th><th>Site</th><th>Schedule</th><th>Work order</th></tr></thead><tbody>
-  {{range .Data.Due}}<tr><td>{{.NextDue}}</td><td><a href="/assets/{{.AssetID}}">{{.Asset}}</a></td><td>{{.Site}}</td><td>{{.Title}} ({{.Type}})</td>
-    <td>{{if .WorkOrderID}}<a href="/work-orders/{{.WorkOrderID}}">{{.WorkOrder}}</a>{{else}}not generated yet{{end}}</td></tr>{{end}}
+  {{if $d.Due}}
+  <table class="stack-narrow"><thead><tr><th>Due</th><th>Equipment</th><th>Site</th><th>Schedule</th><th>Work order</th></tr></thead><tbody>
+  {{range $d.Due}}<tr><td data-label="Due">{{.NextDue}}</td><td data-label="Equipment"><a href="/assets/{{.AssetID}}">{{.Asset}}</a></td><td data-label="Site">{{.Site}}</td><td data-label="Schedule">{{.Title}} ({{.Type}})</td>
+    <td data-label="Work order">{{if .WorkOrderID}}<a href="/work-orders/{{.WorkOrderID}}">{{.WorkOrder}}</a>{{else}}not generated yet{{end}}</td></tr>{{end}}
   </tbody></table>
   {{else}}<p>Nothing due.</p>{{end}}
 </section>
-{{if .Data.UsageDue}}<section><h2>Due by usage</h2>
-<table><thead><tr><th>Equipment</th><th>Schedule</th><th>Usage since last service</th><th>Work order</th></tr></thead><tbody>
-{{range .Data.UsageDue}}<tr><td><a href="/assets/{{.Schedule.AssetID}}">{{.Asset}}</a></td><td>{{.Schedule.Title}}</td><td>{{.Status.Used}} of {{.Status.Interval}} {{.Schedule.Meter}}</td>
-  <td>{{if .Schedule.OpenWorkOrderID}}<a href="/work-orders/{{.Schedule.OpenWorkOrderID}}">open</a>{{else}}generated within the hour{{end}}</td></tr>{{end}}
+{{if $d.UsageDue}}<section><h2>Due by usage</h2>
+<table class="stack-narrow"><thead><tr><th>Equipment</th><th>Schedule</th><th>Usage since last service</th><th>Work order</th></tr></thead><tbody>
+{{range $d.UsageDue}}<tr><td data-label="Equipment"><a href="/assets/{{.Schedule.AssetID}}">{{.Asset}}</a></td><td data-label="Schedule">{{.Schedule.Title}}</td><td data-label="Usage since last service">{{.Status.Used}} of {{.Status.Interval}} {{.Schedule.Meter}}</td>
+  <td data-label="Work order">{{if .Schedule.OpenWorkOrderID}}<a href="/work-orders/{{.Schedule.OpenWorkOrderID}}">open</a>{{else}}generated within the hour{{end}}</td></tr>{{end}}
 </tbody></table></section>{{end}}
-<p><a href="/work-orders?view=unassigned">{{.Data.Unassigned}} unassigned work order{{if ne .Data.Unassigned 1}}s{{end}}</a>
-{{if .IsMid}} · <a href="/review">{{.Data.Flags}} flagged record{{if ne .Data.Flags 1}}s{{end}} to review</a>{{end}}</p>
+<p><a href="/work-orders?view=unassigned">{{$d.Unassigned}} unassigned work order{{if ne $d.Unassigned 1}}s{{end}}</a>
+{{if .IsMid}} · <a href="/review">{{$d.Flags}} flagged record{{if ne $d.Flags 1}}s{{end}} to review</a>{{end}}</p>
 {{end}}

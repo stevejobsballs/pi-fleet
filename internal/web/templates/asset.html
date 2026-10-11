@@ -13,32 +13,25 @@
   <dt>Status</dt><dd class="s-{{$a.Status}}"><strong>{{label $a.Status}}</strong></dd>
   <dt>Risk class</dt><dd>{{$a.RiskClass}}</dd>
 </dl>
-<p class="records"><a href="/assets/{{$a.ID}}/audit">Audit trail</a> · <a href="/assets/{{$a.ID}}/print">Printable record</a> · <a href="/assets/{{$a.ID}}/export.json">Download signed JSON</a></p>
-{{with .Data.Merged}}<p>Merged into this record, with their service history in this record's timeline: {{range $i, $o := .}}{{if $i}}, {{end}}<a href="/assets/{{$o.ID}}">{{$o.Label}}</a>{{end}}. Their work orders, calibrations, schedules and files are listed below.</p>{{end}}
-{{with .Data.Separate}}<p>Also merged into this record, with their service history kept separate: {{range $i, $o := .}}{{if $i}}, {{end}}<a href="/assets/{{$o.ID}}">{{$o.Label}}</a>{{end}}.</p>{{end}}
-{{if not $merged}}<section class="actions">
-  <div class="act"><h3>Work on it</h3><a class="button" href="/work-orders/new?asset={{$a.ID}}">New work order</a></div>
-  <form autocomplete="off" method="post" action="/assets/{{$a.ID}}/status" class="act">{{template "csrf" .CSRF}}<input type="hidden" name="version" value="{{$a.Version}}">
-    <h3>Change its status</h3>
-    <label>Status <select name="status">{{range .Data.Statuses}}<option value="{{.}}" {{if eq . $a.Status}}selected{{end}}>{{label .}}</option>{{end}}</select></label>
-    <label>Reason <input name="reason"></label>{{template "nophi"}}<button>Change status</button></form>
-  <form autocomplete="off" method="post" action="/assets/{{$a.ID}}/relocate" class="act">{{template "csrf" .CSRF}}<input type="hidden" name="version" value="{{$a.Version}}">
-    <h3>Move it to another location</h3>
-    <label>New location <select name="location">{{range .Data.Locations}}<option value="{{.ID}}" {{if eq .ID $a.LocationID}}selected{{end}}>{{.Label}}</option>{{end}}</select></label><button>Move</button></form>
-  <div class="act act-wide"><h3>Correct its details</h3><details><summary>Edit manufacturer, model, serial number…</summary>
-  <form autocomplete="off" method="post" action="/assets/{{$a.ID}}/edit" class="narrow">{{template "csrf" .CSRF}}<input type="hidden" name="version" value="{{$a.Version}}">
-    <input type="hidden" name="orig_manufacturer" value="{{$a.Manufacturer}}"><input type="hidden" name="orig_model" value="{{$a.Model}}">
-    <input type="hidden" name="orig_serial" value="{{$a.Serial}}"><input type="hidden" name="orig_risk_class" value="{{$a.RiskClass}}">
-    <input type="hidden" name="orig_reference" value="{{if $a.IsReferenceStandard}}yes{{end}}"><input type="hidden" name="orig_master_id" value="{{$a.MasterID}}">
-    <label>Manufacturer <input name="manufacturer" value="{{$a.Manufacturer}}" required></label>
-    <label>Model <input name="model" value="{{$a.Model}}" required></label>
-    <label>Serial number <input name="serial" value="{{$a.Serial}}"></label>
-    <label>MasterID <input name="master_id" value="{{$a.MasterID}}" maxlength="64"></label>
-    <label>Risk class <select name="risk_class">{{range $c := slice3 "" "low" "medium" "high"}}<option value="{{$c}}" {{if eq $c $a.RiskClass}}selected{{end}}>{{if $c}}{{$c}}{{else}}not set{{end}}</option>{{end}}</select></label>
-    <label class="check"><input type="checkbox" name="reference" value="yes" {{if $a.IsReferenceStandard}}checked{{end}}> Reference standard</label>
-    <button>Save details</button>
-  </form></details></div>
+{{if not $merged}}<section class="now" aria-labelledby="now-h">
+  <h2 id="now-h">What needs doing</h2>
+  {{if .Data.Open}}<ul class="cards">{{range .Data.Open}}
+  <li><a class="job prio-{{.Priority}}{{if .Late}} late{{end}}" href="/work-orders/{{.ID}}">
+    <span class="job-when">{{.When}}{{if or (eq .Priority "urgent") (eq .Priority "high")}} {{template "prio" .Priority}}{{end}}</span>
+    <span class="job-title">{{.Title}}</span>
+    <span class="job-meta">{{.Number}} · {{label .Type}} · {{label .Status}}{{with .Who}} · {{.}}{{else}} · not assigned yet{{end}}</span>
+  </a></li>{{end}}</ul>
+  {{else}}<p>No open work on this equipment.</p>{{end}}
+  {{with .Data.Next}}<p>Next scheduled: <strong>{{.Title}}</strong> ({{.Type}}), due {{.NextDue}}{{with .OpenWO}}, work order {{.}}{{end}}.</p>{{end}}
+  <p class="buttons"><a class="button" href="/work-orders/new?asset={{$a.ID}}">New work order</a>{{if $.IsMid}}<a class="button secondary" href="/schedules?asset={{$a.ID}}#new">Add a schedule</a>{{end}}</p>
 </section>{{end}}
+<section><h2>Service history</h2>{{template "worows" .Data.WorkOrders}}</section>
+<section><h2>Calibration history</h2>
+{{if .Data.Calibrations}}<table><thead><tr><th>Date</th><th>Work order</th><th>By</th><th>As found</th><th>As left</th><th>Status</th></tr></thead><tbody>
+{{range .Data.Calibrations}}<tr><td>{{when .PerformedAt}}</td><td>{{.WorkOrder}}</td><td>{{.PerformedBy}}</td><td class="r-{{.AsFound}}">{{.AsFound}}</td><td class="r-{{.AsLeft}}">{{.AsLeft}}</td><td>{{.Status}}</td></tr>{{end}}
+</tbody></table>{{if eq .Role "node"}}<p class="hint">This Pi keeps the last three calibrations; the master Pi has the full history.</p>{{end}}
+{{else}}<p>None on this Pi.</p>{{end}}</section>
+
 <section><h2>Files</h2>
 {{template "attachments" (files .Data.Attachments .CSRF (and (ne $a.Status "retired") (not $merged)) .IsMid (printf "/assets/%s/attachments" $a.ID))}}
 </section>
@@ -66,10 +59,32 @@
 {{if .Data.Schedules}}<table><thead><tr><th>Schedule</th><th>Type</th><th>Every</th><th>Next due</th><th>Outstanding</th></tr></thead><tbody>
 {{range .Data.Schedules}}<tr><td>{{.Title}}</td><td>{{.Type}}</td><td>{{.Interval}} days</td><td>{{.NextDue}}</td><td>{{.OpenWO}}</td></tr>{{end}}</tbody></table>
 {{else}}<p>None.</p>{{end}}</section>
-<section><h2>Work orders</h2>{{template "worows" .Data.WorkOrders}}</section>
-<section><h2>Calibration history</h2>
-{{if .Data.Calibrations}}<table><thead><tr><th>Date</th><th>Work order</th><th>By</th><th>As found</th><th>As left</th><th>Status</th></tr></thead><tbody>
-{{range .Data.Calibrations}}<tr><td>{{when .PerformedAt}}</td><td>{{.WorkOrder}}</td><td>{{.PerformedBy}}</td><td class="r-{{.AsFound}}">{{.AsFound}}</td><td class="r-{{.AsLeft}}">{{.AsLeft}}</td><td>{{.Status}}</td></tr>{{end}}
-</tbody></table>{{if eq .Role "node"}}<p class="hint">This Pi keeps the last three calibrations; the master Pi has the full history.</p>{{end}}
-{{else}}<p>None on this Pi.</p>{{end}}</section>
+<section class="manage" aria-labelledby="manage-h"><h2 id="manage-h">Manage this equipment</h2>
+{{with .Data.Merged}}<p>Merged into this record, with their service history in this record's timeline: {{range $i, $o := .}}{{if $i}}, {{end}}<a href="/assets/{{$o.ID}}">{{$o.Label}}</a>{{end}}. Their work orders, calibrations, schedules and files are listed below.</p>{{end}}
+{{with .Data.Separate}}<p>Also merged into this record, with their service history kept separate: {{range $i, $o := .}}{{if $i}}, {{end}}<a href="/assets/{{$o.ID}}">{{$o.Label}}</a>{{end}}.</p>{{end}}
+{{if not $merged}}<div class="actions">
+  <div class="act"><h3>Work on it</h3><a class="button" href="/work-orders/new?asset={{$a.ID}}">New work order</a></div>
+  <form autocomplete="off" method="post" action="/assets/{{$a.ID}}/status" class="act">{{template "csrf" .CSRF}}<input type="hidden" name="version" value="{{$a.Version}}">
+    <h3>Change its status</h3>
+    <label>Status <select name="status">{{range .Data.Statuses}}<option value="{{.}}" {{if eq . $a.Status}}selected{{end}}>{{label .}}</option>{{end}}</select></label>
+    <label>Reason <input name="reason"></label>{{template "nophi"}}<button>Change status</button></form>
+  <form autocomplete="off" method="post" action="/assets/{{$a.ID}}/relocate" class="act">{{template "csrf" .CSRF}}<input type="hidden" name="version" value="{{$a.Version}}">
+    <h3>Move it to another location</h3>
+    <label>New location <select name="location">{{range .Data.Locations}}<option value="{{.ID}}" {{if eq .ID $a.LocationID}}selected{{end}}>{{.Label}}</option>{{end}}</select></label><button>Move</button></form>
+  <div class="act act-wide"><h3>Correct its details</h3><details><summary>Edit manufacturer, model, serial number…</summary>
+  <form autocomplete="off" method="post" action="/assets/{{$a.ID}}/edit" class="narrow">{{template "csrf" .CSRF}}<input type="hidden" name="version" value="{{$a.Version}}">
+    <input type="hidden" name="orig_manufacturer" value="{{$a.Manufacturer}}"><input type="hidden" name="orig_model" value="{{$a.Model}}">
+    <input type="hidden" name="orig_serial" value="{{$a.Serial}}"><input type="hidden" name="orig_risk_class" value="{{$a.RiskClass}}">
+    <input type="hidden" name="orig_reference" value="{{if $a.IsReferenceStandard}}yes{{end}}"><input type="hidden" name="orig_master_id" value="{{$a.MasterID}}">
+    <label>Manufacturer <input name="manufacturer" value="{{$a.Manufacturer}}" required></label>
+    <label>Model <input name="model" value="{{$a.Model}}" required></label>
+    <label>Serial number <input name="serial" value="{{$a.Serial}}"></label>
+    <label>MasterID <input name="master_id" value="{{$a.MasterID}}" maxlength="64"></label>
+    <label>Risk class <select name="risk_class">{{range $c := slice3 "" "low" "medium" "high"}}<option value="{{$c}}" {{if eq $c $a.RiskClass}}selected{{end}}>{{if $c}}{{$c}}{{else}}not set{{end}}</option>{{end}}</select></label>
+    <label class="check"><input type="checkbox" name="reference" value="yes" {{if $a.IsReferenceStandard}}checked{{end}}> Reference standard</label>
+    <button>Save details</button>
+  </form></details></div>
+</div>{{end}}
+<p class="records"><a href="/assets/{{$a.ID}}/audit">Audit trail</a> · <a href="/assets/{{$a.ID}}/print">Printable record</a> · <a href="/assets/{{$a.ID}}/export.json">Download signed JSON</a></p>
+</section>
 {{end}}

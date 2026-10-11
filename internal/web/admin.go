@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -83,7 +84,7 @@ func (s *Server) stockLocationCreate(w http.ResponseWriter, r *http.Request, ses
 
 type schedulesData struct {
 	Rows       []scheduleRow
-	Assets     []assetRow
+	Pick       assetPick // the equipment for a new schedule
 	Procedures []option
 	Usage      map[string]usageRow
 }
@@ -94,7 +95,7 @@ func (s *Server) scheduleList(w http.ResponseWriter, r *http.Request, sess *sess
 	if err != nil {
 		return err
 	}
-	assets, err := listAssets(ctx, q, "")
+	pick, err := pickAsset(r, "/schedules", "#new", q)
 	if err != nil {
 		return err
 	}
@@ -110,7 +111,7 @@ func (s *Server) scheduleList(w http.ResponseWriter, r *http.Request, sess *sess
 	for _, u := range usage {
 		byID[u.Schedule.ID] = u
 	}
-	return s.render(w, r, sess, "schedules", "PM schedules", schedulesData{Rows: rows, Assets: assets, Procedures: procs, Usage: byID})
+	return s.render(w, r, sess, "schedules", "PM schedules", schedulesData{Rows: rows, Pick: pick, Procedures: procs, Usage: byID})
 }
 
 func (s *Server) scheduleCreate(w http.ResponseWriter, r *http.Request, sess *session) error {
@@ -123,9 +124,9 @@ func (s *Server) scheduleCreate(w http.ResponseWriter, r *http.Request, sess *se
 		Meter: strings.ToLower(strings.TrimSpace(f("meter"))), MeterInterval: strings.TrimSpace(f("meter_interval")),
 		MeterLead: strings.TrimSpace(f("meter_lead")),
 	}); err != nil {
-		return s.failed(w, r, sess, "/schedules", err)
+		return s.failed(w, r, sess, "/schedules?asset="+url.QueryEscape(f("asset"))+"#new", err)
 	}
-	return s.done(w, r, sess, "/schedules", "Schedule created.")
+	return s.done(w, r, sess, "/assets/"+f("asset"), "Schedule created.")
 }
 
 // --- review queue ---

@@ -163,7 +163,7 @@ func TestSyncNowOnAnEmployeePi(t *testing.T) {
 	// The master can't be reached: says so, and work stays on the Pi.
 	sync.Close()
 	if _, page := b.post("/sync", url.Values{"back": {"https://elsewhere.example/"}}); !strings.Contains(page, "Couldn&#39;t sync with the master Pi just now") ||
-		!strings.Contains(page, "<h1>Today") {
+		!strings.Contains(page, "<h1>My work") {
 		t.Fatalf("Sync now without the master:\n%s", page)
 	}
 }

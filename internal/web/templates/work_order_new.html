@@ -1,8 +1,8 @@
-{{define "content"}}
+{{define "content"}}{{$p := .Data.Pick}}
+{{if not $p.Chosen.ID}}{{template "pickasset" $p}}{{else}}
 <form autocomplete="off" method="post" action="/work-orders" class="narrow">
   {{template "csrf" .CSRF}}
-  <label>Equipment
-    <select name="asset" required>{{range .Data.Assets}}<option value="{{.ID}}" {{if eq .ID $.Data.Asset}}selected{{end}}>{{.Tag}} · {{.Manufacturer}} {{.Model}} · {{.Site}} {{.Location}}</option>{{end}}</select></label>
+  {{template "chosenasset" $p}}
   <label>Type <select name="type">{{range .Data.Types}}<option>{{.}}</option>{{end}}</select></label>
   <label>Priority <select name="priority"><option value="normal">routine</option><option value="low">low</option><option value="high">high</option><option value="urgent">stat</option></select></label>
   <label>Title <input name="title" required maxlength="200"></label>
@@ -11,5 +11,5 @@
   {{if .IsMid}}<label>Checklist <select name="procedure"><option value="">none</option>{{range .Data.Procedures}}<option value="{{.ID}}">{{.Label}}</option>{{end}}</select></label>{{end}}
   {{template "nophi"}}
   <button>Open work order</button>
-</form>
+</form>{{end}}
 {{end}}

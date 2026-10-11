@@ -11,9 +11,10 @@
   <form autocomplete="off" method="post" action="/schedules/{{.ID}}/end" class="inline">{{template "csrf" $.CSRF}}<label>Reason <input name="reason" required></label><button class="danger">End schedule</button></form>
 </details></td></tr>{{end}}{{end}}
 </tbody></table>{{else}}<p>No schedules on this Pi.</p>{{end}}
-{{if .IsMid}}<section><h2>New schedule</h2>
+{{if .IsMid}}<section id="new"><h2>New schedule</h2>{{$p := .Data.Pick}}
+{{if not $p.Chosen.ID}}{{template "pickasset" $p}}{{else}}
 <form autocomplete="off" method="post" action="/schedules" class="narrow">{{template "csrf" .CSRF}}
-  <label>Equipment <select name="asset">{{range .Data.Assets}}<option value="{{.ID}}">{{.Tag}} · {{.Manufacturer}} {{.Model}}</option>{{end}}</select></label>
+  {{template "chosenasset" $p}}
   <label>Generates <select name="type"><option>pm</option><option>calibration</option><option>inspection</option></select></label>
   <label>Title <input name="title" required></label>
   <label>Procedure <input name="procedure"></label>
@@ -27,5 +28,5 @@
   </fieldset>
   <label>Checklist for generated work <select name="procedure_id"><option value="">none</option>{{range .Data.Procedures}}<option value="{{.ID}}">{{.Label}}</option>{{end}}</select></label>
   <button>Create schedule</button>
-</form></section>{{end}}
+</form>{{end}}</section>{{end}}
 {{end}}

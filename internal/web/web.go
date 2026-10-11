@@ -138,6 +138,7 @@ func (s *Server) Handler() (http.Handler, error) {
 
 	mux.Handle("GET /{$}", user(s.dashboard))
 	mux.Handle("GET /today/open", user(s.openWorkOrders))
+	mux.Handle("GET /search", user(s.search))
 	mux.Handle("GET /assets", user(s.assetList))
 	mux.Handle("GET /assets/new", user(s.assetNew))
 	mux.Handle("POST /assets", user(s.assetCreate))
@@ -392,7 +393,7 @@ func (s *Server) auth(minRole string, allowPasswordOnly bool, h handler) http.Ha
 			return
 		}
 		if sess == nil {
-			http.Redirect(w, r, "/login", http.StatusSeeOther)
+			http.Redirect(w, r, loginFor(r), http.StatusSeeOther)
 			return
 		}
 		if sess.PasswordOnly && !allowPasswordOnly {
@@ -533,6 +534,15 @@ func (s *Server) display(w http.ResponseWriter, r *http.Request) {
 		back = "/"
 	}
 	http.Redirect(w, r, back, http.StatusSeeOther)
+}
+
+// loginFor is the sign-in page, coming back to this page afterwards when
+// it is one to look at.
+func loginFor(r *http.Request) string {
+	if r.Method != http.MethodGet || r.URL.Path == "/" {
+		return "/login"
+	}
+	return "/login?next=" + url.QueryEscape(r.URL.RequestURI())
 }
 
 // localBack is a page to go back to, if it is on this site; else "/".

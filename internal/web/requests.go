@@ -229,6 +229,11 @@ func (s *Server) reportPage(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		err = s.render(w, r, nil, "report", "Report a problem", reportData{Code: code})
 	} else if err == nil {
+		// Staff who are signed in want the equipment itself.
+		if sess, _ := s.loadSession(r); sess != nil && !sess.PasswordOnly && r.URL.Query().Get("form") == "" {
+			http.Redirect(w, r, "/assets/"+a.ID, http.StatusSeeOther)
+			return
+		}
 		err = s.render(w, r, nil, "report", "Report a problem", reportData{Code: code, Asset: a, Place: place, Categories: domain.RequestCategories, F: url.Values{}})
 	}
 	if err != nil {

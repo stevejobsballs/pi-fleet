@@ -17,14 +17,25 @@ import (
 
 // --- sign-in ---
 
-type loginData struct{ Error, Username string }
+// loginData: Next is the page to go to after signing in.
+type loginData struct{ Error, Username, Next string }
+
+// nextPage is where to go after signing in: the page asked for, if it is
+// on this site.
+func nextPage(r *http.Request) string {
+	next := r.FormValue("next")
+	if next == "" {
+		return "/"
+	}
+	return localBack(next)
+}
 
 func (s *Server) loginPage(w http.ResponseWriter, r *http.Request) {
 	if sess, _ := s.loadSession(r); sess != nil {
-		http.Redirect(w, r, "/", http.StatusSeeOther)
+		http.Redirect(w, r, nextPage(r), http.StatusSeeOther)
 		return
 	}
-	if err := s.render(w, r, nil, "login", "Sign in", loginData{}); err != nil {
+	if err := s.render(w, r, nil, "login", "Sign in", loginData{Next: r.URL.Query().Get("next")}); err != nil {
 		s.fail(w, r, err)
 	}
 }
@@ -36,7 +47,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	case err == nil:
 		err = s.startSession(w, r, u, false)
 		if err == nil {
-			http.Redirect(w, r, "/", http.StatusSeeOther)
+			http.Redirect(w, r, nextPage(r), http.StatusSeeOther)
 			return
 		}
 	case errors.Is(err, app.ErrMustChangePassword):
@@ -48,7 +59,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	}
 	if msg := message(err); msg != "" {
 		w.WriteHeader(http.StatusUnauthorized)
-		if err := s.render(w, r, nil, "login", "Sign in", loginData{Error: msg, Username: username}); err != nil {
+		if err := s.render(w, r, nil, "login", "Sign in", loginData{Error: msg, Username: username, Next: r.PostFormValue("next")}); err != nil {
 			s.fail(w, r, err)
 		}
 		return
@@ -103,7 +114,8 @@ func (s *Server) changePassword(w http.ResponseWriter, r *http.Request, sess *se
 // --- dashboard ---
 
 type dashboardData struct {
-	Mine       []woRow
+	Jobs       []jobCard // my work orders, soonest due first
+	Late       int       // how many of them are overdue
 	Due        []dueRow
 	UsageDue   []usageRow
 	Unassigned int
@@ -117,8 +129,13 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request, sess *session
 	ctx, q := r.Context(), s.App.Store.DB()
 	var d dashboardData
 	var err error
-	if d.Mine, err = listWorkOrders(ctx, q, "mine", sess.User.ID); err != nil {
+	if d.Jobs, err = myJobs(ctx, q, sess.User.ID, s.now()); err != nil {
 		return err
+	}
+	for _, j := range d.Jobs {
+		if j.Late {
+			d.Late++
+		}
 	}
 	if d.Due, err = dueSoon(ctx, q, s.now()); err != nil {
 		return err
@@ -133,7 +150,7 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request, sess *session
 		q.QueryRowContext(ctx, `SELECT count(*) FROM procedure_proposals WHERE status = 'pending'`).Scan(&d.Proposals)
 	}
 	q.QueryRowContext(ctx, `SELECT count(*) FROM event_flags f WHERE NOT EXISTS (SELECT 1 FROM flag_resolutions r WHERE r.event_id = f.event_id)`).Scan(&d.Flags)
-	return s.render(w, r, sess, "dashboard", "Today", d)
+	return s.render(w, r, sess, "dashboard", "My work", d)
 }
 
 // --- open work orders ---
@@ -326,6 +343,9 @@ type assetData struct {
 	ReportBase string   // for its QR label
 	// Checklists made for this manufacturer and model (or the manufacturer).
 	Checklists []domain.ChecklistMatch
+	// What needs doing: its work still to be done, and the next scheduled.
+	Open []jobCard
+	Next *scheduleRow
 }
 
 func (s *Server) assetView(w http.ResponseWriter, r *http.Request, sess *session) error {
@@ -341,6 +361,21 @@ func (s *Server) assetView(w http.ResponseWriter, r *http.Request, sess *session
 	for _, c := range all {
 		if c.Fit == "model" || c.Fit == "manufacturer" {
 			d.Checklists = append(d.Checklists, c)
+		}
+	}
+	day := today(s.now())
+	for _, wo := range d.WorkOrders {
+		switch wo.Status {
+		case domain.WOOpen, domain.WOAssigned, domain.WOInProgress, domain.WOOnHold:
+			j := jobCard{ID: wo.ID, Number: wo.Number, Type: wo.Type, Title: wo.Title, Status: wo.Status, Priority: wo.Priority,
+				DueAt: wo.DueAt, Tag: wo.Asset, Who: wo.AssignedTo}
+			j.When, j.Late = dueWords(wo.DueAt, day)
+			d.Open = append(d.Open, j)
+		}
+	}
+	for i, sc := range d.Schedules {
+		if sc.Status == "active" && sc.NextDue != "" && (d.Next == nil || sc.NextDue < d.Next.NextDue) {
+			d.Next = &d.Schedules[i]
 		}
 	}
 	return s.render(w, r, sess, "asset", d.Asset.Tag, d)
@@ -483,14 +518,13 @@ func (s *Server) workOrderList(w http.ResponseWriter, r *http.Request, sess *ses
 }
 
 type woNewData struct {
-	Assets     []assetRow
-	Asset      string
+	Pick       assetPick
 	Types      []string
 	Procedures []option
 }
 
 func (s *Server) workOrderNew(w http.ResponseWriter, r *http.Request, sess *session) error {
-	assets, err := listAssets(r.Context(), s.App.Store.DB(), "")
+	pick, err := pickAsset(r, "/work-orders/new", "", s.App.Store.DB())
 	if err != nil {
 		return err
 	}
@@ -502,7 +536,7 @@ func (s *Server) workOrderNew(w http.ResponseWriter, r *http.Request, sess *sess
 	if err != nil {
 		return err
 	}
-	return s.render(w, r, sess, "work_order_new", "New work order", woNewData{Assets: assets, Asset: r.URL.Query().Get("asset"), Types: types, Procedures: procs})
+	return s.render(w, r, sess, "work_order_new", "New work order", woNewData{Pick: pick, Types: types, Procedures: procs})
 }
 
 func (s *Server) workOrderCreate(w http.ResponseWriter, r *http.Request, sess *session) error {

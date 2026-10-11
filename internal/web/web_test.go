@@ -162,7 +162,7 @@ func TestSecurityHeadersAndLoginRequired(t *testing.T) {
 	e := newEnv(t)
 	b := e.browser()
 	code, loc, _ := b.get("/work-orders")
-	if code != http.StatusSeeOther || loc != "/login" {
+	if code != http.StatusSeeOther || loc != "/login?next=%2Fwork-orders" {
 		t.Fatalf("unauthenticated: %d %s", code, loc)
 	}
 	resp, err := e.srv.Client().Get(e.srv.URL + "/login")
@@ -565,7 +565,7 @@ func TestOpenWorkOrdersByPriority(t *testing.T) {
 	if iStat < 0 || iHigh < iStat || iRoutine < iHigh || strings.Contains(page, "Already fixed") || !strings.Contains(page, `<span class="prio-tag stat">Stat</span>`) {
 		t.Fatalf("rows:\n%s", page)
 	}
-	if _, _, page = b.get("/work-orders/new"); !strings.Contains(page, `<option value="urgent">stat</option>`) {
+	if _, _, page = b.get("/work-orders/new?asset=" + asset); !strings.Contains(page, `<option value="urgent">stat</option>`) {
 		t.Fatalf("new work order priorities:\n%s", page)
 	}
 }

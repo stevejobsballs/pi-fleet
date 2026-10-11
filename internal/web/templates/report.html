@@ -34,6 +34,7 @@
     {{template "nophi"}}
     <button>Send report</button>
   </form>
+  <p class="hint staff">Biomedical engineering staff: <a href="/login?next={{urlquery (printf "/assets/%s" $d.Asset.ID)}}">sign in to open this equipment</a>.</p>
 </section>
 {{end}}{{end}}
 {{end}}

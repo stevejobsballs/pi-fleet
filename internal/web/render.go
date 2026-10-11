@@ -71,7 +71,7 @@ func (p page) Nav() []navGroup {
 		work = append(work, navItem{Href: "/review", Label: "Review"})
 	}
 	groups := []navGroup{
-		{Label: "Today", Href: "/", Items: []navItem{{Href: "/", Label: "My day"}, {Href: "/today/open", Label: "Open work orders"}}},
+		{Label: "Today", Href: "/", Items: []navItem{{Href: "/", Label: "My work"}, {Href: "/today/open", Label: "Open work orders"}}},
 		{Label: "Work", Items: work},
 		{Label: "Equipment", Items: []navItem{{Href: "/assets", Label: "All equipment"}, {Href: "/assets/new", Label: "Register equipment"},
 			{Href: "/procedures", Label: "Checklists"}, {Href: "/inventory", Label: "Parts and stock"}}},

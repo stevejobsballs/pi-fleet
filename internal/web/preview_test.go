@@ -70,10 +70,12 @@ func snapshotPages(t *testing.T, e *env, dir string) {
 		"asset": firstLink("/assets?q=VENT", "/assets/0"), "work-order": firstLink("/work-orders?view=all", "/work-orders/0"),
 		"new-work-order": "/work-orders/new", "users": "/admin/users", "sites": "/admin/sites", "nodes": "/admin/nodes",
 		"kiosks": "/admin/kiosks", "inventory": "/inventory", "requests": "/requests", "report": "/r/M-1", "procedures": "/procedures", "procedure": firstLink("/procedures", "/procedures/0"),
-		"password": "/password"}
+		"password": "/password", "search": "/search?q=GE", "pick-equipment": "/work-orders/new?q=GE"}
 	os.MkdirAll(dir, 0o755)
 	large, _ := filepath.Abs("static/large.css")
-	save := func(name, path string) {
+	var saveAs func(b *browser, name, path string)
+	save := func(name, path string) { saveAs(b, name, path) }
+	saveAs = func(b *browser, name, path string) {
 		resp, err := b.c.Get(e.srv.URL + path)
 		if err != nil {
 			t.Fatal(err)
@@ -93,6 +95,10 @@ func snapshotPages(t *testing.T, e *env, dir string) {
 	for name, path := range pages {
 		save(name, path)
 	}
+	// A technician's own work.
+	tess := e.browser()
+	tess.login("tess", "brass-kettle-orchard-7")
+	saveAs(tess, "my-work", "/")
 	// The sign-in page, signed out.
 	out := e.browser()
 	r2, err := out.c.Get(e.srv.URL + "/login")
