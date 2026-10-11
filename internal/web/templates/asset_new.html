@@ -2,6 +2,7 @@
 {{$f := .Data.F}}
 <form autocomplete="off" method="post" action="/assets" class="narrow" enctype="multipart/form-data">
   {{template "csrf" .CSRF}}
+  {{/* First, so Enter in a field means Register, not the new location's button below. */}}<button hidden tabindex="-1">Register</button>
   {{with .Data.Error}}<p class="error" role="alert">{{.}}</p>{{end}}
   {{with .Data.Proposed}}<p class="flash" role="status">{{.}}</p>{{end}}
   <label>Asset tag (as on the label) <input name="tag" value="{{$f.Get "tag"}}" required autocomplete="off"></label>
