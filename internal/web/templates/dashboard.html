@@ -1,5 +1,6 @@
 {{define "content"}}{{$d := .Data}}
-<nav class="quick" aria-label="Start something"><a class="button" href="/work-orders/new">New work order</a><a class="button secondary" href="/assets/new">Register equipment</a></nav>
+<nav class="quick" aria-label="Start something"><a class="button" href="/work-orders/new">New work order</a><a class="button secondary" href="/assets/new">Register equipment</a>{{if .Field}}<button type="button" id="field-take" class="secondary" hidden>Take my work with me</button>{{end}}</nav>
+{{if .Field}}<p id="field-note" class="hint" hidden></p>{{end}}
 {{if $d.Proposals}}<p class="flash warn" role="status"><a href="/procedures#waiting">{{$d.Proposals}} checklist{{if ne $d.Proposals 1}}s{{end}} waiting for your approval</a></p>{{end}}
 {{if $d.Requests}}<p class="flash warn" role="status"><a href="/requests">{{$d.Requests}} reported problem{{if ne $d.Requests 1}}s{{end}} waiting to be looked at</a></p>{{end}}
 {{if and .IsSuper $d.Locations}}<p class="flash warn" role="status"><a href="/admin/sites#review">{{$d.Locations}} new location{{if ne $d.Locations 1}}s{{end}} awaiting your review</a></p>{{end}}

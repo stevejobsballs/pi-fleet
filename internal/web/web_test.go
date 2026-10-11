@@ -171,7 +171,9 @@ func TestSecurityHeadersAndLoginRequired(t *testing.T) {
 	}
 	resp.Body.Close()
 	csp := resp.Header.Get("Content-Security-Policy")
-	if !strings.Contains(csp, "default-src 'none'") || strings.Contains(csp, "script-src") {
+	// Scripts only from this site's own files (field mode, on the master
+	// Pi): never inline, never from elsewhere.
+	if !strings.Contains(csp, "default-src 'none'") || !strings.Contains(csp, "script-src 'self';") || strings.Contains(csp, "unsafe") || strings.Contains(csp, "http") {
 		t.Errorf("CSP = %q", csp)
 	}
 	for h, want := range map[string]string{"X-Frame-Options": "DENY", "X-Content-Type-Options": "nosniff", "Cache-Control": "no-store"} {

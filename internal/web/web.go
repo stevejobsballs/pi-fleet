@@ -241,6 +241,10 @@ func (s *Server) Handler() (http.Handler, error) {
 		mux.Handle("POST /sync", user(s.syncNow))
 	}
 	if s.Role == "central" {
+		// Field mode: phones and tablets work offline from the master Pi.
+		mux.HandleFunc("GET /sw.js", s.serviceWorker)
+		mux.HandleFunc("GET /field/ping", s.fieldPing)
+		mux.Handle("GET /field/manifest", user(s.fieldManifest))
 		// Reporting a problem from an equipment QR label: no sign-in.
 		mux.HandleFunc("GET /r/{code}", s.reportPage)
 		mux.HandleFunc("POST /r/{code}", s.reportSubmit)
@@ -271,13 +275,22 @@ func (s *Server) Handler() (http.Handler, error) {
 		mux.Handle("POST /admin/kiosks/{id}/members", super(s.kioskMember(true)))
 		mux.Handle("POST /admin/kiosks/{id}/members/remove", super(s.kioskMember(false)))
 	}
-	return securityHeaders(mux), nil
+	csp := baseCSP
+	if s.Role == "central" {
+		csp = fieldCSP // signed-in pages there load field mode's script
+	}
+	return securityHeaders(mux, csp), nil
 }
 
-func securityHeaders(h http.Handler) http.Handler {
+// baseCSP is every page's security policy: no scripts at all (DESIGN.md
+// §10). On the master Pi pages may also load pi-fleet's own script files
+// (fieldCSP), for field mode and the label page's Print button.
+const baseCSP = "default-src 'none'; style-src 'self'; img-src 'self'; font-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
+
+func securityHeaders(h http.Handler, csp string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hd := w.Header()
-		hd.Set("Content-Security-Policy", "default-src 'none'; style-src 'self'; img-src 'self'; font-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
+		hd.Set("Content-Security-Policy", csp)
 		hd.Set("X-Content-Type-Options", "nosniff")
 		hd.Set("X-Frame-Options", "DENY")
 		hd.Set("Referrer-Policy", "same-origin")

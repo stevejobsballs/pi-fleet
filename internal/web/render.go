@@ -32,6 +32,7 @@ type page struct {
 	Here       string // this page's path and query, to come back to
 	Path       string // the page's URL path, to mark the current menu item
 	FindQ      string // what was searched for, kept in the search box
+	Field      bool   // field mode's script (signed-in pages on the master Pi)
 	Data       any
 	// BackHref and BackLabel: a Back link at the top left, to the screen
 	// this one was opened from (pages whose data has a BackLink).
@@ -246,6 +247,7 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, sess *session, n
 		if s.Notices != nil && p.IsMid() {
 			p.Notices = s.Notices(r.Context())
 		}
+		p.Field = s.Role == "central" && !p.User.MustChangePassword
 		if s.SiteCert != nil && p.IsSuper() {
 			if info, ok := s.SiteCert.Site(); ok {
 				switch days := int(info.NotAfter.Sub(s.now()).Hours() / 24); {

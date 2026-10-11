@@ -1200,10 +1200,27 @@ need a manual update. This is documented and rehearsed.
 
 ## 10. Web interface
 
-- **Server-rendered HTML with no JavaScript.** The Content Security Policy
-  is `default-src 'none'; style-src 'self'; form-action 'self';
-  frame-ancestors 'none'`, so injected script can't run even if escaping
-  failed. `html/template` escapes all output.
+- **Server-rendered HTML; scripts only from pi-fleet's own files.** Every
+  page works without JavaScript. Employee Pis' pages run none: their
+  Content Security Policy is `default-src 'none'; style-src 'self';
+  form-action 'self'; frame-ancestors 'none'`. On the master Pi the policy
+  also allows `script-src 'self'; worker-src 'self'; connect-src 'self'`,
+  for two script files and nothing inline, so injected script still can't
+  run even if escaping failed: the label page's Print button, and
+  **field mode** (`static/field.js`, `/sw.js`). `html/template` escapes all
+  output.
+- **Field mode.** Phones and tablets use the master Pi directly. *Take my
+  work with me* (My work) keeps the pages of the person's open work on the
+  device (`/field/manifest` lists them). Offline, those pages open from the
+  device, marked as saved copies; forms that record work (checklist
+  answers, work done, time, test equipment) are kept in the device's
+  IndexedDB with who filled them in, and the page reopens with them filled
+  in; starting, completing and signing need the master Pi. Once
+  `/field/ping` answers, what was kept is sent in order with the current
+  form token, only under the same person's sign-in; anything refused is
+  listed. The master applies it as if just submitted: events carry the time
+  they reach it. Service workers need a certificate the device trusts, so
+  field mode works once the hospital's certificate is installed (§10.1).
 - **Sessions:** random 256-bit token in an `HttpOnly; SameSite=Strict`
   cookie (`Secure` on central), stored hashed. 15-minute idle timeout and
   12-hour maximum. Each session has its own id, which is recorded on every

@@ -6,8 +6,9 @@
 <title>{{.Title}} · pi-fleet</title>
 <link rel="stylesheet" href="/static/style.css">
 {{if .Large}}<link rel="stylesheet" href="/static/large.css">{{end}}
+{{if .Field}}<script src="/static/field.js" defer></script>{{end}}
 </head>
-<body>
+<body{{if .Field}} data-user="{{.User.ID}}"{{end}}>
 <header class="top">
   <a class="brand" href="/"><span class="mark" aria-hidden="true"></span>pi-fleet</a>
   {{if .User.ID}}<nav class="groups" aria-label="Main">{{range .Nav}}<a href="{{.Href}}"{{if .Current}} aria-current="true"{{end}}>{{.Label}}</a>{{end}}</nav>

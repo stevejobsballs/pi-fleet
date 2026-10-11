@@ -72,9 +72,9 @@ func TestQRLabels(t *testing.T) {
 	if c, _, _ := e.browser().get("/assets/" + pump + "/label"); c != http.StatusSeeOther {
 		t.Fatalf("label page without signing in: %d", c)
 	}
-	// Every other page still may not run scripts.
-	if _, _, page = b.get("/assets/" + pump); strings.Contains(page, "<script") {
-		t.Fatal("script on the equipment page")
+	// Every other page runs no script but field mode's.
+	if _, _, page = b.get("/assets/" + pump); strings.Count(page, "<script") != 1 || !strings.Contains(page, `<script src="/static/field.js" defer></script>`) {
+		t.Fatal("scripts on the equipment page other than field mode's")
 	}
 
 	// Opened by this Pi's own address, labels warn that phones can't open

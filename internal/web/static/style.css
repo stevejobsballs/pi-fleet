@@ -349,3 +349,8 @@ section:target > h2 { color: var(--accent); }
 form.work-done textarea { width: 100%; }
 .work-done-text { padding: .75rem 1rem; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
 div.pick form { margin: .3rem 0 0; }
+/* Field mode: what is kept on this device, and forms refilled from it. */
+.field-bar { margin: 0 0 1rem; padding: .6rem .9rem; background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: var(--radius); }
+.field-bar p { margin: 0 0 .4rem; }
+.field-bar p:last-child { margin: 0; }
+form.field-kept { outline: 3px dashed var(--accent); outline-offset: 4px; }

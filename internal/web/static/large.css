@@ -166,3 +166,4 @@ section.now { padding: .25rem 1.25rem 1rem; border-width: 2px; border-top-width:
 nav.wo-tabs { gap: .6rem; }
 nav.wo-tabs a { min-height: 3rem; display: inline-flex; align-items: center; padding: .4rem 1.1rem; font-size: 1.1rem; border-width: 2px; }
 .work-done-text { padding: 1rem 1.25rem; border-width: 2px; border-radius: 8px; }
+.field-bar { padding: 1rem 1.25rem; border-width: 2px; border-left-width: 8px; border-radius: 8px; font-size: 1.1rem; }
