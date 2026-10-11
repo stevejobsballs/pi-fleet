@@ -55,10 +55,10 @@ make_folder() {
 
 echo "Making the setup folders for $VER in $OUT:"
 make_folder pi-fleet-master-setup master-READ-ME-FIRST.txt \
-  Check-Pi.sh check.sh Update-Pi.sh update.sh lib.sh Share-Wired-Network.sh
+  Check-Pi.sh check.sh Update-Pi.sh update.sh Reset-Pi.sh reset.sh lib.sh Share-Wired-Network.sh
 cp "$REPO/docs/NETWORK.md" "$OUT/pi-fleet-master-setup/NETWORK-guide-for-IT.md"
 make_folder pi-fleet-employee-setup employee-READ-ME-FIRST.txt \
-  Check-Pi.sh check.sh Update-Pi.sh update.sh lib.sh
+  Check-Pi.sh check.sh Update-Pi.sh update.sh Reset-Pi.sh reset.sh lib.sh
 echo
 echo "Copy a folder onto a USB stick (drag it), eject the stick, and follow"
 echo "the READ ME FIRST.txt inside on the Pi being set up."

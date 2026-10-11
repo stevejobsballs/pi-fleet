@@ -32,6 +32,15 @@ func EraseAndFormatAs(sys Sys, d Disk, label string) (Part, error) {
 			}
 		}
 	}
+	// Lines in /etc/fstab that mount the old file systems would point at
+	// nothing once the disk is erased (and make the Pi wait for it at boot).
+	if fstab, err := sys.ReadFile("/etc/fstab"); err == nil {
+		if next := forgetErased(string(fstab), d); next != string(fstab) {
+			if err := sys.WriteFile("/etc/fstab", []byte(next), 0o644); err != nil {
+				return Part{}, err
+			}
+		}
+	}
 	steps := [][]string{
 		{"wipefs", "--all", "--quiet", d.Path},
 		{"parted", "--script", d.Path, "mklabel", "gpt", "mkpart", "pifleet", "ext4", "1MiB", "100%"},
@@ -52,6 +61,30 @@ func EraseAndFormatAs(sys Sys, d Disk, label string) (Part, error) {
 		return Part{}, err
 	}
 	return Part{Path: part, FSType: "ext4", Label: label, UUID: uuid}, nil
+}
+
+// forgetErased comments out the fstab lines that mount one of d's file
+// systems, by UUID, label or device name.
+func forgetErased(fstab string, d Disk) string {
+	names := map[string]bool{}
+	for _, p := range d.Parts {
+		if p.UUID != "" {
+			names["UUID="+p.UUID] = true
+		}
+		if p.Label != "" {
+			names["LABEL="+p.Label] = true
+		}
+		if p.Path != "" {
+			names[p.Path] = true
+		}
+	}
+	lines := strings.Split(fstab, "\n")
+	for i, l := range lines {
+		if f := strings.Fields(l); len(f) >= 2 && !strings.HasPrefix(f[0], "#") && names[f[0]] {
+			lines[i] = "# drive erased by pi-fleet setup: " + l
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 func blkidUUID(sys Sys, part string) (string, error) {

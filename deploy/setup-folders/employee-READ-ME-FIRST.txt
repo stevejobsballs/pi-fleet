@@ -8,6 +8,7 @@ What's in this folder
   click-lib.sh                   used by the other scripts; leave it here
   tools/Check-Pi.sh              afterwards: shows how this Pi is doing
   tools/Update-Pi.sh             later: installs updates from the master Pi
+  tools/Reset-Pi.sh              only to start over: removes pi-fleet from this Pi
 
 The master Pi
   Address:      {{MASTER}}

@@ -1009,3 +1009,20 @@ func TestReconnectAnEmployeePi(t *testing.T) {
 		t.Fatalf("ran:\n%s", strings.Join(sys.calls, "\n"))
 	}
 }
+
+// A drive someone mounted by hand (say at /mnt/ssd) is forgotten when
+// setup erases it, so the Pi doesn't wait for it at boot.
+func TestErasingADriveForgetsItsFstabLines(t *testing.T) {
+	fstab := "PARTUUID=683deca6-02  /  ext4  defaults,noatime  0  1\n" +
+		"UUID=83e91c32  /mnt/ssd  ext4  defaults,nofail  0  2\n" +
+		"/dev/sdb2  /mnt/other  ext4  defaults  0  2\n" +
+		"# UUID=83e91c32  /old  ext4  defaults  0  2\n"
+	d := Disk{Path: "/dev/sdb", Parts: []Part{{Path: "/dev/sdb1", UUID: "83e91c32", Label: "ssd", Mounts: []string{"/mnt/ssd"}}}}
+	want := "PARTUUID=683deca6-02  /  ext4  defaults,noatime  0  1\n" +
+		"# drive erased by pi-fleet setup: UUID=83e91c32  /mnt/ssd  ext4  defaults,nofail  0  2\n" +
+		"/dev/sdb2  /mnt/other  ext4  defaults  0  2\n" +
+		"# UUID=83e91c32  /old  ext4  defaults  0  2\n"
+	if got := forgetErased(fstab, d); got != want {
+		t.Fatalf("got:\n%s", got)
+	}
+}
