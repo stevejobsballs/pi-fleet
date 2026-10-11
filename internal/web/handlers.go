@@ -136,6 +136,34 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request, sess *session
 	return s.render(w, r, sess, "dashboard", "Today", d)
 }
 
+// --- open work orders ---
+
+type openWorkData struct {
+	Rows                []woRow
+	Stat, High, Routine int
+}
+
+// openWorkOrders lists every work order still needing work (open,
+// assigned, in progress or on hold), stat first, then high, then routine.
+func (s *Server) openWorkOrders(w http.ResponseWriter, r *http.Request, sess *session) error {
+	rows, err := listWorkOrders(r.Context(), s.App.Store.DB(), "active", sess.User.ID)
+	if err != nil {
+		return err
+	}
+	d := openWorkData{Rows: rows}
+	for _, row := range rows {
+		switch row.Priority {
+		case "urgent":
+			d.Stat++
+		case "high":
+			d.High++
+		default:
+			d.Routine++
+		}
+	}
+	return s.render(w, r, sess, "open_work_orders", "Open work orders", d)
+}
+
 // --- assets ---
 
 type assetListData struct {

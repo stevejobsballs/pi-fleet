@@ -134,6 +134,7 @@ func (s *Server) Handler() (http.Handler, error) {
 	super := func(h handler) http.Handler { return s.auth(domain.RoleSuperUser, false, h) }
 
 	mux.Handle("GET /{$}", user(s.dashboard))
+	mux.Handle("GET /today/open", user(s.openWorkOrders))
 	mux.Handle("GET /assets", user(s.assetList))
 	mux.Handle("GET /assets/new", user(s.assetNew))
 	mux.Handle("POST /assets", user(s.assetCreate))

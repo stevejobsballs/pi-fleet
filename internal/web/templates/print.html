@@ -9,7 +9,7 @@
 <table class="facts"><tbody>
 <tr><th>Equipment</th><td>{{.Asset.Tag}} · {{.Asset.Manufacturer}} {{.Asset.Model}} · serial {{.Asset.Serial}}</td></tr>
 <tr><th>Type</th><td>{{$w.Type}}</td></tr><tr><th>Status</th><td>{{label $w.Status}}</td></tr>
-<tr><th>Priority</th><td>{{$w.Priority}}</td></tr><tr><th>Assigned to</th><td>{{.Assignee}}</td></tr>
+<tr><th>Priority</th><td>{{priorityLabel $w.Priority}}</td></tr><tr><th>Assigned to</th><td>{{.Assignee}}</td></tr>
 <tr><th>Due</th><td>{{$w.DueAt}}</td></tr><tr><th>Title</th><td>{{$w.Title}}</td></tr>
 <tr><th>Problem</th><td class="pre">{{$w.Problem}}</td></tr>
 <tr><th>Content hash</th><td><code>{{.ContentHash}}</code></td></tr>

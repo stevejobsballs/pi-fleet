@@ -126,6 +126,7 @@ func listWorkOrders(ctx context.Context, q domain.Querier, view, userID string) 
 	where := map[string]string{
 		"mine":       "w.assigned_to = ? AND w.status NOT IN ('closed', 'cancelled')",
 		"open":       "? != '' AND w.status NOT IN ('closed', 'cancelled')",
+		"active":     "? != '' AND w.status IN ('open', 'assigned', 'in_progress', 'on_hold')", // still needing work
 		"unassigned": "? != '' AND w.status = 'open'",
 		"review":     "? != '' AND w.status IN ('completed', 'reviewed')",
 		"all":        "? != ''",

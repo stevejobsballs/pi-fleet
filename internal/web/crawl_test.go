@@ -158,6 +158,11 @@ func (e *env) seedEverything() {
 		{"kv80", "81.3", "Analyser RTI Piranha 657, calibration due 2027-03"}, {"kv60", "64.1", "high on three exposures"}} {
 		must(e.app.RecordStep(e.ctx, tessAct, xrayWO, a[0], a[1], a[2]))
 	}
+	// Stat and high priority work, for Today › Open work orders.
+	_, _, err = e.app.OpenWorkOrder(e.ctx, mid, app.NewWorkOrder{Type: "corrective", AssetID: vent, Priority: "urgent", Title: "Ventilator alarm not sounding"})
+	must(err)
+	_, _, err = e.app.OpenWorkOrder(e.ctx, mid, app.NewWorkOrder{Type: "corrective", AssetID: xray, Priority: "high", Title: "Drive judders when reversing"})
+	must(err)
 	// A custom checklist configured from the X-ray template, for the ICU's units.
 	icu := append([]domain.Step{}, sample.Steps...)
 	icu = append(icu, domain.Step{ID: "icubay", Text: "ICU bays: unit parks clear of the ventilator and monitor cables", Kind: domain.StepCheck, Required: true})

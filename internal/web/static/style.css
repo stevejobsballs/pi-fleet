@@ -22,6 +22,9 @@
   --accent: #a11552; --accent-hover: #7e0f40; --on-accent: #fff;
   --good: #3a6e17; --warn: #94560a; --bad: #b3261e; --tint: #f7e9f0;
   --bar: #1c1f24; --bar-fg: #e4e7eb; --bar-muted: #a9b0b8;
+  /* Work order priority: stat (urgent) rose, high amber; routine plain. */
+  --stat-bg: #fde8e6; --stat-edge: #c0392b; --stat-tag: #b3261e; --stat-on: #fff;
+  --high-bg: #fdf1d8; --high-edge: #c98a1b; --high-tag: #8a5300; --high-on: #fff;
   --font: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --mono: ui-monospace, "DejaVu Sans Mono", "Liberation Mono", Menlo, monospace;
   --radius: 4px;
@@ -34,6 +37,8 @@
     --accent: #f06aa3; --accent-hover: #f592bd; --on-accent: #121417;
     --good: #8cc85a; --warn: #e3a23b; --bad: #ef6f66; --tint: #2b1a23;
     --bar: #16181c;
+    --stat-bg: #3a201f; --stat-edge: #f28b82; --stat-tag: #f28b82; --stat-on: #121417;
+    --high-bg: #352b14; --high-edge: #e8b04f; --high-tag: #e8b04f; --high-on: #121417;
   }
 }
 
@@ -271,3 +276,13 @@ a.cl-open .button { grid-column: 2; grid-row: 1 / span 2; }
 label.photo-pick input[type="file"] { font-size: 14px; }
 label.measured input { max-width: 14rem; }
 form.fill-checklist { padding: .75rem 1rem; background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: var(--radius); }
+
+/* Work order priority: stat rows rose, high rows amber, with a tag too so
+   it doesn't rest on colour alone; routine rows plain. */
+table tbody tr.prio-urgent { background: var(--stat-bg); box-shadow: inset 6px 0 0 var(--stat-edge); }
+table tbody tr.prio-high { background: var(--high-bg); box-shadow: inset 6px 0 0 var(--high-edge); }
+table tbody tr.prio-urgent:hover, table tbody tr.prio-high:hover { filter: brightness(.97); }
+.prio-tag { display: inline-block; padding: .1rem .55rem; border-radius: 999px; font-weight: 700; font-size: .85em; letter-spacing: .01em; }
+.prio-tag.stat { background: var(--stat-tag); color: var(--stat-on); }
+.prio-tag.high { background: var(--high-tag); color: var(--high-on); }
+p.prio-summary { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; }

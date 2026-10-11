@@ -534,3 +534,38 @@ func TestPasswordExpiringMidSessionStillAsksForIt(t *testing.T) {
 		t.Fatal("changed without the current password")
 	}
 }
+
+// Today › Open work orders: everything still needing work, stat first
+// (rose), then high (amber), then routine (plain).
+func TestOpenWorkOrdersByPriority(t *testing.T) {
+	e := newEnv(t)
+	asset, _ := e.app.RegisterAsset(e.ctx, e.super, domain.AssetRegistered{Tag: "VENT-1", LocationID: e.loc, Manufacturer: "Hamilton", Model: "C6"})
+	open := func(title, priority string) string {
+		id, _, err := e.app.OpenWorkOrder(e.ctx, e.super, app.NewWorkOrder{Type: "corrective", AssetID: asset, Priority: priority, Title: title})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	open("Routine check", "normal")
+	open("Battery low", "high")
+	open("Alarm not sounding", "urgent")
+	done := open("Already fixed", "urgent")
+	e.app.ChangeWorkOrderStatus(e.ctx, e.super, done, domain.WOCancelled, "duplicate")
+	b := e.browser()
+	b.login("admin", "tumbleweed-gasket-42")
+	_, _, page := b.get("/today/open")
+	if !strings.Contains(page, `<a href="/today/open" aria-current="page">Open work orders</a>`) || !strings.Contains(page, `<a href="/" aria-current="true">Today</a>`) {
+		t.Fatalf("not under Today:\n%s", page)
+	}
+	if !strings.Contains(page, `<span class="prio-tag stat">1 stat</span><span class="prio-tag high">1 high</span><span>1 routine</span>`) {
+		t.Fatalf("summary:\n%s", page)
+	}
+	iStat, iHigh, iRoutine := strings.Index(page, `<tr class="prio-urgent">`), strings.Index(page, `<tr class="prio-high">`), strings.Index(page, `<tr class="prio-normal">`)
+	if iStat < 0 || iHigh < iStat || iRoutine < iHigh || strings.Contains(page, "Already fixed") || !strings.Contains(page, `<span class="prio-tag stat">Stat</span>`) {
+		t.Fatalf("rows:\n%s", page)
+	}
+	if _, _, page = b.get("/work-orders/new"); !strings.Contains(page, `<option value="urgent">stat</option>`) {
+		t.Fatalf("new work order priorities:\n%s", page)
+	}
+}

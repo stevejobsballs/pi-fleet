@@ -70,7 +70,7 @@ func (p page) Nav() []navGroup {
 		work = append(work, navItem{Href: "/review", Label: "Review"})
 	}
 	groups := []navGroup{
-		{Label: "Today", Href: "/"},
+		{Label: "Today", Href: "/", Items: []navItem{{Href: "/", Label: "My day"}, {Href: "/today/open", Label: "Open work orders"}}},
 		{Label: "Work", Items: work},
 		{Label: "Equipment", Items: []navItem{{Href: "/assets", Label: "All equipment"}, {Href: "/assets/new", Label: "Register equipment"},
 			{Href: "/procedures", Label: "Checklists"}, {Href: "/inventory", Label: "Parts and stock"}}},
@@ -138,7 +138,11 @@ var funcs = template.FuncMap{
 		}
 		return t.In(loc).Format("2006-01-02 15:04 MST")
 	},
-	"label":     func(s string) string { return strings.ReplaceAll(s, "_", " ") },
+	"label": func(s string) string { return strings.ReplaceAll(s, "_", " ") },
+	// priorityLabel is what a priority is called: urgent work is "stat".
+	"priorityLabel": func(p string) string {
+		return map[string]string{"urgent": "stat", "high": "high", "normal": "routine", "low": "low"}[p]
+	},
 	"kindLabel": func(k string) string { return kindLabels[k] },
 	"inputless": domain.Inputless,
 	"lines":     func(s string) []string { return strings.Split(s, "\n") },

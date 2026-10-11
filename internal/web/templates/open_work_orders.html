@@ -1,0 +1,5 @@
+{{define "content"}}{{$d := .Data}}
+<p class="prio-summary">{{if $d.Stat}}<span class="prio-tag stat">{{$d.Stat}} stat</span>{{end}}{{if $d.High}}<span class="prio-tag high">{{$d.High}} high</span>{{end}}<span>{{$d.Routine}} routine</span>
+  <span class="hint">Every work order still needing work: stat first, then high, then routine.</span></p>
+{{template "worows" $d.Rows}}
+{{end}}
