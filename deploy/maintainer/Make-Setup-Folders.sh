@@ -30,11 +30,15 @@ BIN=pi-fleet_${VER}_linux_arm64
 # On the master Pi, fill in its address and certificate fingerprint.
 MASTER="(the master's address, shown at the end of its setup and on its Pis page)"
 FINGERPRINT="(shown at the end of the master's setup and on its Pis page)"
-if grep -qs -- "-releases /srv/pi-fleet/releases" /etc/systemd/system/pi-fleet.service; then
-  fp=$(echo | timeout 10 openssl s_client -connect 127.0.0.1:8443 2>/dev/null | openssl x509 -outform DER 2>/dev/null | sha256sum | cut -c1-64 || true)
+UNIT=/etc/systemd/system/pi-fleet.service
+if grep -qs -- "-releases /srv/pi-fleet/releases" "$UNIT"; then
+  PORT=$(grep -o -- '-listen [^ ]*:[0-9]*' "$UNIT" | grep -o '[0-9]*$' || true)
+  PORT=${PORT:-443}
+  fp=$(echo | timeout 10 openssl s_client -connect "127.0.0.1:$PORT" 2>/dev/null | openssl x509 -outform DER 2>/dev/null | sha256sum | cut -c1-64 || true)
   if [ ${#fp} -eq 64 ] && [ "$fp" != "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" ]; then
     FINGERPRINT=$(echo "$fp" | tr a-f A-F | sed 's/..../& /g; s/ $//')
-    MASTER="$(hostname).local:8443"
+    MASTER="$(hostname).local"
+    [ "$PORT" = 443 ] || MASTER="$MASTER:$PORT"
   fi
 fi
 
