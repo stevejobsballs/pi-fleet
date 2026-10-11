@@ -297,6 +297,8 @@ type nodesData struct {
 	Need        fleetsync.Requirement
 	Master      string // this master Pi's version
 	DefaultFrom string // suggested date a new requirement starts
+	ReportURL   string // the address phones use, as set ("" if not)
+	ReportWarn  bool   // phones may not open it
 }
 
 func (s *Server) nodeList(w http.ResponseWriter, r *http.Request, sess *session) error {
@@ -318,8 +320,31 @@ func (s *Server) nodeList(w http.ResponseWriter, r *http.Request, sess *session)
 		rows[i].Version = fleetsync.NodeVersion(ctx, s.App.Store, rows[i].ID)
 		rows[i].Outdated = need.Outdated(rows[i].Version)
 	}
-	return s.render(w, r, sess, "nodes", "Pis", nodesData{Rows: rows, Fingerprint: s.CertFingerprint, Need: need, Master: s.Version,
-		DefaultFrom: s.now().AddDate(0, 0, 7).Format("2006-01-02")})
+	d := nodesData{Rows: rows, Fingerprint: s.CertFingerprint, Need: need, Master: s.Version, DefaultFrom: s.now().AddDate(0, 0, 7).Format("2006-01-02")}
+	d.ReportURL, _ = s.App.Store.Config(ctx, fleetsync.ConfigReportURL)
+	d.ReportWarn = phonesMayFail(s.reportBase(r))
+	return s.render(w, r, sess, "nodes", "Pis", d)
+}
+
+// reportAddress sets the master Pi's address as phones reach it, which QR
+// labels carry; employee Pis learn it when they next sync.
+func (s *Server) reportAddress(w http.ResponseWriter, r *http.Request, sess *session) error {
+	u, err := normalizeReportURL(r.PostFormValue("address"))
+	if err != nil {
+		return s.done(w, r, sess, "/admin/nodes#phones", "Not saved: "+message(err)+".")
+	}
+	if err := s.App.Store.SetConfig(r.Context(), fleetsync.ConfigReportURL, u); err != nil {
+		return err
+	}
+	log.Printf("web: %s set the address phones use to %q", sess.User.Username, u)
+	if u == "" {
+		return s.done(w, r, sess, "/admin/nodes#phones", "Cleared: QR labels use the address the page was opened with.")
+	}
+	msg := "Saved: QR labels now open " + u + "/r/…; labels printed earlier with another address need printing again."
+	if phonesMayFail(u) {
+		msg += " Many phones can't open this address; a name from your IT department works better."
+	}
+	return s.done(w, r, sess, "/admin/nodes#phones", msg)
 }
 
 // nodeRequire sets the pi-fleet version employee Pis need, from a date,

@@ -79,6 +79,9 @@ type Server struct {
 	Trial bool
 	// Sync reports sync state on an employee Pi; nil on central.
 	Sync func(ctx context.Context) SyncInfo
+	// SyncNow syncs with the master Pi straight away (the Sync now
+	// button), returning how it went; nil on central.
+	SyncNow func(ctx context.Context) error
 	// PHIPatterns flag free text that may contain patient information
 	// (DESIGN.md §3.6). BlockPHI refuses it instead of asking to confirm.
 	PHIPatterns []*regexp.Regexp
@@ -215,6 +218,9 @@ func (s *Server) Handler() (http.Handler, error) {
 	mux.Handle("POST /admin/sites/{id}/move", super(s.siteMove))
 	mux.Handle("POST /admin/locations", super(s.locationCreate))
 	mux.Handle("POST /admin/locations/{id}/review", super(s.locationReview))
+	if s.SyncNow != nil {
+		mux.Handle("POST /sync", user(s.syncNow))
+	}
 	if s.Role == "central" {
 		// Reporting a problem from an equipment QR label: no sign-in.
 		mux.HandleFunc("GET /r/{code}", s.reportPage)
@@ -229,6 +235,7 @@ func (s *Server) Handler() (http.Handler, error) {
 		mux.Handle("POST /admin/nodes/{id}/revoke", super(s.nodeRevoke))
 		mux.Handle("POST /admin/nodes/{id}/unquarantine", super(s.nodeUnquarantine))
 		mux.Handle("POST /admin/nodes/require", super(s.nodeRequire))
+		mux.Handle("POST /admin/report-address", super(s.reportAddress))
 		mux.Handle("GET /admin/kiosks", super(s.kioskList))
 		mux.Handle("POST /admin/kiosks", super(s.kioskCreate))
 		mux.Handle("POST /admin/kiosks/{id}/reset", super(s.kioskReset))
@@ -521,10 +528,29 @@ func (s *Server) display(w http.ResponseWriter, r *http.Request) {
 	}
 	http.SetCookie(w, &http.Cookie{Name: displayCookie, Value: mode, Path: "/", MaxAge: 5 * 365 * 24 * 3600,
 		HttpOnly: true, Secure: s.Secure, SameSite: http.SameSiteStrictMode})
-	back := r.URL.Query().Get("back")
-	// Only back to a page on this site.
-	if !strings.HasPrefix(back, "/") || strings.HasPrefix(back, "//") || strings.HasPrefix(back, "/\\") || strings.HasPrefix(back, "/display/") {
+	back := localBack(r.URL.Query().Get("back"))
+	if strings.HasPrefix(back, "/display/") {
 		back = "/"
 	}
 	http.Redirect(w, r, back, http.StatusSeeOther)
+}
+
+// localBack is a page to go back to, if it is on this site; else "/".
+func localBack(back string) string {
+	if !strings.HasPrefix(back, "/") || strings.HasPrefix(back, "//") || strings.HasPrefix(back, "/\\") {
+		return "/"
+	}
+	return back
+}
+
+// syncNow syncs an employee Pi with the master straight away.
+func (s *Server) syncNow(w http.ResponseWriter, r *http.Request, sess *session) error {
+	back := localBack(r.PostFormValue("back"))
+	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
+	defer cancel()
+	if err := s.SyncNow(ctx); err != nil {
+		log.Printf("web: sync now: %v", err)
+		return s.done(w, r, sess, back, "Couldn't sync with the master Pi just now ("+err.Error()+"). Your work is kept on this Pi and is sent at the next sync.")
+	}
+	return s.done(w, r, sess, back, "Synced with the master Pi.")
 }

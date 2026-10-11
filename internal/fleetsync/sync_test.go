@@ -1094,3 +1094,18 @@ func TestChecklistProposedOnAPi(t *testing.T) {
 		t.Fatalf("on the Pi: %+v / %+v", p, r)
 	}
 }
+
+func TestPisLearnTheAddressPhonesUse(t *testing.T) {
+	f := newFleet(t)
+	tess := f.enrol("tess", domain.RoleUser)
+	f.must(f.app.Store.SetConfig(f.ctx, ConfigReportURL, "https://pifleet.example.org"))
+	tess.sync()
+	if v, _ := tess.app.Store.Config(f.ctx, ConfigReportURL); v != "https://pifleet.example.org" {
+		t.Fatalf("report_url = %q", v)
+	}
+	f.must(f.app.Store.SetConfig(f.ctx, ConfigReportURL, ""))
+	tess.sync()
+	if v, _ := tess.app.Store.Config(f.ctx, ConfigReportURL); v != "" {
+		t.Fatalf("report_url after clearing = %q", v)
+	}
+}

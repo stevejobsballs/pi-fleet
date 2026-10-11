@@ -287,3 +287,4 @@ table tbody tr.prio-urgent:hover, table tbody tr.prio-high:hover { filter: brigh
 .prio-tag.high { background: var(--high-tag); color: var(--high-on); }
 p.prio-summary { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; }
 form.builder .step-edit { justify-content: flex-end; border-top: 1px solid var(--line); padding-top: .6rem; }
+.status form.sync-now { margin: 0; display: inline; } .status form.sync-now button { font-size: inherit; }

@@ -427,9 +427,13 @@ func (w *Wizard) records(reused bool) error {
 		if err != nil {
 			return err
 		}
+		site, err := w.firstSite()
+		if err != nil {
+			return err
+		}
 		u.Say("Now choose a password: at least 12 characters, not containing the username,")
 		u.Say("and not one that has appeared in a data breach (pi-fleet checks).")
-		if err := w.asPifleet("bootstrap", "-data", DataDir, "-username", user, "-name", name, "-email", email); err == nil {
+		if err := w.asPifleet(append([]string{"bootstrap", "-data", DataDir, "-username", user, "-name", name, "-email", email}, site...)...); err == nil {
 			return nil
 		}
 		if w.DryRun {
@@ -437,6 +441,82 @@ func (w *Wizard) records(reused bool) error {
 		}
 		u.Say("That didn't work (see the message above). Let's try again.")
 	}
+}
+
+// firstSite asks for the hospital (or main site) and a first room in it,
+// so equipment can be registered straight away, and returns them as
+// bootstrap's flags. More sites and rooms are added on the Sites page.
+func (w *Wizard) firstSite() ([]string, error) {
+	u := w.UI
+	u.Say("")
+	u.Say("Equipment is kept at sites (a hospital, or a building) and rooms or areas")
+	u.Say("in them. Name your main site now; add others later on the Sites page.")
+	name, err := u.Ask("Main site's name (e.g. St Mary's Hospital)", "", nil)
+	if err != nil {
+		return nil, err
+	}
+	code, err := u.Ask("A short code for it, 2 to 8 letters or digits", siteCode(name), func(s string) error {
+		if !siteCodeRE.MatchString(strings.ToUpper(s)) {
+			return errors.New("use 2 to 8 letters or digits, such as SMH")
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	room, err := u.Ask("A first room or area there, where equipment can be placed", "Biomed workshop", nil)
+	if err != nil {
+		return nil, err
+	}
+	tz := ""
+	if out, err := w.Sys.Output("timedatectl", "show", "--property=Timezone", "--value"); err == nil {
+		tz = strings.TrimSpace(string(out))
+	}
+	if _, err := time.LoadLocation(tz); err != nil || tz == "" || tz == "UTC" || tz == "Etc/UTC" {
+		// Raspberry Pi OS starts on UTC until the time zone is set.
+		tz, err = u.Ask("The site's time zone (e.g. America/New_York, Europe/London)", tz, func(s string) error {
+			if _, err := time.LoadLocation(s); err != nil || s == "Local" {
+				return errors.New("that isn't a time zone name; it looks like Continent/City")
+			}
+			return nil
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+	return []string{"-site", name, "-site-code", strings.ToUpper(code), "-timezone", tz, "-location", room}, nil
+}
+
+var siteCodeRE = regexp.MustCompile(`^[A-Z0-9]{2,8}$`)
+
+// siteCode suggests a code for a site: its initials (St Mary's Hospital:
+// SMH), or the start of a one-word name.
+func siteCode(name string) string {
+	var initials, letters strings.Builder
+	for _, word := range strings.Fields(name) {
+		first := true
+		for _, r := range strings.ToUpper(word) {
+			if (r < 'A' || r > 'Z') && (r < '0' || r > '9') {
+				continue
+			}
+			if first {
+				initials.WriteRune(r)
+				first = false
+			}
+			letters.WriteRune(r)
+		}
+	}
+	code := initials.String()
+	if len(code) < 2 {
+		code = letters.String()
+	}
+	if len(code) > 8 {
+		code = code[:8]
+	}
+	if len(code) < 2 {
+		return ""
+	}
+	return code
 }
 
 func (w *Wizard) masterDone(name string, port int, fingerprint string, backups bool) {
@@ -807,8 +887,10 @@ func (w *Wizard) newNode(kiosk bool) error {
 	if err := w.startService(NodeUnit(), "http://127.0.0.1:8080/login"); err != nil {
 		return err
 	}
+	w.launchers(kiosk)
 	u.Step("Done")
-	u.Say("This Pi is running. Open http://127.0.0.1:8080 in its web browser.")
+	u.Say("This Pi is running. Open pi-fleet with its desktop icon, or from the")
+	u.Say("menu (Office), or type http://127.0.0.1:8080 in the web browser.")
 	u.Say("It works without a network connection and syncs with the master Pi")
 	u.Say("every 5 minutes when it has one.")
 	return nil
@@ -969,6 +1051,16 @@ func (w *Wizard) existingNode() error {
 		u.Say("Employee Pis normally update themselves from the master Pi.")
 		choices = append(choices, choice{fmt.Sprintf("Update to this version (%s) now", w.Version), func() error {
 			return w.update(NodeDataDir, false, "http://127.0.0.1:8080/login")
+		}})
+	}
+	if !w.Sys.Exists(LauncherPath) {
+		choices = append(choices, choice{"Add a pi-fleet icon to the desktop (set up before there was one)", func() error {
+			kiosk, err := u.Confirm("Is this a shared kiosk Pi, which should open pi-fleet full screen when it starts?", false)
+			if err != nil {
+				return err
+			}
+			w.launchers(kiosk)
+			return nil
 		}})
 	}
 	choices = append(choices, choice{"Stop", func() error { return nil }})

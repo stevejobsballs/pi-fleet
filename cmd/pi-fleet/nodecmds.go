@@ -308,10 +308,27 @@ func cmdRun(ctx context.Context, args []string, c *cli) error {
 		}
 	}
 	cfg := func(ctx context.Context, key string) string { v, _ := n.store.Config(ctx, key); return v }
+	// The Sync now button asks the sync loop for a sync straight away and
+	// waits for how it went.
+	kick := make(chan chan error)
+	syncNow := func(ctx context.Context) error {
+		reply := make(chan error, 1)
+		select {
+		case kick <- reply:
+		case <-ctx.Done():
+			return errors.New("this Pi is busy; try again in a minute")
+		}
+		select {
+		case err := <-reply:
+			return err
+		case <-ctx.Done():
+			return errors.New("the master Pi is taking too long to answer")
+		}
+	}
 	ui, err := (&web.Server{
 		App: a, Role: "node", PHIPatterns: web.DefaultPHIPatterns, Fleet: cl, Secure: *https,
 		InsecureLAN: *insecureLAN && !*https,
-		Sync:        web.NodeSyncInfo(n.store.DB(), n.local.ChainID, cfg), Version: version,
+		Sync:        web.NodeSyncInfo(n.store.DB(), n.local.ChainID, cfg), SyncNow: syncNow, Version: version,
 	}).Handler()
 	if err != nil {
 		return err
@@ -321,9 +338,14 @@ func cmdRun(ctx context.Context, args []string, c *cli) error {
 
 	go func() { // background sync with backoff, and certificate renewal
 		backoff := 30 * time.Second
+		var reply chan error // someone pressed Sync now
 		for {
 			wait := *every
 			r, err := cl.Sync(ctx)
+			if reply != nil {
+				reply <- err
+				reply = nil
+			}
 			switch {
 			case errors.Is(err, fleetsync.ErrRevoked):
 				log.Printf("sync: %v", err)
@@ -349,6 +371,7 @@ func cmdRun(ctx context.Context, args []string, c *cli) error {
 			case <-ctx.Done():
 				return
 			case <-time.After(wait):
+			case reply = <-kick:
 			}
 		}
 	}()

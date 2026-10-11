@@ -15,7 +15,8 @@ The master Pi
   Fingerprint:  {{FINGERPRINT}}
 
 BEFORE YOU START, on the master Pi (https://{{MASTER}})
-  1. Sites: make sure there is at least one site and location.
+  1. Sites: the master's setup made the main site and a first room; add
+     any other sites or rooms the employee works in.
   2. For an employee Pi: Users, create the employee's account (lowercase
      username). Write down the ONE-TIME PASSWORD it shows; it is only shown
      once and works for 3 days.
@@ -51,8 +52,12 @@ ON THE NEW PI (Raspberry Pi 4 or 5, 64-bit Raspberry Pi OS)
      member chooses their own password later, when they first sign in.
   7. Six words appear. On the master Pi, open Pis, type those six words into
      the waiting Pi's row and press Confirm.
-  8. Setup finishes by itself; the window waits for Enter. Open
-     http://127.0.0.1:8080 in the Pi's web browser and sign in with a
-     pi-fleet username and password (not the Pi's own login).
+  8. Setup finishes by itself; the window waits for Enter. Double-click
+     the pi-fleet icon on the desktop (or type http://127.0.0.1:8080 in
+     the web browser) and sign in with a pi-fleet username and password
+     (not the Pi's own login). A kiosk Pi opens pi-fleet full screen
+     whenever it starts; Alt+F4 closes it.
+     Work done on this Pi reaches the master within 5 minutes; "Sync now"
+     at the top of any page sends it straight away.
 
 If anything stops with an error, the window stays open: send what it says.

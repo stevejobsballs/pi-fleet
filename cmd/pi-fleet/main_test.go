@@ -8,8 +8,10 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"pi-fleet/internal/app"
 	"pi-fleet/internal/backup"
@@ -47,20 +49,25 @@ func TestCentralSetup(t *testing.T) {
 	if out := runOK(t, "", "init", "-data", dir, "-role", "central"); !strings.Contains(out, "already initialised as central") {
 		t.Errorf("second init output: %s", out)
 	}
-	boot := []string{"bootstrap", "-data", dir, "-username", "admin", "-name", "Ada Admin", "-email", "ada@example.org"}
+	boot := []string{"bootstrap", "-data", dir, "-username", "admin", "-name", "Ada Admin", "-email", "ada@example.org",
+		"-site", "St Mary's Hospital", "-site-code", "SMH", "-timezone", "Europe/London", "-location", "Biomed workshop"}
+	if _, err := runCmd(t, "tumbleweed-gasket-42\ntumbleweed-gasket-42\n", append(slices.Clone(boot), "-timezone", "Mars/Olympus")...); err == nil || !strings.Contains(err.Error(), "unknown time zone") {
+		t.Errorf("unknown time zone: %v", err)
+	}
 	if _, err := runCmd(t, "tumbleweed-gasket-42\nsomething-else-entirely\n", boot...); err == nil {
 		t.Error("mismatched confirmation accepted")
 	}
 	if _, err := runCmd(t, "short\nshort\n", boot...); err == nil {
 		t.Error("weak password accepted")
 	}
-	if out := runOK(t, "tumbleweed-gasket-42\ntumbleweed-gasket-42\n", boot...); !strings.Contains(out, "created super user admin") {
+	if out := runOK(t, "tumbleweed-gasket-42\ntumbleweed-gasket-42\n", boot...); !strings.Contains(out, "created super user admin") ||
+		!strings.Contains(out, "created site St Mary's Hospital (SMH) with Biomed workshop") {
 		t.Errorf("bootstrap output: %s", out)
 	}
 	if _, err := runCmd(t, "tumbleweed-gasket-42\ntumbleweed-gasket-42\n", boot...); err == nil {
 		t.Error("second bootstrap accepted")
 	}
-	if out := runOK(t, "", "verify", "-data", dir); !strings.Contains(out, "chains 1, events 2, redacted 0, problems 0") {
+	if out := runOK(t, "", "verify", "-data", dir); !strings.Contains(out, "chains 1, events 4, redacted 0, problems 0") {
 		t.Errorf("verify output: %s", out)
 	}
 	runOK(t, "", "rebuild", "-data", dir)
@@ -198,6 +205,30 @@ func TestBackupCommands(t *testing.T) {
 	runOK(t, "tumbleweed-gasket-42\n", "offsite-confirm", "-data", dir, "-label", "OFFSITE-A", "-as", "admin")
 	if out := runOK(t, "", "backups", "-data", dir); strings.Contains(out, "WARNING") || !strings.Contains(out, "off-site since") {
 		t.Errorf("backups after rotation: %s", out)
+	}
+
+	// A nightly backup that fails (here: the drive can't be written) is
+	// warned about until one succeeds; so is one that hasn't run for days.
+	os.Chmod(backupDisk, 0o500)
+	if _, err := runCmd(t, "", "backup-now", "-data", dir); err == nil {
+		t.Fatal("backup to a read-only drive succeeded")
+	}
+	os.Chmod(backupDisk, 0o700)
+	if out := runOK(t, "", "backups", "-data", dir); !strings.Contains(out, "WARNING: The nightly backup failed on") {
+		t.Errorf("backups after a failure: %s", out)
+	}
+	runOK(t, "", "backup-now", "-data", dir)
+	if out := runOK(t, "", "backups", "-data", dir); strings.Contains(out, "WARNING") {
+		t.Errorf("backups after a success: %s", out)
+	}
+	n, _, err := openCentral(context.Background(), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n.store.SetConfig(context.Background(), configLastNightly, time.Now().AddDate(0, 0, -4).Format(time.DateOnly))
+	n.Close()
+	if out := runOK(t, "", "backups", "-data", dir); !strings.Contains(out, "WARNING: The last nightly backup was on") {
+		t.Errorf("backups when stale: %s", out)
 	}
 
 	// Restore the off-site copy elsewhere with the offline identity.

@@ -35,6 +35,9 @@ const (
 	// is new enough), and a coming requirement ("vX.Y.Z RFC3339").
 	ConfigUpdateNeeded = "update_needed"
 	ConfigUpdateDue    = "update_due"
+	// On both: the master Pi's address as phones reach it, for QR labels
+	// (set on the master's Pis page, passed to employee Pis when they sync).
+	ConfigReportURL = "report_url"
 )
 
 // ErrTooOld means this Pi must be updated before it can sync again.

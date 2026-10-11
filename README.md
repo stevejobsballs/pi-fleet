@@ -77,7 +77,8 @@ Setup installs whatever else the Pi needs, names the Pi, and then:
   (showing what is on it and asking you to type ERASE first) and mounts it
   so that all records, files and keys live on it. pi-fleet will not start
   without it, so nothing is ever written to the SD card. It makes the HTTPS
-  certificate and the first super user, and starts pi-fleet. Then it sets
+  certificate, the first super user and the main site (with a first room,
+  so equipment can be registered straight away), and starts pi-fleet. Then it sets
   up backups: a second drive that receives a verified, encrypted backup
   every night and new records every 5 minutes; backup keys saved to a USB
   stick you keep elsewhere; and off-site disks that receive a backup by
@@ -98,6 +99,8 @@ Setup installs whatever else the Pi needs, names the Pi, and then:
   master's certificate fingerprint to compare with the master's **Pis**
   page, then activates the Pi with the one-time password from the super
   user. The super user approves it by typing the six words it shows.
+  Setup then adds a **pi-fleet** icon to the desktop and the menu; a
+  kiosk Pi opens pi-fleet full screen whenever it starts.
 
 Running setup again on an installed Pi offers to update it to the file's
 version, through the verified update with rollback. `-dry-run` shows what

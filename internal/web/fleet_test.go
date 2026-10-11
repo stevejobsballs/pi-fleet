@@ -69,7 +69,7 @@ func (e *env) employeePi(syncURL, username string) (*httptest.Server, *store.Sto
 	// As cmd/pi-fleet sets up a real Pi.
 	cfg := func(ctx context.Context, key string) string { v, _ := st.Config(ctx, key); return v }
 	ui := &Server{App: &app.App{Store: st, Author: author, Params: cheap, Now: clock, Blobs: bl, QueueUploads: true}, Role: "node", Fleet: cl, Now: clock,
-		Sync: NodeSyncInfo(st.DB(), chainID, cfg)}
+		Sync: NodeSyncInfo(st.DB(), chainID, cfg), SyncNow: func(ctx context.Context) error { _, err := cl.Sync(ctx); return err }}
 	h, err := ui.Handler()
 	if err != nil {
 		e.t.Fatal(err)
@@ -138,5 +138,32 @@ func TestLiveFleetFromAnEmployeePi(t *testing.T) {
 	}
 	if _, page = b.post("/inventory/txn", url.Values{"kind": {"count"}, "part": {part}, "location": {shop}, "quantity": {"6"}}); !strings.Contains(page, "couldn&#39;t be reached") {
 		t.Fatalf("offline shared count:\n%s", page)
+	}
+}
+
+func TestSyncNowOnAnEmployeePi(t *testing.T) {
+	e := newEnv(t)
+	sync := httptest.NewServer((&fleetsync.Server{App: e.app, CentralKey: e.key, Now: func() time.Time { return e.now }, Logf: t.Logf,
+		Fleet: (&FleetAPI{App: e.app}).Handler()}).Handler())
+	piSrv, _, _ := e.employeePi(sync.URL, "tess")
+	piEnv := *e
+	piEnv.srv = piSrv
+	b := piEnv.browser()
+	b.login("tess", "copper-ladder-sunrise")
+
+	// Equipment registered on the master shows on the Pi after Sync now,
+	// which comes back to the page it was pressed on.
+	e.app.RegisterAsset(e.ctx, e.super, domain.AssetRegistered{Tag: "NEW-1", LocationID: e.loc, Manufacturer: "Zoll", Model: "R"})
+	if _, _, page := b.get("/assets?q=NEW-1"); !strings.Contains(page, `action="/sync"`) || !strings.Contains(page, `name="back" value="/assets?q=NEW-1"`) {
+		t.Fatalf("no Sync now button:\n%s", page)
+	}
+	if _, page := b.post("/sync", url.Values{"back": {"/assets?q=NEW-1"}}); !strings.Contains(page, "Synced with the master Pi.") || !strings.Contains(page, "Zoll R") {
+		t.Fatalf("after Sync now:\n%s", page)
+	}
+	// The master can't be reached: says so, and work stays on the Pi.
+	sync.Close()
+	if _, page := b.post("/sync", url.Values{"back": {"https://elsewhere.example/"}}); !strings.Contains(page, "Couldn&#39;t sync with the master Pi just now") ||
+		!strings.Contains(page, "<h1>Today") {
+		t.Fatalf("Sync now without the master:\n%s", page)
 	}
 }

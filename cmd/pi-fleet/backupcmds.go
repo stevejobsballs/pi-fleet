@@ -24,7 +24,15 @@ const (
 	configBackupDir        = "backup_dir"
 	configBackupRecipients = "backup_recipients"
 	configLastNightly      = "backup_last_nightly"
+	// The last failure of each kind of backup, as "<RFC 3339 time> <what
+	// went wrong>", cleared when that kind next succeeds.
+	configNightlyError = "backup_nightly_error"
+	configExportError  = "backup_export_error"
 )
+
+// nightlyOverdue is how long without a nightly snapshot before super
+// users are warned (a nightly is due every day after 02:00).
+const nightlyOverdue = 50 * time.Hour
 
 // errNoBackupDrive means backups are configured but their drive is missing.
 var errNoBackupDrive = errors.New("no backup drive")
@@ -146,10 +154,13 @@ func cmdBackupNow(ctx context.Context, args []string, c *cli) error {
 		return err
 	}
 	m, removed, err := r.Nightly(ctx)
+	recordBackup(ctx, n, configNightlyError, err)
 	if err != nil {
 		return err
 	}
+	n.store.SetConfig(ctx, configLastNightly, time.Now().Format(time.DateOnly))
 	exported, err := r.Export(ctx)
+	recordBackup(ctx, n, configExportError, err)
 	if err != nil {
 		return err
 	}
@@ -244,7 +255,7 @@ func cmdBackups(ctx context.Context, args []string, c *cli) error {
 	if err != nil {
 		return err
 	}
-	n, _, err := openCentral(ctx, *data)
+	n, a, err := openCentral(ctx, *data)
 	if err != nil {
 		return err
 	}
@@ -269,14 +280,66 @@ func cmdBackups(ctx context.Context, args []string, c *cli) error {
 		}
 		c.printf("%s  %-40s  %s\n", b.WrittenAt.Format(time.DateTime), b.File, where)
 	}
-	last, err := domain.LastOffsiteConfirmed(ctx, n.store.DB())
-	if err != nil {
-		return err
+	if len(list) == 0 {
+		c.printf("no backups yet\n")
 	}
-	if msg := offsiteWarning(last, time.Now()); msg != "" {
+	if last, _ := n.store.Config(ctx, configLastNightly); last != "" {
+		c.printf("\nlast nightly backup: %s\n", last)
+	}
+	for _, msg := range backupNotices(ctx, n, a, time.Now()) {
 		c.printf("\nWARNING: %s\n", msg)
 	}
 	return nil
+}
+
+// backupNotices is what's wrong with the master Pi's backups, for the
+// web interface's warnings and the backups command (Check-Pi).
+func backupNotices(ctx context.Context, n *node, a *app.App, now time.Time) []string {
+	if _, err := n.store.Config(ctx, configBackupDir); err != nil {
+		return []string{"Backups are not configured. Run setup on the master Pi and choose Set up backups."}
+	}
+	if _, err := runner(ctx, n, a); errors.Is(err, errNoBackupDrive) {
+		return []string{"The backup drive isn't connected, so no backups are being made. Plug it back into the master Pi."}
+	}
+	var out []string
+	failed := func(key, what string) {
+		v, _ := n.store.Config(ctx, key)
+		at, msg, ok := strings.Cut(v, " ")
+		if !ok {
+			return
+		}
+		when := at
+		if t, err := time.Parse(time.RFC3339, at); err == nil {
+			when = t.Local().Format("2 January 15:04")
+		}
+		if len(msg) > 200 {
+			msg = msg[:200] + "…"
+		}
+		out = append(out, fmt.Sprintf("%s failed on %s: %s. Check the backup drive isn't full or faulty; Check-Pi on the master Pi shows more.", what, when, msg))
+	}
+	failed(configNightlyError, "The nightly backup")
+	failed(configExportError, "Copying new records to the backup drive")
+	if last, err := n.store.Config(ctx, configLastNightly); err == nil && last != "" {
+		if t, err := time.ParseInLocation(time.DateOnly, last, time.Local); err == nil && now.Sub(t) > nightlyOverdue {
+			out = append(out, fmt.Sprintf("The last nightly backup was on %s, %d days ago.", t.Format("2 January"), int(now.Sub(t).Hours()/24)))
+		}
+	}
+	last, err := domain.LastOffsiteConfirmed(ctx, n.store.DB())
+	if msg := offsiteWarning(last, now); err == nil && msg != "" {
+		out = append(out, "Backups: "+msg+".")
+	}
+	return out
+}
+
+// recordBackup notes how a kind of backup went, for backupNotices.
+func recordBackup(ctx context.Context, n *node, key string, err error) {
+	v := ""
+	if err != nil {
+		v = time.Now().UTC().Format(time.RFC3339) + " " + strings.Join(strings.Fields(err.Error()), " ")
+	}
+	if e := n.store.SetConfig(ctx, key, v); e != nil {
+		log.Printf("backup: recording %s: %v", key, e)
+	}
 }
 
 func offsiteWarning(last, now time.Time) string {
@@ -346,13 +409,17 @@ func runBackups(ctx context.Context, n *node, a *app.App) {
 	defer tick.Stop()
 	for {
 		if r, err := runner(ctx, n, a); err == nil {
-			if _, err := r.Export(ctx); err != nil {
+			_, err := r.Export(ctx)
+			if err != nil {
 				log.Printf("backup: export: %v", err)
 			}
+			recordBackup(ctx, n, configExportError, err)
 			today := time.Now().Format(time.DateOnly)
 			last, _ := n.store.Config(ctx, configLastNightly)
 			if time.Now().Hour() >= 2 && last != today {
-				if m, _, err := r.Nightly(ctx); err != nil {
+				m, _, err := r.Nightly(ctx)
+				recordBackup(ctx, n, configNightlyError, err)
+				if err != nil {
 					log.Printf("backup: NIGHTLY SNAPSHOT FAILED: %v", err)
 				} else {
 					log.Printf("backup: verified snapshot %s", m.File)

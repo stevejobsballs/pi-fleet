@@ -7,6 +7,7 @@
   <p>This page prints only the label. Cut it out and stick it where people will see it, away from cleaning wipe-down areas if you can.</p>
   <p><button id="print" type="button">Print label</button> <a href="/assets/{{.Asset.ID}}">Back to {{.Asset.Tag}}</a></p>
   <p class="small">If Print doesn't open the print window, press Ctrl and P together.</p>
+  {{if .Warn}}<p class="warn">Many phones can't open {{.URL}}. Before printing labels, a super user should set the address phones use, on Admin › Pis.</p>{{end}}
 </div>
 <section class="label">
   <h1>Problem with this equipment?</h1>

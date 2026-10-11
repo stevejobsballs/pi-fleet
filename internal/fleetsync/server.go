@@ -459,6 +459,7 @@ func (s *Server) handleHello(w http.ResponseWriter, r *http.Request, n domain.No
 	}
 	need := NodeRequirement(ctx, s.App.Store, s.now())
 	resp.MinVersion, resp.NextVersion = need.Min, need.Next
+	resp.ReportURL, _ = s.App.Store.Config(ctx, ConfigReportURL)
 	if need.Next != "" {
 		resp.NextVersionFrom = need.NextFrom.UTC().Format(time.RFC3339)
 	}

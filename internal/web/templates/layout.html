@@ -23,6 +23,7 @@
 <div class="status">
   <span>{{if eq .Role "central"}}Master Pi{{else}}Employee Pi{{end}}</span>
   {{with .Sync}}<span>Last sync: {{when .LastSync}}</span>{{if gt .Unsynced 0}}<span class="warn">{{.Unsynced}} record{{if ne .Unsynced 1}}s{{end}} not yet synced</span>{{end}}{{end}}
+  {{if .CanSync}}<form method="post" action="/sync" class="sync-now"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="back" value="{{.Here}}"><button class="link">Sync now</button></form>{{end}}
   {{if eq .Clock "unverified"}}<span class="warn">Clock not verified: signatures will be flagged</span>{{end}}
 </div>
 {{end}}
@@ -85,6 +86,7 @@
   <img src="/assets/{{.ID}}/qr.png" alt="QR code for {{.Code}}" width="260" height="260" loading="lazy">
   <p class="qr-code">{{.Code}}</p>
   <p class="hint">Scanning it opens {{.URL}}, where anyone on the hospital network can report a problem with this equipment.</p>
+  {{if .Warn}}<p class="warn">Many phones can't open this address. Before printing labels, a super user should set the address phones use, on Admin › Pis.</p>{{end}}
   <p class="buttons"><a class="button" href="/assets/{{.ID}}/label" target="_blank" rel="noopener">Print label</a><a class="button secondary" href="/assets/{{.ID}}/qr.png?download=1">Download image</a><button type="button" class="secondary" popovertarget="qr-{{.ID}}" popovertargetaction="hide">Close</button></p>
 </div>{{end}}
 

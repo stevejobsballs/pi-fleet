@@ -16,6 +16,8 @@ run sudo -u pifleet "$PF" selfcheck -data "$DATA"
 if [ "$ROLE" = master ]; then
   echo "Pis:"
   run sudo -u pifleet "$PF" nodes -data "$DATA"
+  echo "backups (newest first, and any problems):"
+  sudo -u pifleet "$PF" backups -data "$DATA" 2>&1 | sed -n '1,3p;/^last nightly/p;/^WARNING/p;/^error/p' | sed 's/^/  /'
 fi
 echo "files not owned by pifleet:"
 files_not_owned "$DATA" | grep . || echo "  none"

@@ -272,6 +272,9 @@ func TestNewMasterOnAnErasedDrive(t *testing.T) {
 		"",       // no network names for other sites
 		"Jsmith", // not lowercase
 		"jsmith", "Jo Smith", "jo at example", "jo@example.org",
+		"St Mary's Hospital", "", // its code: SMH, as suggested
+		"",                                 // first room: Biomed workshop
+		"Mars/Olympus", "America/New_York", // time zone (this Pi's is UTC)
 		"n", // backups later
 	)
 	if err := w.Run(); err != nil {
@@ -310,7 +313,7 @@ func TestNewMasterOnAnErasedDrive(t *testing.T) {
 		"mount /srv/pi-fleet",
 		"install /home/pi/Downloads/pi-fleet_v1.0.0_linux_arm64 /opt/pi-fleet/releases/v1.0.0/pi-fleet",
 		"runuser -u pifleet -- /opt/pi-fleet/current/pi-fleet init -data /srv/pi-fleet -role central",
-		"runuser -u pifleet -- /opt/pi-fleet/current/pi-fleet bootstrap -data /srv/pi-fleet -username jsmith -name 'Jo Smith' -email jo@example.org",
+		"runuser -u pifleet -- /opt/pi-fleet/current/pi-fleet bootstrap -data /srv/pi-fleet -username jsmith -name 'Jo Smith' -email jo@example.org -site 'St Mary'\\''s Hospital' -site-code SMH -timezone America/New_York -location 'Biomed workshop'",
 		"systemctl enable pi-fleet",
 	} {
 		if !sys.ran(want) {
@@ -429,9 +432,12 @@ func TestEmployeePi(t *testing.T) {
 			s := status
 			status = "active" // approved on the second check
 			return []byte(s + "\n"), nil
+		case c == "getent passwd tess":
+			return []byte("tess:x:1000:1000:,,,:/home/tess:/bin/bash\n"), nil
 		}
 		return nil, errors.New("no")
 	}
+	sys.exists["/home/tess/Desktop"] = true
 	cert, _, _ := NewCertificate([]string{"fleet-master.local"}, nil, time.Now())
 	var tried []string
 	w, out := wizard(sys, "2", "", "fleet-master.local", "n", "fleet-master.local", "y", "tess")
@@ -464,6 +470,15 @@ func TestEmployeePi(t *testing.T) {
 	}
 	if sys.ran("wipefs") || sys.ran("parted") {
 		t.Fatal("touched a drive on an employee Pi")
+	}
+	// pi-fleet opens from the menu and a desktop icon; only a kiosk Pi
+	// opens it at start-up.
+	if !strings.Contains(string(sys.files[LauncherPath]), "http://127.0.0.1:8080/") || !strings.Contains(string(sys.files[MenuEntryPath]), "Exec=/opt/pi-fleet/open-pi-fleet\n") ||
+		!strings.Contains(string(sys.files["/home/tess/Desktop/pi-fleet.desktop"]), "Name=pi-fleet") || !sys.ran("chown tess: /home/tess/Desktop/pi-fleet.desktop") {
+		t.Errorf("no icon:\n%s", strings.Join(sys.calls, "\n"))
+	}
+	if _, ok := sys.files["/home/tess/.config/autostart/pi-fleet.desktop"]; ok {
+		t.Error("an employee Pi opens pi-fleet at start-up")
 	}
 	if !strings.Contains(string(sys.files[UnitPath]), "run -data /var/lib/pi-fleet") {
 		t.Fatalf("unit:\n%s", sys.files[UnitPath])
@@ -769,7 +784,7 @@ func TestTrialInstallationOnAUSBStick(t *testing.T) {
 		"1", "",
 		"", "1", "n", // the stick: not for a trial, so back to the list
 		"", "1", "y", "ERASE", // the stick, as a trial
-		"", "jsmith", "Jo Smith", "jo@example.org", "n")
+		"", "jsmith", "Jo Smith", "jo@example.org", "Riverside", "", "", "Europe/London", "n")
 	if err := w.Run(); err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
@@ -782,7 +797,7 @@ func TestTrialInstallationOnAUSBStick(t *testing.T) {
 	// The SSD is no trial.
 	sys2 := newFake()
 	outputs(sys2, map[string]string{"lsblk": piDisks, "hostname": "fleet-master\n", "blkid": "new-uuid\n", "id pifleet": "uid=999"})
-	w, out = wizard(sys2, "1", "", "", "2", "ERASE", "", "jsmith", "Jo Smith", "jo@example.org", "n")
+	w, out = wizard(sys2, "1", "", "", "2", "ERASE", "", "jsmith", "Jo Smith", "jo@example.org", "Riverside", "", "", "Europe/London", "n")
 	if err := w.Run(); err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
@@ -949,7 +964,7 @@ func TestParseNetworkNames(t *testing.T) {
 func TestNewMasterWithANetworkNameForOtherSites(t *testing.T) {
 	sys := newFake()
 	outputs(sys, map[string]string{"lsblk": piDisks, "hostname": "fleet-master\n", "blkid": "new-uuid\n", "id pifleet": "uid=999"})
-	w, out := wizard(sys, "1", "", "", "2", "ERASE", "pi-fleet.example.org, 10.20.30.40", "jsmith", "Jo Smith", "jo@example.org", "n")
+	w, out := wizard(sys, "1", "", "", "2", "ERASE", "pi-fleet.example.org, 10.20.30.40", "jsmith", "Jo Smith", "jo@example.org", "Riverside", "", "", "Europe/London", "n")
 	if err := w.Run(); err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
@@ -1061,7 +1076,7 @@ func TestErasingADriveForgetsItsFstabLines(t *testing.T) {
 func TestBackupsCanBeSkippedAtTheDrive(t *testing.T) {
 	sys := newFake()
 	outputs(sys, map[string]string{"lsblk": piDisks, "hostname": "raspberrypi\n", "blkid": "new-uuid\n", "id pifleet": "uid=999"})
-	w, out := wizard(sys, "1", "", "", "2", "ERASE", "", "jsmith", "Jo Smith", "jo@example.org",
+	w, out := wizard(sys, "1", "", "", "2", "ERASE", "", "jsmith", "Jo Smith", "jo@example.org", "Riverside", "", "", "Europe/London",
 		"y",    // backups now
 		"skip", // ...no, later
 	)
@@ -1070,5 +1085,41 @@ func TestBackupsCanBeSkippedAtTheDrive(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "Backups aren't set up yet") || sys.ran("backup-config") {
 		t.Fatalf("output:\n%s", out)
+	}
+}
+
+func TestSiteCode(t *testing.T) {
+	for name, want := range map[string]string{"St Mary's Hospital": "SMH", "Riverside": "RIVERSID", "North Clinic 2": "NC2", "A": "", "Ward 7": "W7"} {
+		if got := siteCode(name); got != want {
+			t.Errorf("siteCode(%q) = %q, want %q", name, got, want)
+		}
+	}
+}
+
+func TestKioskPiOpensPiFleetAtStartUp(t *testing.T) {
+	sys := newFake()
+	sys.output = func(c string) ([]byte, error) {
+		if c == "getent passwd biomed" {
+			return []byte("biomed:x:1000:1000::/home/biomed:/bin/bash\n"), nil
+		}
+		return nil, errors.New("no")
+	}
+	w, out := wizard(sys)
+	w.SudoUser = "biomed"
+	w.launchers(true)
+	auto := string(sys.files["/home/biomed/.config/autostart/pi-fleet.desktop"])
+	if !strings.Contains(auto, "Exec=/opt/pi-fleet/open-pi-fleet --kiosk\n") || !sys.ran("chown biomed: /home/biomed/.config/autostart") ||
+		!strings.Contains(out.String(), "pi-fleet opens full screen") {
+		t.Fatalf("autostart:\n%s\n%s\n%s", auto, strings.Join(sys.calls, "\n"), out)
+	}
+	if _, ok := sys.files["/home/biomed/Desktop/pi-fleet.desktop"]; ok {
+		t.Error("desktop icon written without a Desktop folder")
+	}
+	// Setup run as root: only the menu entry.
+	sys2 := newFake()
+	w2, _ := wizard(sys2)
+	w2.launchers(true)
+	if _, ok := sys2.files[MenuEntryPath]; !ok || len(sys2.calls) != 0 {
+		t.Errorf("as root: %v", sys2.calls)
 	}
 }

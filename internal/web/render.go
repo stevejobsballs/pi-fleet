@@ -22,6 +22,7 @@ type page struct {
 	Role       string // central or node
 	Flash      string
 	Sync       *SyncInfo
+	CanSync    bool   // the Sync now button
 	Clock      string // verified or unverified
 	PHIWarning bool
 	Notices    []string
@@ -148,7 +149,11 @@ var funcs = template.FuncMap{
 	"lines":     func(s string) []string { return strings.Split(s, "\n") },
 	// qrpop is what the QR label pop-up (layout.html) needs.
 	"qrpop": func(id, code, text, base string) map[string]string {
-		return map[string]string{"ID": id, "Code": code, "Text": text, "URL": reportURL(base, code)}
+		m := map[string]string{"ID": id, "Code": code, "Text": text, "URL": reportURL(base, code)}
+		if phonesMayFail(base) {
+			m["Warn"] = "yes"
+		}
+		return m
 	},
 	"urlquery":    urlQuery,
 	"meaningText": func(m string) string { return domain.MeaningText[m] },
@@ -229,6 +234,7 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, sess *session, n
 			info := s.Sync(r.Context())
 			p.Sync = &info
 		}
+		p.CanSync = s.SyncNow != nil
 		if s.Notices != nil && p.IsMid() {
 			p.Notices = s.Notices(r.Context())
 		}

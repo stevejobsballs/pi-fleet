@@ -11,6 +11,8 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"syscall"
 	"time"
 
@@ -42,12 +44,16 @@ func openCentral(ctx context.Context, dir string) (*node, *app.App, error) {
 }
 
 func cmdBootstrap(ctx context.Context, args []string, c *cli) error {
-	var username, legalName, email *string
+	var username, legalName, email, site, siteCode, timezone, location *string
 	var check *bool
 	_, data, err := parse("bootstrap", args, func(fs *flag.FlagSet) {
 		username = fs.String("username", "", "username for the first super user")
 		legalName = fs.String("name", "", "legal name, shown on e-signatures")
 		email = fs.String("email", "", "work email")
+		site = fs.String("site", "", "also create the main site, with this name (optional)")
+		siteCode = fs.String("site-code", "", "the main site's code, 2-8 capital letters or digits")
+		timezone = fs.String("timezone", "", "the main site's time zone, e.g. Europe/London")
+		location = fs.String("location", "", "a first room or area in the main site")
 		check = fs.Bool("check", false, "only report whether a super user exists (used by setup)")
 	})
 	if err != nil {
@@ -76,6 +82,19 @@ func cmdBootstrap(ctx context.Context, args []string, c *cli) error {
 	if err := domain.CheckUsername(*username); err != nil {
 		return err
 	}
+	if *site != "" {
+		// Checked before the super user is made, so a mistake here can be
+		// put right by running bootstrap again.
+		if !regexp.MustCompile(`^[A-Z0-9]{2,8}$`).MatchString(*siteCode) {
+			return fmt.Errorf("site code %q must be 2-8 capital letters or digits", *siteCode)
+		}
+		if _, err := time.LoadLocation(*timezone); err != nil || *timezone == "" || *timezone == "Local" {
+			return fmt.Errorf("unknown time zone %q", *timezone)
+		}
+		if strings.TrimSpace(*location) == "" {
+			return errors.New("give a first room or area in the site with -location")
+		}
+	}
 	n, a, err := openCentral(ctx, *data)
 	if err != nil {
 		return err
@@ -93,6 +112,20 @@ func cmdBootstrap(ctx context.Context, args []string, c *cli) error {
 		return err
 	}
 	c.printf("created super user %s (%s)\n", *username, id)
+	if *site == "" {
+		return nil
+	}
+	actor := app.Actor{UserID: id, SessionID: "console bootstrap"}
+	siteID, err := a.CreateSite(ctx, actor, *siteCode, strings.TrimSpace(*site), *timezone)
+	if err == nil {
+		_, err = a.CreateLocation(ctx, actor, siteID, "", strings.TrimSpace(*location), "room")
+	}
+	if err != nil {
+		// The super user exists; the site can be added on the Sites page.
+		c.printf("Couldn't create the site (%v). Add it on the Sites page after signing in.\n", err)
+		return nil
+	}
+	c.printf("created site %s (%s) with %s\n", strings.TrimSpace(*site), *siteCode, strings.TrimSpace(*location))
 	return nil
 }
 
@@ -269,17 +302,7 @@ func cmdServe(ctx context.Context, args []string, c *cli) error {
 	_, trialErr := os.Stat(filepath.Join(*data, setup.TrialMarker))
 	ui, err := (&web.Server{App: a, Role: "central", Secure: true, PHIPatterns: web.DefaultPHIPatterns, CertFingerprint: fingerprint, Trial: trialErr == nil, Version: version,
 		Notices: func(ctx context.Context) []string {
-			if _, err := n.store.Config(ctx, configBackupDir); err != nil {
-				return []string{"Backups are not configured. Run setup on the master Pi and choose Set up backups."}
-			}
-			if _, err := runner(ctx, n, a); errors.Is(err, errNoBackupDrive) {
-				return []string{"The backup drive isn't connected, so no backups are being made. Plug it back into the master Pi."}
-			}
-			last, err := domain.LastOffsiteConfirmed(ctx, n.store.DB())
-			if msg := offsiteWarning(last, time.Now()); err == nil && msg != "" {
-				return []string{"Backups: " + msg + "."}
-			}
-			return nil
+			return backupNotices(ctx, n, a, time.Now())
 		}}).Handler()
 	if err != nil {
 		return err

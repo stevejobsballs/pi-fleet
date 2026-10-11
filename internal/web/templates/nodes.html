@@ -15,6 +15,11 @@
 </tbody></table>
 <p class="hint">Check the words with the employee in person or by phone on a number you already have. Never confirm words you were sent.</p>
 {{else}}<p>No Pis have been activated yet.</p>{{end}}
+<section id="phones"><h2>Phones and QR labels</h2>
+<p>QR labels open this master Pi's report page on people's phones, so they need an address phones can open: the name your IT department gave this Pi, such as pifleet.hospital.org. Many phones can't open names ending in .local. Employee Pis use it too, once they next sync.</p>
+{{if .Data.ReportWarn}}<p class="warn">{{if .Data.ReportURL}}Many phones can't open this address.{{else}}Not set yet: labels use the address this page was opened with, which many phones can't open.{{end}}</p>{{end}}
+<form method="post" action="/admin/report-address" class="inline">{{template "csrf" .CSRF}}<label>Address phones use <input name="address" value="{{.Data.ReportURL}}" placeholder="e.g. pifleet.hospital.org" maxlength="200"></label><button>Save</button></form>
+</section>
 <section id="versions"><h2>Versions</h2>
 {{$n := .Data.Need}}
 <p>This master Pi runs pi-fleet {{.Data.Master}}. Employee Pis need {{$n.Min}} or newer to sync{{with $n.Next}}, and {{.}} or newer from {{$n.NextFrom.Format "2 January 2006"}}{{end}}. A Pi that is too old keeps its work and shows how to update; it syncs again once updated.</p>

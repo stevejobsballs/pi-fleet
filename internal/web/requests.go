@@ -35,9 +35,14 @@ func reportCode(a domain.Asset) string {
 	return a.Tag
 }
 
-// reportBase is the master Pi's address as phones reach it: on the master,
-// the address this page was opened with; on an employee Pi, the master's.
+// reportBase is the master Pi's address as phones reach it: the one set
+// on the master's Pis page (employee Pis learn it when they sync); until
+// then, on the master, the address this page was opened with, and on an
+// employee Pi, the address it syncs with.
 func (s *Server) reportBase(r *http.Request) string {
+	if u, err := s.App.Store.Config(r.Context(), fleetsync.ConfigReportURL); err == nil && u != "" {
+		return u
+	}
 	if s.Role != "central" {
 		if u, err := s.App.Store.Config(r.Context(), fleetsync.ConfigCentralURL); err == nil && u != "" {
 			return strings.TrimSuffix(u, "/")
@@ -51,6 +56,37 @@ func (s *Server) reportBase(r *http.Request) string {
 }
 
 func reportURL(base, code string) string { return base + "/r/" + url.PathEscape(code) }
+
+// phonesMayFail reports whether phones may not open an address: a .local
+// name (many phones can't look those up) or this Pi itself.
+func phonesMayFail(base string) bool {
+	u, err := url.Parse(base)
+	if err != nil {
+		return true
+	}
+	h := strings.ToLower(u.Hostname())
+	if ip := net.ParseIP(h); ip != nil {
+		return ip.IsLoopback()
+	}
+	return h == "localhost" || strings.HasSuffix(h, ".local") || !strings.Contains(h, ".")
+}
+
+// normalizeReportURL checks an address typed on the Pis page and returns
+// it as scheme://host[:port] ("" clears it).
+func normalizeReportURL(s string) (string, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return "", nil
+	}
+	if !strings.Contains(s, "://") {
+		s = "https://" + s
+	}
+	u, err := url.Parse(s)
+	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Hostname() == "" || strings.Trim(u.Path, "/") != "" || u.RawQuery != "" || u.User != nil {
+		return "", userErr("give the address as a name or number, such as pifleet.hospital.org")
+	}
+	return u.Scheme + "://" + strings.ToLower(u.Host), nil
+}
 
 // qrPNG draws text as a QR code with the quiet margin scanners need.
 func qrPNG(text string, scale int) ([]byte, error) {
@@ -99,6 +135,7 @@ func (s *Server) assetQR(w http.ResponseWriter, r *http.Request, sess *session) 
 type labelData struct {
 	Asset     domain.Asset
 	Code, URL string
+	Warn      bool // phones may not open URL
 }
 
 // assetLabel is a page holding only the printable label. It is the one
@@ -110,7 +147,7 @@ func (s *Server) assetLabel(w http.ResponseWriter, r *http.Request, sess *sessio
 		return err
 	}
 	var buf bytes.Buffer
-	if err := s.pages["label"].ExecuteTemplate(&buf, "label", labelData{Asset: a, Code: reportCode(a), URL: reportURL(s.reportBase(r), reportCode(a))}); err != nil {
+	if err := s.pages["label"].ExecuteTemplate(&buf, "label", labelData{Asset: a, Code: reportCode(a), URL: reportURL(s.reportBase(r), reportCode(a)), Warn: phonesMayFail(s.reportBase(r))}); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")

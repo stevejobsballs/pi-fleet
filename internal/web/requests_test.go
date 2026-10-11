@@ -76,6 +76,27 @@ func TestQRLabels(t *testing.T) {
 	if _, _, page = b.get("/assets/" + pump); strings.Contains(page, "<script") {
 		t.Fatal("script on the equipment page")
 	}
+
+	// Opened by this Pi's own address, labels warn that phones can't open
+	// it, until a super user sets the address phones use.
+	const warn = "Many phones can't open this address"
+	if !strings.Contains(page, warn) {
+		t.Fatalf("no warning about the address:\n%s", page)
+	}
+	b.get("/admin/nodes")
+	if _, page := b.post("/admin/report-address", url.Values{"address": {"https://pifleet.example.org/some/path"}}); !strings.Contains(page, "Not saved: give the address as a name") {
+		t.Fatalf("address with a path:\n%s", page)
+	}
+	if _, page := b.post("/admin/report-address", url.Values{"address": {"steve.local"}}); !strings.Contains(page, "open this address; a name from your IT department") {
+		t.Fatalf(".local address:\n%s", page)
+	}
+	if _, page := b.post("/admin/report-address", url.Values{"address": {" PiFleet.Example.org "}}); !strings.Contains(page, "Saved: QR labels now open https://pifleet.example.org/r/") ||
+		!strings.Contains(page, `name="address" value="https://pifleet.example.org"`) {
+		t.Fatalf("address saved:\n%s", page)
+	}
+	if _, _, page = b.get("/assets/" + pump); !strings.Contains(page, "Scanning it opens https://pifleet.example.org/r/BX%200042") || strings.Contains(page, warn) {
+		t.Fatalf("label after setting the address:\n%s", page)
+	}
 }
 
 func TestReportAProblemByQRCode(t *testing.T) {

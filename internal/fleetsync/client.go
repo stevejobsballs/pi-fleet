@@ -452,6 +452,9 @@ func (c *Client) Sync(ctx context.Context) (Report, error) {
 	if err := c.checkVersion(ctx, hello); err != nil {
 		return rep, err
 	}
+	if err := c.Store.SetConfig(ctx, ConfigReportURL, hello.ReportURL); err != nil {
+		return rep, err
+	}
 	if hello.Status != "active" && !(hello.Wipe && hello.KeepUnsynced) {
 		if hello.Wipe {
 			return rep, c.wipe()

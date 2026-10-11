@@ -194,6 +194,8 @@ type HelloResponse struct {
 	MinVersion      string `json:"min_version,omitempty"`
 	NextVersion     string `json:"next_version,omitempty"`
 	NextVersionFrom string `json:"next_version_from,omitempty"`
+	// ReportURL is the master's address as phones reach it ("" if not set).
+	ReportURL string `json:"report_url,omitempty"`
 }
 
 // EventsRequest pushes a contiguous batch of the node's own events.
