@@ -39,8 +39,9 @@ func listAssets(ctx context.Context, q domain.Querier, search string) ([]assetRo
 			a.is_reference_standard, a.master_id, coalesce((SELECT k.tag FROM assets k WHERE k.id = a.merged_into), '')
 		FROM assets a JOIN sites s ON s.id = a.site_id JOIN locations l ON l.id = a.location_id
 		WHERE CASE WHEN ? = '' THEN a.merged_into = ''
-			ELSE a.tag LIKE ? OR a.manufacturer LIKE ? OR a.model LIKE ? OR a.serial LIKE ? OR l.name LIKE ? OR a.master_id LIKE ? END
-		ORDER BY a.tag LIMIT 500`, search, like, like, like, like, like, like)
+			ELSE a.tag LIKE ? OR a.manufacturer LIKE ? OR a.model LIKE ? OR a.serial LIKE ? OR l.name LIKE ? OR a.master_id LIKE ?
+				OR s.code LIKE ? OR s.name LIKE ? END
+		ORDER BY a.tag LIMIT 500`, search, like, like, like, like, like, like, like, like)
 	return scanAll(rows, err, func(r *sql.Rows) (assetRow, error) {
 		var a assetRow
 		err := r.Scan(&a.ID, &a.Tag, &a.Manufacturer, &a.Model, &a.Serial, &a.Status, &a.Site, &a.Location, &a.NextDue, &a.Reference,
@@ -52,7 +53,9 @@ func listAssets(ctx context.Context, q domain.Querier, search string) ([]assetRo
 type option struct{ ID, Label string }
 
 func locationOptions(ctx context.Context, q domain.Querier) ([]option, error) {
-	rows, err := q.QueryContext(ctx, `SELECT l.id, s.code || ' · ' || l.name FROM locations l JOIN sites s ON s.id = l.site_id ORDER BY s.code, l.name`)
+	// Rejected locations and the Unallocated holding place aren't offered.
+	rows, err := q.QueryContext(ctx, `SELECT l.id, s.code || ' · ' || l.name || CASE WHEN l.status = 'pending' THEN ' (awaiting approval)' ELSE '' END
+		FROM locations l JOIN sites s ON s.id = l.site_id WHERE l.status != 'rejected' AND l.id != ? ORDER BY s.code, l.name`, domain.UnallocatedLocationID)
 	return scanAll(rows, err, func(r *sql.Rows) (option, error) {
 		var o option
 		return o, r.Scan(&o.ID, &o.Label)
@@ -60,7 +63,7 @@ func locationOptions(ctx context.Context, q domain.Querier) ([]option, error) {
 }
 
 func siteOptions(ctx context.Context, q domain.Querier) ([]option, error) {
-	rows, err := q.QueryContext(ctx, `SELECT id, code || ' · ' || name FROM sites ORDER BY code`)
+	rows, err := q.QueryContext(ctx, `SELECT id, code || ' · ' || name FROM sites WHERE id != ? ORDER BY code`, domain.UnallocatedSiteID)
 	return scanAll(rows, err, func(r *sql.Rows) (option, error) {
 		var o option
 		return o, r.Scan(&o.ID, &o.Label)
@@ -315,7 +318,7 @@ type siteRow struct {
 }
 
 func listSites(ctx context.Context, q domain.Querier) ([]siteRow, error) {
-	rows, err := q.QueryContext(ctx, `SELECT id, code, name, timezone FROM sites ORDER BY code`)
+	rows, err := q.QueryContext(ctx, `SELECT id, code, name, timezone FROM sites WHERE id != ? ORDER BY code`, domain.UnallocatedSiteID)
 	sites, err := scanAll(rows, err, func(r *sql.Rows) (siteRow, error) {
 		var s siteRow
 		return s, r.Scan(&s.ID, &s.Code, &s.Name, &s.Timezone)
@@ -324,7 +327,8 @@ func listSites(ctx context.Context, q domain.Querier) ([]siteRow, error) {
 		return nil, err
 	}
 	for i := range sites {
-		rows, err := q.QueryContext(ctx, `SELECT id, name || ' (' || kind || ')' FROM locations WHERE site_id = ? ORDER BY name`, sites[i].ID)
+		rows, err := q.QueryContext(ctx, `SELECT id, name || ' (' || kind || ')' || CASE WHEN status = 'pending' THEN ' · awaiting approval' ELSE '' END
+			FROM locations WHERE site_id = ? AND status != 'rejected' ORDER BY name`, sites[i].ID)
 		if sites[i].Locations, err = scanAll(rows, err, func(r *sql.Rows) (option, error) {
 			var o option
 			return o, r.Scan(&o.ID, &o.Label)

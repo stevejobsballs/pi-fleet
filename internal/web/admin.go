@@ -222,12 +222,34 @@ func (s *Server) userUnlock(w http.ResponseWriter, r *http.Request, sess *sessio
 
 // --- sites ---
 
+type sitesData struct {
+	Pending []domain.ProposedLocation
+	Sites   []siteRow
+}
+
 func (s *Server) siteList(w http.ResponseWriter, r *http.Request, sess *session) error {
-	sites, err := listSites(r.Context(), s.App.Store.DB())
-	if err != nil {
+	ctx, q := r.Context(), s.App.Store.DB()
+	var d sitesData
+	var err error
+	if d.Pending, err = domain.PendingLocations(ctx, q); err != nil {
 		return err
 	}
-	return s.render(w, r, sess, "sites", "Sites and locations", sites)
+	if d.Sites, err = listSites(ctx, q); err != nil {
+		return err
+	}
+	return s.render(w, r, sess, "sites", "Sites and locations", d)
+}
+
+// locationReview approves or rejects a location an employee proposed.
+func (s *Server) locationReview(w http.ResponseWriter, r *http.Request, sess *session) error {
+	approve := r.PostFormValue("decision") == "approve"
+	if err := s.App.ReviewLocation(r.Context(), s.actor(sess), r.PathValue("id"), approve, strings.TrimSpace(r.PostFormValue("note"))); err != nil {
+		return s.failed(w, r, sess, "/admin/sites#review", err)
+	}
+	if approve {
+		return s.done(w, r, sess, "/admin/sites#review", "Location approved.")
+	}
+	return s.done(w, r, sess, "/admin/sites#review", "Location rejected. Its equipment is now at the Unallocated site.")
 }
 
 func (s *Server) siteCreate(w http.ResponseWriter, r *http.Request, sess *session) error {

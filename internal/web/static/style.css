@@ -86,6 +86,15 @@ button.danger:hover { background: var(--bad); color: #fff; }
 button.link { background: none; border: none; color: var(--accent); padding: 0; font-weight: 400; text-decoration: underline; text-underline-offset: 2px; }
 button.link:hover { background: none; color: var(--accent-hover); }
 details { margin: .5rem 0; }
+/* A pop-up panel (the popover attribute: no script needed). */
+.popup { max-width: 34rem; width: calc(100% - 2rem); max-height: calc(100% - 2rem); overflow: auto; padding: 1rem 1.25rem;
+  color: var(--fg); background: var(--panel); border: 1px solid var(--line-strong); border-radius: var(--radius); }
+.popup:popover-open { display: grid; gap: .75rem; }
+.popup::backdrop { background: rgb(0 0 0 / .35); }
+.popup h2 { margin: 0; }
+dl.details { display: grid; grid-template-columns: max-content 1fr; gap: .2rem .9rem; margin: .5rem 0; }
+dl.details dt { color: var(--muted); font-size: 13px; font-weight: 600; }
+dl.details dd { margin: 0; }
 summary { cursor: pointer; color: var(--accent); font-weight: 600; font-size: 14px; }
 .actions { display: flex; flex-wrap: wrap; gap: .6rem; align-items: end; padding: .75rem; margin-bottom: 1rem;
   background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }

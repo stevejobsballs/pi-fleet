@@ -1,15 +1,42 @@
 {{define "content"}}
-<form method="post" action="/assets" class="narrow">
+{{$f := .Data.F}}
+<form method="post" action="/assets" class="narrow" enctype="multipart/form-data">
   {{template "csrf" .CSRF}}
-  <label>Asset tag (as on the label) <input name="tag" required></label>
-  <label>Location <select name="location" required>{{range .Data}}<option value="{{.ID}}">{{.Label}}</option>{{end}}</select></label>
-  <label>Manufacturer <input name="manufacturer" required></label>
-  <label>Model <input name="model" required></label>
-  <label>Serial number <input name="serial"></label>
-  <label>MasterID <input name="master_id" maxlength="64"></label>
+  {{with .Data.Error}}<p class="error" role="alert">{{.}}</p>{{end}}
+  {{with .Data.Proposed}}<p class="flash" role="status">{{.}}</p>{{end}}
+  <label>Asset tag (as on the label) <input name="tag" value="{{$f.Get "tag"}}" required></label>
+  <label>Location <select name="location" required>{{range .Data.Locations}}<option value="{{.ID}}"{{if eq .ID ($f.Get "location")}} selected{{end}}>{{.Label}}</option>{{end}}</select></label>
+  <p class="hint">Not in the list? <button type="button" class="link" popovertarget="new-location">Submit new location for review</button></p>
+  <div id="new-location" popover class="popup" role="dialog" aria-labelledby="new-location-title">
+    <h2 id="new-location-title">Submit a new location for review</h2>
+    <p class="hint">A super user reviews it. You can register equipment there straight away. If the location isn't approved, its equipment moves to the Unallocated site, where it can still be found.</p>
+    {{with .Data.LocError}}<p class="error" role="alert">{{.}}</p>{{end}}
+    <label>Site <select name="loc_site">{{range .Data.Sites}}<option value="{{.ID}}"{{if eq .ID ($f.Get "loc_site")}} selected{{end}}>{{.Label}}</option>{{end}}</select></label>
+    <label>Location name <input name="loc_name" value="{{$f.Get "loc_name"}}" placeholder="Ultrasound room 3"></label>
+    <label>Kind <select name="loc_kind">{{range .Data.Kinds}}<option{{if eq . ($f.Get "loc_kind")}} selected{{end}}>{{.}}</option>{{end}}</select></label>
+    <label>Building <input name="loc_building" value="{{$f.Get "loc_building"}}"></label>
+    <label>Floor <input name="loc_floor" value="{{$f.Get "loc_floor"}}"></label>
+    <label>Room number <input name="loc_room" value="{{$f.Get "loc_room"}}"></label>
+    <label>Department <input name="loc_department" value="{{$f.Get "loc_department"}}"></label>
+    <label>Contact person there <input name="loc_contact" value="{{$f.Get "loc_contact"}}"></label>
+    <label>Contact phone <input name="loc_phone" value="{{$f.Get "loc_phone"}}" type="tel"></label>
+    <label>Directions <textarea name="loc_directions" rows="2" placeholder="Past the nurses' station, second door on the left">{{$f.Get "loc_directions"}}</textarea></label>
+    <p><button formaction="/assets/new/location" formnovalidate>Submit for review</button>
+      <button type="button" class="link" popovertarget="new-location" popovertargetaction="hide">Cancel</button></p>
+  </div>
+  <label>Manufacturer <input name="manufacturer" value="{{$f.Get "manufacturer"}}" required></label>
+  <label>Model <input name="model" value="{{$f.Get "model"}}" required></label>
+  <label>Serial number <input name="serial" value="{{$f.Get "serial"}}"></label>
+  <label>MasterID <input name="master_id" value="{{$f.Get "master_id"}}" maxlength="64"></label>
   <p class="hint">Records with the same MasterID are treated as the same equipment and can be merged. Leave it empty if the equipment has none.</p>
-  <label>Risk class <select name="risk_class"><option value="">not set</option><option>low</option><option>medium</option><option>high</option></select></label>
-  <label class="check"><input type="checkbox" name="reference" value="yes"> This is a reference standard used to calibrate other equipment</label>
+  <label>Risk class <select name="risk_class"><option value="">not set</option>{{range .Data.RiskClasses}}<option{{if eq . ($f.Get "risk_class")}} selected{{end}}>{{.}}</option>{{end}}</select></label>
+  <label class="check"><input type="checkbox" name="reference" value="yes"{{if eq ($f.Get "reference") "yes"}} checked{{end}}> This is a reference standard used to calibrate other equipment</label>
+  <fieldset><legend>Photos and documents (optional)</legend>
+    <label>Photo of the equipment <input type="file" name="photo_equipment" accept="image/jpeg,image/png"></label>
+    <label>Photo of the dataplate <input type="file" name="photo_dataplate" accept="image/jpeg,image/png"></label>
+    <label>Other files, such as manuals or certificates <input type="file" name="files" multiple accept="image/jpeg,image/png,application/pdf"></label>
+    <p class="hint">JPEG, PNG or PDF, up to 10 MiB each and {{.Data.MaxFiles}} files in all. Location and camera details are removed from photos. Choose files last: submitting a new location clears them.</p>
+  </fieldset>
   <button>Register</button>
 </form>
 {{end}}

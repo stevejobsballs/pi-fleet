@@ -72,6 +72,19 @@ func (e *env) seedEverything() {
 	kiosk, _, err := e.app.CreateKiosk(e.ctx, e.super, e.site, "nyc-shop")
 	must(err)
 	must(e.app.AddKioskMember(e.ctx, e.super, kiosk, tess.ID))
+	// Locations proposed while registering equipment: one waiting for
+	// review, one rejected (its equipment at the Unallocated site).
+	tessActor := app.Actor{UserID: tess.ID, SessionID: "t"}
+	propose := func(name, tag string) string {
+		loc, err := e.app.ProposeLocation(e.ctx, tessActor, domain.LocationProposed{SiteID: e.site, Name: name, Kind: "room",
+			Details: domain.LocationDetails{Building: "East", Floor: "2", Directions: "Past the lifts"}})
+		must(err)
+		_, err = e.app.RegisterAsset(e.ctx, tessActor, domain.AssetRegistered{Tag: tag, LocationID: loc, Manufacturer: "GE", Model: "Logiq"})
+		must(err)
+		return loc
+	}
+	propose("Ultrasound 3", "US-1")
+	must(e.app.ReviewLocation(e.ctx, e.super, propose("Closet B", "US-2"), false, "not a clinical area"))
 }
 
 var hrefRE = regexp.MustCompile(`<a\b[^>]*\bhref="([^"]*)"`)

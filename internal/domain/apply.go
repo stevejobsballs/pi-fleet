@@ -104,6 +104,10 @@ func (p *Projector) Apply(ctx context.Context, tx *sql.Tx, e *event.Event) error
 		return ap.siteCreated(pl)
 	case *LocationCreated:
 		return ap.locationCreated(pl)
+	case *LocationProposed:
+		return ap.locationProposed(pl)
+	case *LocationReviewed:
+		return ap.locationReviewed(pl)
 	case *UserCreated:
 		return ap.userCreated(pl)
 	case *UserRoleChanged:
@@ -377,6 +381,9 @@ func (ap *applier) siteCreated(p *SiteCreated) error {
 	if _, err := time.LoadLocation(p.Timezone); err != nil || p.Timezone == "" || p.Timezone == "Local" {
 		return invalid("unknown time zone %q", p.Timezone)
 	}
+	if p.Code == UnallocatedSiteCode {
+		return invalid("site code %s is kept for the Unallocated site", p.Code)
+	}
 	if exists, err := ap.exists(`SELECT 1 FROM sites WHERE code = ?`, p.Code); err != nil || exists {
 		return orConflict(err, "site code %s already exists", p.Code)
 	}
@@ -393,6 +400,9 @@ func (ap *applier) locationCreated(p *LocationCreated) error {
 	}
 	if blank(p.Name) || blank(p.Kind) {
 		return invalid("location name and kind are required")
+	}
+	if p.SiteID == UnallocatedSiteID {
+		return invalid("locations can't be added to the Unallocated site")
 	}
 	if ok, err := ap.exists(`SELECT 1 FROM sites WHERE id = ?`, p.SiteID); err != nil || !ok {
 		return orInvalid(err, "site %s not found", p.SiteID)
@@ -594,11 +604,7 @@ func (ap *applier) assetRegistered(p *AssetRegistered) error {
 	if blank(p.Tag) || blank(p.Manufacturer) || blank(p.Model) {
 		return invalid("asset tag, manufacturer and model are required")
 	}
-	var siteID string
-	err := ap.tx.QueryRowContext(ap.ctx, `SELECT site_id FROM locations WHERE id = ?`, p.LocationID).Scan(&siteID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return invalid("location %s not found", p.LocationID)
-	}
+	locID, siteID, err := ap.placeAt(p.LocationID)
 	if err != nil {
 		return err
 	}
@@ -618,7 +624,7 @@ func (ap *applier) assetRegistered(p *AssetRegistered) error {
 	return ap.exec(`INSERT INTO assets (id, tag, site_id, location_id, manufacturer, model, serial, status,
 			risk_class, is_reference_standard, custom_fields, field_versions, version, last_event_id, master_id)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
-		ap.e.EntityID, p.Tag, siteID, p.LocationID, p.Manufacturer, p.Model, p.Serial, AssetInService,
+		ap.e.EntityID, p.Tag, siteID, locID, p.Manufacturer, p.Model, p.Serial, AssetInService,
 		p.RiskClass, p.IsReferenceStandard, string(custom), string(fv), ap.e.EventID, p.MasterID)
 }
 
@@ -730,15 +736,11 @@ func (ap *applier) assetRelocated(p *AssetRelocated) error {
 	if stale := ap.staleFields(a, []string{"location"}); len(stale) > 0 {
 		return store.Reject(FlagStaleBase, "location changed since version %d", ap.e.BaseVersion)
 	}
-	var siteID string
-	err = ap.tx.QueryRowContext(ap.ctx, `SELECT site_id FROM locations WHERE id = ?`, p.LocationID).Scan(&siteID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return invalid("location %s not found", p.LocationID)
-	}
+	locID, siteID, err := ap.placeAt(p.LocationID)
 	if err != nil {
 		return err
 	}
-	return ap.bumpAsset(a, []string{"location"}, `location_id = ?, site_id = ?`, p.LocationID, siteID)
+	return ap.bumpAsset(a, []string{"location"}, `location_id = ?, site_id = ?`, locID, siteID)
 }
 
 func (ap *applier) assetStatusChanged(p *AssetStatusChanged) error {

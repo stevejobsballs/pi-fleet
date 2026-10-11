@@ -1,5 +1,16 @@
 {{define "content"}}
-{{range .Data}}<section><h2>{{.Code}} · {{.Name}}</h2><p>{{.Timezone}}</p>
+{{if .Data.Pending}}<section id="review"><h2>New locations awaiting review</h2>
+<p class="hint">Proposed by people registering equipment. Equipment can already be registered there. Rejected, a location's equipment moves to the Unallocated site (search for “Unallocated” under Equipment).</p>
+{{range .Data.Pending}}<fieldset><legend>{{.Site}} · {{.Name}} ({{.Kind}})</legend>
+  <p>Proposed by {{.ProposedBy}}{{with .ProposedAt}}, {{.}}{{end}}</p>
+  {{with .Details}}<dl class="details">{{with .Building}}<dt>Building</dt><dd>{{.}}</dd>{{end}}{{with .Floor}}<dt>Floor</dt><dd>{{.}}</dd>{{end}}{{with .Room}}<dt>Room</dt><dd>{{.}}</dd>{{end}}{{with .Department}}<dt>Department</dt><dd>{{.}}</dd>{{end}}{{with .Contact}}<dt>Contact</dt><dd>{{.}}</dd>{{end}}{{with .Phone}}<dt>Phone</dt><dd>{{.}}</dd>{{end}}{{with .Directions}}<dt>Directions</dt><dd>{{.}}</dd>{{end}}</dl>{{end}}
+  <p>{{with .Equipment}}Equipment registered there: {{range $i, $e := .}}{{if $i}}, {{end}}{{$e}}{{end}}{{else}}No equipment registered there yet.{{end}}</p>
+  <form method="post" action="/admin/locations/{{.ID}}/review" class="inline">{{template "csrf" $.CSRF}}<input type="hidden" name="decision" value="approve"><button>Approve</button></form>
+  <form method="post" action="/admin/locations/{{.ID}}/review" class="inline">{{template "csrf" $.CSRF}}<input type="hidden" name="decision" value="reject">
+    <label>Reason (the proposer sees it) <input name="note" required></label><button class="danger">Reject</button></form>
+</fieldset>{{end}}
+</section>{{end}}
+{{range .Data.Sites}}<section><h2>{{.Code}} · {{.Name}}</h2><p>{{.Timezone}}</p>
 <ul>{{range .Locations}}<li>{{.Label}}</li>{{else}}<li>No locations.</li>{{end}}</ul>
 <form method="post" action="/admin/locations" class="inline">{{template "csrf" $.CSRF}}<input type="hidden" name="site" value="{{.ID}}">
   <label>Location <input name="name" required></label><label>Kind <input name="kind" value="room" required></label><button>Add location</button></form>

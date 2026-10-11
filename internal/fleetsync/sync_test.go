@@ -948,7 +948,7 @@ func TestTooOldPiCannotSync(t *testing.T) {
 		t.Fatal("central took records from a too-old Pi")
 	}
 	// Updated, it syncs and the warning goes.
-	tess.client.Version = "v0.6.4"
+	tess.client.Version = MinNodeVersion
 	if r := tess.sync(); r.Pushed != 1 {
 		t.Fatalf("sync after update = %+v", r)
 	}
@@ -960,19 +960,19 @@ func TestTooOldPiCannotSync(t *testing.T) {
 func TestRequiredVersionWithGracePeriod(t *testing.T) {
 	f := newFleet(t)
 	tess := f.enrol("tess", domain.RoleUser)
-	tess.client.Version = "v0.6.4"
-	if err := RequireVersion(f.ctx, f.app.Store, "v0.8.0", f.now, "v0.7.0"); err == nil {
+	tess.client.Version = "v0.7.0"
+	if err := RequireVersion(f.ctx, f.app.Store, "v0.8.0", f.now, "v0.7.2"); err == nil {
 		t.Fatal("required a version newer than the master")
 	}
-	if err := RequireVersion(f.ctx, f.app.Store, "latest", f.now, "v0.7.0"); err == nil {
+	if err := RequireVersion(f.ctx, f.app.Store, "latest", f.now, "v0.7.2"); err == nil {
 		t.Fatal("accepted a bad version")
 	}
 	from := f.now.Add(7 * 24 * time.Hour)
-	f.must(RequireVersion(f.ctx, f.app.Store, "v0.7.0", from, "v0.7.0"))
+	f.must(RequireVersion(f.ctx, f.app.Store, "v0.7.2", from, "v0.7.2"))
 
 	// During the grace period: syncs, and is told the date.
 	tess.sync()
-	if v, _ := tess.app.Store.Config(f.ctx, ConfigUpdateDue); v != "v0.7.0 "+from.UTC().Format(time.RFC3339) {
+	if v, _ := tess.app.Store.Config(f.ctx, ConfigUpdateDue); v != "v0.7.2 "+from.UTC().Format(time.RFC3339) {
 		t.Fatalf("update_due = %q", v)
 	}
 	// After it: blocked until updated.
@@ -980,13 +980,13 @@ func TestRequiredVersionWithGracePeriod(t *testing.T) {
 	if _, err := tess.client.Sync(f.ctx); !errors.Is(err, ErrTooOld) {
 		t.Fatalf("err = %v", err)
 	}
-	if !NodeRequirement(f.ctx, f.app.Store, f.now).Outdated("v0.6.4") {
+	if !NodeRequirement(f.ctx, f.app.Store, f.now).Outdated("v0.7.0") {
 		t.Fatal("not shown as outdated")
 	}
-	tess.client.Version = "v0.7.0"
+	tess.client.Version = "v0.7.2"
 	tess.sync()
 	// Cleared: back to the built-in minimum.
-	f.must(RequireVersion(f.ctx, f.app.Store, "", time.Time{}, "v0.7.0"))
+	f.must(RequireVersion(f.ctx, f.app.Store, "", time.Time{}, "v0.7.2"))
 	if r := NodeRequirement(f.ctx, f.app.Store, f.now); r.Min != MinNodeVersion || r.Next != "" {
 		t.Fatalf("requirement = %+v", r)
 	}
@@ -995,5 +995,42 @@ func TestRequiredVersionWithGracePeriod(t *testing.T) {
 func TestDevelopmentBuildsAreNeverBlocked(t *testing.T) {
 	if tooOld("dev", "v9.0.0") || tooOld("test", "v9.0.0") || tooOld("v1.0.0", "") || !tooOld("v0.3.9", "v0.4.0") || tooOld("v0.10.0", "v0.4.0") {
 		t.Fatal("tooOld")
+	}
+}
+
+// An employee proposes a location on their Pi and registers equipment
+// there, offline; central gets both, and a rejection there moves the
+// equipment to Unallocated.
+func TestLocationProposedOnAPi(t *testing.T) {
+	f := newFleet(t)
+	tess := f.enrol("tess", domain.RoleUser)
+	loc, err := tess.app.ProposeLocation(f.ctx, tess.user, domain.LocationProposed{SiteID: f.site, Name: "Cath lab 2", Kind: "room",
+		Details: domain.LocationDetails{Building: "North", Floor: "2"}})
+	f.must(err)
+	asset, err := tess.app.RegisterAsset(f.ctx, tess.user, domain.AssetRegistered{Tag: "CATH-1", LocationID: loc, Manufacturer: "Philips", Model: "Azurion"})
+	f.must(err)
+	if r := tess.sync(); r.Pushed != 2 || r.Flagged != 0 {
+		t.Fatalf("sync = %+v", r)
+	}
+	var status string
+	f.must(tess.app.Store.DB().QueryRow(`SELECT status FROM locations WHERE id = ?`, loc).Scan(&status))
+	if status != domain.LocationPending {
+		t.Fatalf("on the Pi after sync: %s", status)
+	}
+	pending, err := domain.PendingLocations(f.ctx, f.app.Store.DB())
+	f.must(err)
+	if len(pending) != 1 || pending[0].Details.Building != "North" || len(pending[0].Equipment) != 1 {
+		t.Fatalf("central's pending = %+v", pending)
+	}
+	f.must(f.app.ReviewLocation(f.ctx, f.super, loc, false, "duplicate of Cath lab B"))
+	var site string
+	f.must(f.app.Store.DB().QueryRow(`SELECT site_id FROM assets WHERE id = ?`, asset).Scan(&site))
+	if site != domain.UnallocatedSiteID {
+		t.Fatalf("central: %s", site)
+	}
+	tess.sync()
+	f.must(tess.app.Store.DB().QueryRow(`SELECT status FROM locations WHERE id = ?`, loc).Scan(&status))
+	if status != domain.LocationRejected {
+		t.Fatalf("on the Pi after the rejection: %s", status)
 	}
 }

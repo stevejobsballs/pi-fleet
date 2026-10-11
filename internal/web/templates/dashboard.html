@@ -1,4 +1,5 @@
 {{define "content"}}
+{{if and .IsSuper .Data.Locations}}<p class="flash warn" role="status"><a href="/admin/sites#review">{{.Data.Locations}} new location{{if ne .Data.Locations 1}}s{{end}} awaiting your review</a></p>{{end}}
 <section>
   <h2>My work</h2>
   {{template "worows" .Data.Mine}}

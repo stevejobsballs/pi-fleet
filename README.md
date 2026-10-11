@@ -11,7 +11,9 @@ equipment, work orders, calibrations, PM schedules and inventory;
 activation and sync between employee Pis and the master Pi; Part 11-style
 electronic signatures; the web interface; verified, encrypted backups with
 off-site USB rotation; signed releases with automatic rollback;
-attachments (certificates and photos); and kiosk mode for shared Pis.
+attachments (certificates and photos); kiosk mode for shared Pis; and
+locations proposed while registering equipment, which a super user approves
+or rejects (rejected, their equipment moves to the *Unallocated* site).
 Installation and day-to-day operation: [docs/OPERATIONS.md](docs/OPERATIONS.md).
 
 ## Install

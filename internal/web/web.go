@@ -135,6 +135,7 @@ func (s *Server) Handler() (http.Handler, error) {
 	mux.Handle("GET /assets", user(s.assetList))
 	mux.Handle("GET /assets/new", user(s.assetNew))
 	mux.Handle("POST /assets", user(s.assetCreate))
+	mux.Handle("POST /assets/new/location", user(s.assetProposeLocation))
 	mux.Handle("GET /assets/merge", mid(s.mergePage))
 	mux.Handle("POST /assets/merge", mid(s.mergeDo))
 	mux.Handle("GET /assets/{id}", user(s.assetView))
@@ -195,6 +196,7 @@ func (s *Server) Handler() (http.Handler, error) {
 	mux.Handle("GET /admin/sites", super(s.siteList))
 	mux.Handle("POST /admin/sites", super(s.siteCreate))
 	mux.Handle("POST /admin/locations", super(s.locationCreate))
+	mux.Handle("POST /admin/locations/{id}/review", super(s.locationReview))
 	if s.Role == "central" {
 		mux.Handle("GET /admin/nodes", super(s.nodeList))
 		mux.Handle("POST /admin/nodes/{id}/confirm", super(s.nodeConfirm))
@@ -372,7 +374,7 @@ func (s *Server) auth(minRole string, allowPasswordOnly bool, h handler) http.Ha
 		if r.Method == http.MethodPost {
 			r.Body = http.MaxBytesReader(w, r.Body, maxUpload)
 			if err := r.ParseMultipartForm(1 << 20); err != nil && !errors.Is(err, http.ErrNotMultipart) {
-				http.Error(w, "form too large or malformed (attachments are limited to 10 MiB)", http.StatusRequestEntityTooLarge)
+				http.Error(w, "form too large or malformed (each file can be at most 10 MiB)", http.StatusRequestEntityTooLarge)
 				return
 			}
 			if err := r.ParseForm(); err != nil {

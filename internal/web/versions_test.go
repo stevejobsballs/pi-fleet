@@ -18,16 +18,16 @@ func TestVersionsOnThePisPageAndOnAnOldPi(t *testing.T) {
 	admin := e.browser()
 	admin.login("admin", "tumbleweed-gasket-42")
 	_, _, page := admin.get("/admin/nodes")
-	for _, want := range []string{"v0.3.0", "needs updating", "This master Pi runs pi-fleet v0.7.0", "need " + fleetsync.MinNodeVersion + " or newer"} {
+	for _, want := range []string{"v0.3.0", "needs updating", "This master Pi runs pi-fleet v0.7.2", "need " + fleetsync.MinNodeVersion + " or newer"} {
 		if !strings.Contains(page, want) {
 			t.Errorf("Pis page lacks %q", want)
 		}
 	}
-	if _, page = admin.post("/admin/nodes/require", url.Values{"version": {"v0.9.0"}, "from": {"2026-10-14"}}); !strings.Contains(page, "Not saved: the master Pi runs v0.7.0") {
+	if _, page = admin.post("/admin/nodes/require", url.Values{"version": {"v0.9.0"}, "from": {"2026-10-14"}}); !strings.Contains(page, "Not saved: the master Pi runs v0.7.2") {
 		t.Fatalf("required a version newer than the master:\n%s", page)
 	}
-	if _, page = admin.post("/admin/nodes/require", url.Values{"version": {"v0.7.0"}, "from": {"2026-10-14"}}); !strings.Contains(page, "Employee Pis need pi-fleet v0.7.0 from 14 October 2026") ||
-		!strings.Contains(page, "and v0.7.0 or newer from 14 October 2026") {
+	if _, page = admin.post("/admin/nodes/require", url.Values{"version": {"v0.7.2"}, "from": {"2026-10-14"}}); !strings.Contains(page, "Employee Pis need pi-fleet v0.7.2 from 14 October 2026") ||
+		!strings.Contains(page, "and v0.7.2 or newer from 14 October 2026") {
 		t.Fatalf("requirement:\n%s", page)
 	}
 	if _, page = admin.post("/admin/nodes/require", url.Values{"clear": {"yes"}}); !strings.Contains(page, "only the built-in minimum") {
@@ -39,11 +39,11 @@ func TestVersionsOnThePisPageAndOnAnOldPi(t *testing.T) {
 	pi.srv = piSrv
 	b := pi.browser()
 	b.login("tess", "copper-ladder-sunrise")
-	piStore.SetConfig(e.ctx, fleetsync.ConfigUpdateDue, "v0.7.0 2026-10-14T06:00:00Z")
-	if _, _, page = b.get("/"); !strings.Contains(page, "Please update this Pi to pi-fleet v0.7.0 before 14 October 2026") {
+	piStore.SetConfig(e.ctx, fleetsync.ConfigUpdateDue, "v0.7.2 2026-10-14T06:00:00Z")
+	if _, _, page = b.get("/"); !strings.Contains(page, "Please update this Pi to pi-fleet v0.7.2 before 14 October 2026") {
 		t.Fatalf("no reminder:\n%s", page)
 	}
-	piStore.SetConfig(e.ctx, fleetsync.ConfigUpdateNeeded, "v0.7.0")
+	piStore.SetConfig(e.ctx, fleetsync.ConfigUpdateNeeded, "v0.7.2")
 	if _, _, page = b.get("/"); !strings.Contains(page, "This Pi needs updating.") || !strings.Contains(page, "Update-Pi") {
 		t.Fatalf("no banner:\n%s", page)
 	}

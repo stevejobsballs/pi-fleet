@@ -17,8 +17,10 @@ import (
 // (DESIGN.md §9.3). Raise it whenever a release changes what a Pi must
 // understand: snapshot tables or columns (a Pi refuses a snapshot with
 // columns it doesn't know), or event types and payload fields.
-// v0.4.0 added the assets' merge columns and work orders' opened_at.
-const MinNodeVersion = "v0.4.0"
+// v0.4.0 added the assets' merge columns and work orders' opened_at;
+// v0.7.0 locations' review columns and the location.proposed and
+// location.reviewed events.
+const MinNodeVersion = "v0.7.0"
 
 const (
 	// On the master Pi: a newer version a super user requires, and when.

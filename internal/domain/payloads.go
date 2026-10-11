@@ -418,6 +418,8 @@ var payloadTypes = map[string]struct {
 }{
 	TypeSiteCreated:            {EntitySite, func() any { return &SiteCreated{} }},
 	TypeLocationCreated:        {EntityLocation, func() any { return &LocationCreated{} }},
+	TypeLocationProposed:       {EntityLocation, func() any { return &LocationProposed{} }},
+	TypeLocationReviewed:       {EntityLocation, func() any { return &LocationReviewed{} }},
 	TypeUserCreated:            {EntityUser, func() any { return &UserCreated{} }},
 	TypeUserRoleChanged:        {EntityUser, func() any { return &UserRoleChanged{} }},
 	TypeUserDisabled:           {EntityUser, func() any { return &UserDisabled{} }},

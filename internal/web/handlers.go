@@ -4,7 +4,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -106,6 +108,7 @@ type dashboardData struct {
 	UsageDue   []usageRow
 	Unassigned int
 	Flags      int
+	Locations  int // proposed locations waiting for a super user
 }
 
 func (s *Server) dashboard(w http.ResponseWriter, r *http.Request, sess *session) error {
@@ -122,6 +125,7 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request, sess *session
 		return err
 	}
 	q.QueryRowContext(ctx, `SELECT count(*) FROM work_orders WHERE status = 'open'`).Scan(&d.Unassigned)
+	q.QueryRowContext(ctx, `SELECT count(*) FROM locations WHERE status = 'pending'`).Scan(&d.Locations)
 	q.QueryRowContext(ctx, `SELECT count(*) FROM event_flags f WHERE NOT EXISTS (SELECT 1 FROM flag_resolutions r WHERE r.event_id = f.event_id)`).Scan(&d.Flags)
 	return s.render(w, r, sess, "dashboard", "Today", d)
 }
@@ -142,25 +146,122 @@ func (s *Server) assetList(w http.ResponseWriter, r *http.Request, sess *session
 	return s.render(w, r, sess, "assets", "Equipment", assetListData{Search: q, Assets: rows})
 }
 
-func (s *Server) assetNew(w http.ResponseWriter, r *http.Request, sess *session) error {
-	locs, err := locationOptions(r.Context(), s.App.Store.DB())
-	if err != nil {
+type assetNewData struct {
+	Locations, Sites []option
+	Kinds            []string
+	RiskClasses      []string
+	MaxFiles         int
+	F                url.Values // what was typed, kept when the page comes back
+	Error, LocError  string
+	Proposed         string // a location just sent for review
+}
+
+var locationKinds = []string{"room", "department", "ward", "clinic", "workshop", "storage", "building", "area", "other"}
+
+func (s *Server) renderAssetNew(w http.ResponseWriter, r *http.Request, sess *session, d assetNewData) error {
+	ctx, q := r.Context(), s.App.Store.DB()
+	var err error
+	if d.Locations, err = locationOptions(ctx, q); err != nil {
 		return err
 	}
-	return s.render(w, r, sess, "asset_new", "Register equipment", locs)
+	if d.Sites, err = siteOptions(ctx, q); err != nil {
+		return err
+	}
+	if d.F == nil {
+		d.F = url.Values{}
+	}
+	d.Kinds, d.RiskClasses, d.MaxFiles = locationKinds, []string{"low", "medium", "high"}, maxFiles
+	return s.render(w, r, sess, "asset_new", "Register equipment", d)
+}
+
+func (s *Server) assetNew(w http.ResponseWriter, r *http.Request, sess *session) error {
+	return s.renderAssetNew(w, r, sess, assetNewData{})
+}
+
+// assetProposeLocation sends a new location for review from the
+// registration form, then shows the form again, as typed, with the new
+// location chosen.
+func (s *Server) assetProposeLocation(w http.ResponseWriter, r *http.Request, sess *session) error {
+	f := r.PostFormValue
+	d := assetNewData{F: r.PostForm}
+	id, err := s.App.ProposeLocation(r.Context(), s.actor(sess), domain.LocationProposed{
+		SiteID: f("loc_site"), Name: strings.TrimSpace(f("loc_name")), Kind: f("loc_kind"),
+		Details: domain.LocationDetails{Building: f("loc_building"), Floor: f("loc_floor"), Room: f("loc_room"),
+			Department: f("loc_department"), Contact: f("loc_contact"), Phone: f("loc_phone"), Directions: f("loc_directions")},
+	})
+	if err != nil {
+		msg := message(err)
+		if msg == "" {
+			return err
+		}
+		d.LocError = msg
+		d.Error = "The new location wasn't sent: " + msg + ". Open “Submit new location for review” to correct it."
+		return s.renderAssetNew(w, r, sess, d)
+	}
+	d.F = url.Values{}
+	for k, v := range r.PostForm {
+		if !strings.HasPrefix(k, "loc_") {
+			d.F[k] = v
+		}
+	}
+	d.F.Set("location", id)
+	d.Proposed = "“" + strings.TrimSpace(f("loc_name")) + "” was sent to a super user for review and is chosen below. Carry on registering the equipment."
+	return s.renderAssetNew(w, r, sess, d)
+}
+
+// registrationFiles are the registration form's file fields and how
+// each file is described.
+var registrationFiles = []struct{ field, description string }{
+	{"photo_equipment", "Photo of the equipment"},
+	{"photo_dataplate", "Photo of the dataplate"},
+	{"files", ""},
 }
 
 func (s *Server) assetCreate(w http.ResponseWriter, r *http.Request, sess *session) error {
 	f := r.PostFormValue
+	if n := countFiles(r); n > maxFiles {
+		return s.renderAssetNew(w, r, sess, assetNewData{F: r.PostForm, Error: fmt.Sprintf("Not saved: at most %d files can be attached at once (%d chosen).", maxFiles, n)})
+	}
 	id, err := s.App.RegisterAsset(r.Context(), s.actor(sess), domain.AssetRegistered{
 		Tag: strings.TrimSpace(f("tag")), LocationID: f("location"), Manufacturer: strings.TrimSpace(f("manufacturer")),
 		Model: strings.TrimSpace(f("model")), Serial: strings.TrimSpace(f("serial")), RiskClass: f("risk_class"),
 		IsReferenceStandard: f("reference") == "yes", MasterID: strings.TrimSpace(f("master_id")),
 	})
 	if err != nil {
-		return s.failed(w, r, sess, "/assets/new", err)
+		msg := message(err)
+		if msg == "" {
+			return err
+		}
+		return s.renderAssetNew(w, r, sess, assetNewData{F: r.PostForm, Error: "Not saved: " + msg})
+	}
+	var problems []string
+	if r.MultipartForm != nil {
+		for _, rf := range registrationFiles {
+			for _, h := range r.MultipartForm.File[rf.field] {
+				if err := s.attachFile(r, sess, id, h, rf.description); err != nil {
+					msg := message(err)
+					if msg == "" {
+						return err
+					}
+					problems = append(problems, h.Filename+" ("+msg+")")
+				}
+			}
+		}
+	}
+	if len(problems) > 0 {
+		return s.done(w, r, sess, "/assets/"+id, "Equipment registered, but not attached: "+strings.Join(problems, "; ")+". Add files below.")
 	}
 	return s.done(w, r, sess, "/assets/"+id, "Equipment registered.")
+}
+
+func countFiles(r *http.Request) int {
+	n := 0
+	if r.MultipartForm != nil {
+		for _, rf := range registrationFiles {
+			n += len(r.MultipartForm.File[rf.field])
+		}
+	}
+	return n
 }
 
 type assetData struct {
@@ -200,7 +301,7 @@ func (s *Server) loadAsset(r *http.Request, id string) (assetData, error) {
 	}
 	d := assetData{Asset: a, Statuses: []string{domain.AssetInService, domain.AssetOutOfService, domain.AssetMissing, domain.AssetRetired}}
 	q.QueryRowContext(ctx, `SELECT id, code, name, timezone FROM sites WHERE id = ?`, a.SiteID).Scan(&d.Site.ID, &d.Site.Code, &d.Site.Name, &d.Site.Timezone)
-	q.QueryRowContext(ctx, `SELECT name FROM locations WHERE id = ?`, a.LocationID).Scan(&d.Location)
+	q.QueryRowContext(ctx, `SELECT name || CASE WHEN status = 'pending' THEN ' (awaiting approval)' ELSE '' END FROM locations WHERE id = ?`, a.LocationID).Scan(&d.Location)
 	// The history of records merged into this one shows here too.
 	group, err := domain.AssetGroup(ctx, q, a.ID)
 	if err != nil {

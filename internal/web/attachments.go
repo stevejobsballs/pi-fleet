@@ -3,6 +3,7 @@ package web
 import (
 	"errors"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"strings"
@@ -11,8 +12,12 @@ import (
 	"pi-fleet/internal/domain"
 )
 
-// maxUpload bounds a form carrying one attachment.
-const maxUpload = blobs.MaxSize + 1<<20
+// maxFiles is how many files one form may carry (equipment registration
+// takes photos and documents together); maxUpload bounds such a form.
+const (
+	maxFiles  = 5
+	maxUpload = maxFiles*blobs.MaxSize + 1<<20
+)
 
 func (s *Server) attachmentUpload(targetType string) handler {
 	return func(w http.ResponseWriter, r *http.Request, sess *session) error {
@@ -21,27 +26,40 @@ func (s *Server) attachmentUpload(targetType string) handler {
 		if targetType == domain.EntityWorkOrder {
 			back = "/work-orders/" + id
 		}
-		f, hdr, err := r.FormFile("file")
+		_, hdr, err := r.FormFile("file")
 		if err != nil {
 			return s.done(w, r, sess, back, "Not saved: choose a file (JPEG, PNG or PDF, at most 10 MiB).")
 		}
-		defer f.Close()
-		data, err := io.ReadAll(io.LimitReader(f, blobs.MaxSize+1))
-		if err != nil {
-			return err
-		}
-		desc := strings.TrimSpace(r.PostFormValue("description"))
-		if err := s.phiCheck(r, desc, hdr.Filename); err != nil {
-			return s.failed(w, r, sess, back, err)
-		}
-		if _, err := s.App.AddAttachment(r.Context(), s.actor(sess), targetType, id, hdr.Filename, desc, data); err != nil {
-			if errors.Is(err, blobs.ErrType) || errors.Is(err, blobs.ErrTooLarge) || errors.Is(err, blobs.ErrMalformed) {
-				return s.done(w, r, sess, back, "Not saved: "+strings.TrimPrefix(err.Error(), "blobs: ")+".")
-			}
+		if err := s.attachTo(r, sess, targetType, id, hdr, strings.TrimSpace(r.PostFormValue("description"))); err != nil {
 			return s.failed(w, r, sess, back, err)
 		}
 		return s.done(w, r, sess, back, "File attached. Location and camera details were removed from photos.")
 	}
+}
+
+// attachFile attaches an uploaded file to an asset.
+func (s *Server) attachFile(r *http.Request, sess *session, assetID string, hdr *multipart.FileHeader, desc string) error {
+	return s.attachTo(r, sess, domain.EntityAsset, assetID, hdr, desc)
+}
+
+func (s *Server) attachTo(r *http.Request, sess *session, targetType, id string, hdr *multipart.FileHeader, desc string) error {
+	f, err := hdr.Open()
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	data, err := io.ReadAll(io.LimitReader(f, blobs.MaxSize+1))
+	if err != nil {
+		return err
+	}
+	if err := s.phiCheck(r, desc, hdr.Filename); err != nil {
+		return err
+	}
+	_, err = s.App.AddAttachment(r.Context(), s.actor(sess), targetType, id, hdr.Filename, desc, data)
+	if errors.Is(err, blobs.ErrType) || errors.Is(err, blobs.ErrTooLarge) || errors.Is(err, blobs.ErrMalformed) {
+		return userErr("%s", strings.TrimPrefix(err.Error(), "blobs: "))
+	}
+	return err
 }
 
 func attachmentBack(a domain.Attachment) string {

@@ -353,6 +353,24 @@ func (a *App) CreateLocation(ctx context.Context, actor Actor, siteID, parentID,
 	})
 }
 
+// ProposeLocation proposes a new location for a super user to review.
+// Equipment can be registered there straight away.
+func (a *App) ProposeLocation(ctx context.Context, actor Actor, p domain.LocationProposed) (string, error) {
+	id := newID()
+	return id, a.Store.Update(ctx, func(tx *store.Tx) error {
+		return a.emit(ctx, tx, actor, domain.TypeLocationProposed, domain.EntityLocation, id, 0, "", p)
+	})
+}
+
+// ReviewLocation approves or rejects a proposed location. Rejected, its
+// equipment moves to the Unallocated site.
+func (a *App) ReviewLocation(ctx context.Context, actor Actor, locationID string, approved bool, note string) error {
+	return a.Store.Update(ctx, func(tx *store.Tx) error {
+		return a.emit(ctx, tx, actor, domain.TypeLocationReviewed, domain.EntityLocation, locationID, 0, "",
+			domain.LocationReviewed{Approved: approved, Note: note})
+	})
+}
+
 // --- assets ---
 
 // RegisterAsset registers a piece of equipment.
