@@ -99,6 +99,12 @@ details { margin: .5rem 0; }
 .popup:popover-open { display: grid; gap: 1rem; }
 .popup::backdrop { background: rgb(0 0 0 / .35); }
 .popup h2 { margin: 0; }
+/* Sites inside sites, indented under their parent. */
+section.site.depth-1, section.site.depth-2, section.site.depth-3, section.site.depth-4 { border-left: 3px solid var(--line-strong); padding-left: 1rem; }
+section.site.depth-1 { margin-left: 1rem; }
+section.site.depth-2 { margin-left: 2rem; }
+section.site.depth-3 { margin-left: 3rem; }
+section.site.depth-4 { margin-left: 4rem; }
 dl.details { display: grid; grid-template-columns: max-content 1fr; gap: .2rem .9rem; margin: .5rem 0; }
 dl.details dt { color: var(--muted); font-size: 13px; font-weight: 600; }
 dl.details dd { margin: 0; }

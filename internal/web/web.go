@@ -195,6 +195,7 @@ func (s *Server) Handler() (http.Handler, error) {
 	mux.Handle("POST /admin/users/{id}/unlock", super(s.userUnlock))
 	mux.Handle("GET /admin/sites", super(s.siteList))
 	mux.Handle("POST /admin/sites", super(s.siteCreate))
+	mux.Handle("POST /admin/sites/{id}/move", super(s.siteMove))
 	mux.Handle("POST /admin/locations", super(s.locationCreate))
 	mux.Handle("POST /admin/locations/{id}/review", super(s.locationReview))
 	if s.Role == "central" {

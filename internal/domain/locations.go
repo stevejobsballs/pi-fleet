@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+	"time"
 )
 
 // Locations proposed by employees: while registering equipment, anyone can
@@ -157,8 +158,8 @@ func (ap *applier) moveToUnallocated(locationID string) error {
 
 // ensureUnallocated makes the Unallocated site and location if needed.
 func (ap *applier) ensureUnallocated() error {
-	if err := ap.exec(`INSERT OR IGNORE INTO sites (id, code, name, timezone, version, last_event_id) VALUES (?, ?, ?, 'UTC', 1, ?)`,
-		UnallocatedSiteID, UnallocatedSiteCode, UnallocatedName, ap.e.EventID); err != nil {
+	if err := ap.exec(`INSERT OR IGNORE INTO sites (id, code, name, timezone, path, lineage, version, last_event_id) VALUES (?, ?, ?, 'UTC', ?, ?, 1, ?)`,
+		UnallocatedSiteID, UnallocatedSiteCode, UnallocatedName, UnallocatedSiteCode, "/"+UnallocatedSiteID+"/", ap.e.EventID); err != nil {
 		return err
 	}
 	return ap.exec(`INSERT OR IGNORE INTO locations (id, site_id, parent_id, name, kind, status, version, last_event_id)
@@ -191,13 +192,14 @@ func (ap *applier) placeAt(locationID string) (locID, siteID string, err error) 
 type ProposedLocation struct {
 	ID, SiteID, Site, Name, Kind string
 	Details                      LocationDetails
-	ProposedBy, ProposedAt       string // username, RFC 3339
+	ProposedBy                   string // "Legal Name (username)"
+	ProposedAt                   time.Time
 	Equipment                    []string
 }
 
 // PendingLocations lists the locations waiting for review, oldest first.
 func PendingLocations(ctx context.Context, q Querier) ([]ProposedLocation, error) {
-	rows, err := q.QueryContext(ctx, `SELECT l.id, l.site_id, s.code || ' · ' || s.name, l.name, l.kind, l.details,
+	rows, err := q.QueryContext(ctx, `SELECT l.id, l.site_id, s.path || ' · ' || s.name, l.name, l.kind, l.details,
 			coalesce((SELECT u.legal_name || ' (' || u.username || ')' FROM users u WHERE u.id = l.proposed_by), l.proposed_by), l.proposed_at
 		FROM locations l JOIN sites s ON s.id = l.site_id WHERE l.status = ? ORDER BY l.proposed_at, l.id`, LocationPending)
 	if err != nil {
@@ -206,12 +208,13 @@ func PendingLocations(ctx context.Context, q Querier) ([]ProposedLocation, error
 	var out []ProposedLocation
 	for rows.Next() {
 		var p ProposedLocation
-		var details string
-		if err := rows.Scan(&p.ID, &p.SiteID, &p.Site, &p.Name, &p.Kind, &details, &p.ProposedBy, &p.ProposedAt); err != nil {
+		var details, at string
+		if err := rows.Scan(&p.ID, &p.SiteID, &p.Site, &p.Name, &p.Kind, &details, &p.ProposedBy, &at); err != nil {
 			rows.Close()
 			return nil, err
 		}
 		json.Unmarshal([]byte(details), &p.Details)
+		p.ProposedAt, _ = time.Parse(time.RFC3339, at)
 		out = append(out, p)
 	}
 	rows.Close()

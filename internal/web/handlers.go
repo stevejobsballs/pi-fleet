@@ -133,17 +133,22 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request, sess *session
 // --- assets ---
 
 type assetListData struct {
-	Search string
-	Assets []assetRow
+	Search, Site string
+	Sites        []option
+	Assets       []assetRow
 }
 
 func (s *Server) assetList(w http.ResponseWriter, r *http.Request, sess *session) error {
-	q := strings.TrimSpace(r.URL.Query().Get("q"))
-	rows, err := listAssets(r.Context(), s.App.Store.DB(), q)
-	if err != nil {
+	q, site := strings.TrimSpace(r.URL.Query().Get("q")), r.URL.Query().Get("site")
+	d := assetListData{Search: q, Site: site}
+	var err error
+	if d.Assets, err = listAssetsAt(r.Context(), s.App.Store.DB(), q, site); err != nil {
 		return err
 	}
-	return s.render(w, r, sess, "assets", "Equipment", assetListData{Search: q, Assets: rows})
+	if d.Sites, err = siteFilterOptions(r.Context(), s.App.Store.DB()); err != nil {
+		return err
+	}
+	return s.render(w, r, sess, "assets", "Equipment", d)
 }
 
 type assetNewData struct {
@@ -300,7 +305,7 @@ func (s *Server) loadAsset(r *http.Request, id string) (assetData, error) {
 		return assetData{}, err
 	}
 	d := assetData{Asset: a, Statuses: []string{domain.AssetInService, domain.AssetOutOfService, domain.AssetMissing, domain.AssetRetired}}
-	q.QueryRowContext(ctx, `SELECT id, code, name, timezone FROM sites WHERE id = ?`, a.SiteID).Scan(&d.Site.ID, &d.Site.Code, &d.Site.Name, &d.Site.Timezone)
+	q.QueryRowContext(ctx, `SELECT id, code, name, timezone, path FROM sites WHERE id = ?`, a.SiteID).Scan(&d.Site.ID, &d.Site.Code, &d.Site.Name, &d.Site.Timezone, &d.Site.Path)
 	q.QueryRowContext(ctx, `SELECT name || CASE WHEN status = 'pending' THEN ' (awaiting approval)' ELSE '' END FROM locations WHERE id = ?`, a.LocationID).Scan(&d.Location)
 	// The history of records merged into this one shows here too.
 	group, err := domain.AssetGroup(ctx, q, a.ID)

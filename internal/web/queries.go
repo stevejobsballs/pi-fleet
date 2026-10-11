@@ -33,15 +33,21 @@ type assetRow struct {
 }
 
 func listAssets(ctx context.Context, q domain.Querier, search string) ([]assetRow, error) {
+	return listAssetsAt(ctx, q, search, "")
+}
+
+// listAssetsAt lists equipment matching search (everything unmerged when
+// empty) at siteID and the sites inside it (anywhere when empty).
+func listAssetsAt(ctx context.Context, q domain.Querier, search, siteID string) ([]assetRow, error) {
 	like := "%" + search + "%"
-	rows, err := q.QueryContext(ctx, `SELECT a.id, a.tag, a.manufacturer, a.model, a.serial, a.status, s.code, l.name,
+	rows, err := q.QueryContext(ctx, `SELECT a.id, a.tag, a.manufacturer, a.model, a.serial, a.status, s.path, l.name,
 			coalesce((SELECT min(next_due) FROM pm_schedules p WHERE p.asset_id = a.id AND p.status = 'active'), ''),
 			a.is_reference_standard, a.master_id, coalesce((SELECT k.tag FROM assets k WHERE k.id = a.merged_into), '')
 		FROM assets a JOIN sites s ON s.id = a.site_id JOIN locations l ON l.id = a.location_id
-		WHERE CASE WHEN ? = '' THEN a.merged_into = ''
+		WHERE (? = '' OR `+domain.InSite("s")+`) AND CASE WHEN ? = '' THEN a.merged_into = ''
 			ELSE a.tag LIKE ? OR a.manufacturer LIKE ? OR a.model LIKE ? OR a.serial LIKE ? OR l.name LIKE ? OR a.master_id LIKE ?
-				OR s.code LIKE ? OR s.name LIKE ? END
-		ORDER BY a.tag LIMIT 500`, search, like, like, like, like, like, like, like, like)
+				OR s.path LIKE ? OR EXISTS (SELECT 1 FROM sites x WHERE s.lineage LIKE '%/' || x.id || '/%' AND x.name LIKE ?) END
+		ORDER BY a.tag LIMIT 500`, siteID, siteID, search, like, like, like, like, like, like, like, like)
 	return scanAll(rows, err, func(r *sql.Rows) (assetRow, error) {
 		var a assetRow
 		err := r.Scan(&a.ID, &a.Tag, &a.Manufacturer, &a.Model, &a.Serial, &a.Status, &a.Site, &a.Location, &a.NextDue, &a.Reference,
@@ -50,12 +56,22 @@ func listAssets(ctx context.Context, q domain.Querier, search string) ([]assetRo
 	})
 }
 
+// siteFilterOptions are every site, Unallocated included, for choosing
+// whose equipment to list.
+func siteFilterOptions(ctx context.Context, q domain.Querier) ([]option, error) {
+	rows, err := q.QueryContext(ctx, `SELECT id, path || ' · ' || name FROM sites ORDER BY path`)
+	return scanAll(rows, err, func(r *sql.Rows) (option, error) {
+		var o option
+		return o, r.Scan(&o.ID, &o.Label)
+	})
+}
+
 type option struct{ ID, Label string }
 
 func locationOptions(ctx context.Context, q domain.Querier) ([]option, error) {
 	// Rejected locations and the Unallocated holding place aren't offered.
-	rows, err := q.QueryContext(ctx, `SELECT l.id, s.code || ' · ' || l.name || CASE WHEN l.status = 'pending' THEN ' (awaiting approval)' ELSE '' END
-		FROM locations l JOIN sites s ON s.id = l.site_id WHERE l.status != 'rejected' AND l.id != ? ORDER BY s.code, l.name`, domain.UnallocatedLocationID)
+	rows, err := q.QueryContext(ctx, `SELECT l.id, s.path || ' › ' || l.name || CASE WHEN l.status = 'pending' THEN ' (awaiting approval)' ELSE '' END
+		FROM locations l JOIN sites s ON s.id = l.site_id WHERE l.status != 'rejected' AND l.id != ? ORDER BY s.path, l.name`, domain.UnallocatedLocationID)
 	return scanAll(rows, err, func(r *sql.Rows) (option, error) {
 		var o option
 		return o, r.Scan(&o.ID, &o.Label)
@@ -63,7 +79,7 @@ func locationOptions(ctx context.Context, q domain.Querier) ([]option, error) {
 }
 
 func siteOptions(ctx context.Context, q domain.Querier) ([]option, error) {
-	rows, err := q.QueryContext(ctx, `SELECT id, code || ' · ' || name FROM sites WHERE id != ? ORDER BY code`, domain.UnallocatedSiteID)
+	rows, err := q.QueryContext(ctx, `SELECT id, path || ' · ' || name FROM sites WHERE id != ? ORDER BY path`, domain.UnallocatedSiteID)
 	return scanAll(rows, err, func(r *sql.Rows) (option, error) {
 		var o option
 		return o, r.Scan(&o.ID, &o.Label)
@@ -133,7 +149,7 @@ type dueRow struct {
 }
 
 func dueSoon(ctx context.Context, q domain.Querier, now time.Time) ([]dueRow, error) {
-	rows, err := q.QueryContext(ctx, `SELECT p.id, p.title, p.wo_type, p.next_due, a.tag, a.id, s.code,
+	rows, err := q.QueryContext(ctx, `SELECT p.id, p.title, p.wo_type, p.next_due, a.tag, a.id, s.path,
 			coalesce(w.number, ''), p.open_wo_id
 		FROM pm_schedules p JOIN assets a ON a.id = p.asset_id JOIN sites s ON s.id = a.site_id
 		LEFT JOIN work_orders w ON w.id = p.open_wo_id
@@ -253,8 +269,8 @@ func loadInventory(ctx context.Context, q domain.Querier) (inventoryData, error)
 	}); err != nil {
 		return d, err
 	}
-	rows, err = q.QueryContext(ctx, `SELECT l.id, l.name, s.code, coalesce(u.legal_name, '')
-		FROM stock_locations l JOIN sites s ON s.id = l.site_id LEFT JOIN users u ON u.id = l.owner_user_id ORDER BY s.code, l.name`)
+	rows, err = q.QueryContext(ctx, `SELECT l.id, l.name, s.path, coalesce(u.legal_name, '')
+		FROM stock_locations l JOIN sites s ON s.id = l.site_id LEFT JOIN users u ON u.id = l.owner_user_id ORDER BY s.path, l.name`)
 	if d.Locations, err = scanAll(rows, err, func(r *sql.Rows) (stockLocationRow, error) {
 		var l stockLocationRow
 		return l, r.Scan(&l.ID, &l.Name, &l.Site, &l.Owner)
@@ -314,14 +330,19 @@ func listFlags(ctx context.Context, q domain.Querier, all bool) ([]flagRow, erro
 
 type siteRow struct {
 	ID, Code, Name, Timezone string
+	Path                     string // codes from the top, e.g. MAIN › NORTH
+	ParentID                 string
+	Depth                    int // 0 at the top
 	Locations                []option
 }
 
 func listSites(ctx context.Context, q domain.Querier) ([]siteRow, error) {
-	rows, err := q.QueryContext(ctx, `SELECT id, code, name, timezone FROM sites WHERE id != ? ORDER BY code`, domain.UnallocatedSiteID)
+	rows, err := q.QueryContext(ctx, `SELECT id, code, name, timezone, path, coalesce(parent_id, ''),
+			length(lineage) - length(replace(lineage, '/', '')) - 2
+		FROM sites WHERE id != ? ORDER BY path`, domain.UnallocatedSiteID)
 	sites, err := scanAll(rows, err, func(r *sql.Rows) (siteRow, error) {
 		var s siteRow
-		return s, r.Scan(&s.ID, &s.Code, &s.Name, &s.Timezone)
+		return s, r.Scan(&s.ID, &s.Code, &s.Name, &s.Timezone, &s.Path, &s.ParentID, &s.Depth)
 	})
 	if err != nil {
 		return nil, err

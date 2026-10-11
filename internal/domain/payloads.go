@@ -128,6 +128,7 @@ type SiteCreated struct {
 	Code     string `json:"code"`
 	Name     string `json:"name"`
 	Timezone string `json:"timezone"`
+	ParentID string `json:"parent_id,omitempty"` // the site it is inside, if any
 }
 
 type LocationCreated struct {
@@ -417,6 +418,7 @@ var payloadTypes = map[string]struct {
 	new    func() any
 }{
 	TypeSiteCreated:            {EntitySite, func() any { return &SiteCreated{} }},
+	TypeSiteMoved:              {EntitySite, func() any { return &SiteMoved{} }},
 	TypeLocationCreated:        {EntityLocation, func() any { return &LocationCreated{} }},
 	TypeLocationProposed:       {EntityLocation, func() any { return &LocationProposed{} }},
 	TypeLocationReviewed:       {EntityLocation, func() any { return &LocationReviewed{} }},

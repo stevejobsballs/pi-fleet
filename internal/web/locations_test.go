@@ -88,7 +88,7 @@ func TestProposeALocationWhileRegisteringEquipment(t *testing.T) {
 	_, page = tess.postMultipart("/assets/new/location", with(url.Values{"loc_site": {e.site}, "loc_name": {"Ultrasound 3"}, "loc_kind": {"room"},
 		"loc_building": {"East wing"}, "loc_floor": {"2"}, "loc_room": {"2.14"}, "loc_department": {"Radiology"}, "loc_contact": {"Charge nurse"},
 		"loc_phone": {"x4410"}, "loc_directions": {"Past the MRI suite"}}))
-	sel := regexp.MustCompile(`<option value="([0-9a-f-]{36})" selected>NYC · Ultrasound 3 \(awaiting approval\)</option>`).FindStringSubmatch(page)
+	sel := regexp.MustCompile(`<option value="([0-9a-f-]{36})" selected>NYC › Ultrasound 3 \(awaiting approval\)</option>`).FindStringSubmatch(page)
 	if sel == nil || !strings.Contains(page, "was sent to a super user for review") || !strings.Contains(page, `value="Logiq E10"`) ||
 		strings.Contains(page, `name="loc_building" value="East wing"`) {
 		t.Fatalf("after proposing:\n%s", page)
@@ -164,5 +164,50 @@ func TestExampleTextLooksDifferentFromTypedText(t *testing.T) {
 		if !strings.Contains(string(css), want) {
 			t.Errorf("style.css lacks %q", want)
 		}
+	}
+}
+
+func TestSatelliteSitesOnThePages(t *testing.T) {
+	e := newEnv(t)
+	admin := e.browser()
+	admin.login("admin", "tumbleweed-gasket-42")
+	admin.get("/admin/sites")
+	if _, page := admin.post("/admin/sites", url.Values{"parent": {e.site}, "code": {"north"}, "name": {"North Satellite Clinic"}, "timezone": {"America/New_York"}}); !strings.Contains(page, "<h2>NYC › NORTH · North Satellite Clinic</h2>") ||
+		!strings.Contains(page, `class="site depth-1"`) {
+		t.Fatalf("satellite:\n%s", page)
+	}
+	north, err := domain.GetSiteByCode(e.ctx, e.app.Store.DB(), "NORTH")
+	if err != nil {
+		t.Fatal(err)
+	}
+	exam, _ := e.app.CreateLocation(e.ctx, e.super, north.ID, "", "Exam 2", "room")
+	if _, err := e.app.RegisterAsset(e.ctx, e.super, domain.AssetRegistered{Tag: "ECG-9", LocationID: exam, Manufacturer: "GE", Model: "MAC"}); err != nil {
+		t.Fatal(err)
+	}
+	other, _ := e.app.CreateSite(e.ctx, e.super, "BOS", "Boston", "America/New_York")
+	bos, _ := e.app.CreateLocation(e.ctx, e.super, other, "", "Shop", "room")
+	e.app.RegisterAsset(e.ctx, e.super, domain.AssetRegistered{Tag: "BOS-1", LocationID: bos, Manufacturer: "GE", Model: "MAC"})
+
+	// The hospital's equipment includes its satellite's, shown with its path.
+	_, _, page := admin.get("/assets?site=" + e.site)
+	if !strings.Contains(page, ">ECG-9</a>") || !strings.Contains(page, "<td>NYC › NORTH</td>") || strings.Contains(page, "BOS-1") {
+		t.Fatalf("NYC's equipment:\n%s", page)
+	}
+	if _, _, page = admin.get("/assets?q=north+satellite"); !strings.Contains(page, ">ECG-9</a>") {
+		t.Fatalf("search by the satellite's name:\n%s", page)
+	}
+	if _, _, page = admin.get("/assets/new"); !strings.Contains(page, ">NYC › NORTH › Exam 2</option>") {
+		t.Fatalf("location list:\n%s", page)
+	}
+
+	// Moved under Boston instead, it belongs to Boston.
+	if _, page = admin.post("/admin/sites/"+north.ID+"/move", url.Values{"parent": {other}}); !strings.Contains(page, "<h2>BOS › NORTH · North Satellite Clinic</h2>") {
+		t.Fatalf("moved:\n%s", page)
+	}
+	if _, _, page = admin.get("/assets?site=" + other); !strings.Contains(page, ">ECG-9</a>") || !strings.Contains(page, ">BOS-1</a>") {
+		t.Fatalf("Boston's equipment:\n%s", page)
+	}
+	if _, page = admin.post("/admin/sites/"+other+"/move", url.Values{"parent": {north.ID}}); !strings.Contains(page, "Not saved: a site can&#39;t be put inside itself or inside one of its own satellites") {
+		t.Fatalf("loop:\n%s", page)
 	}
 }

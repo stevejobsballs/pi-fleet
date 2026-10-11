@@ -152,7 +152,7 @@ type DuplicateGroup struct {
 // Duplicates returns the MasterIDs held by more than one unmerged record,
 // or only masterID's group when it is given.
 func Duplicates(ctx context.Context, q Querier, masterID string) ([]DuplicateGroup, error) {
-	rows, err := q.QueryContext(ctx, `SELECT a.master_id, a.id, a.tag, s.code, l.name, a.manufacturer, a.model, a.serial, a.status,
+	rows, err := q.QueryContext(ctx, `SELECT a.master_id, a.id, a.tag, s.path, l.name, a.manufacturer, a.model, a.serial, a.status,
 			(SELECT count(*) FROM work_orders w WHERE w.asset_id = a.id),
 			(SELECT count(*) FROM calibration_records c WHERE c.asset_id = a.id AND c.status = 'valid'),
 			(SELECT count(*) FROM pm_schedules p WHERE p.asset_id = a.id AND p.status = 'active')

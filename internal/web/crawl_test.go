@@ -83,6 +83,13 @@ func (e *env) seedEverything() {
 		must(err)
 		return loc
 	}
+	// A satellite clinic inside the main site, with equipment of its own.
+	north, err := e.app.CreateSiteIn(e.ctx, e.super, e.site, "NORTH", "North Satellite Clinic", "America/New_York")
+	must(err)
+	exam, err := e.app.CreateLocation(e.ctx, e.super, north, "", "Exam 2", "room")
+	must(err)
+	_, err = e.app.RegisterAsset(e.ctx, e.super, domain.AssetRegistered{Tag: "ECG-9", LocationID: exam, Manufacturer: "GE", Model: "MAC 2000"})
+	must(err)
 	propose("Ultrasound 3", "US-1")
 	must(e.app.ReviewLocation(e.ctx, e.super, propose("Closet B", "US-2"), false, "not a clinical area"))
 }

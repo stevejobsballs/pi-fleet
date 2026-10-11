@@ -97,6 +97,10 @@ func BuildSnapshot(ctx context.Context, db *sql.DB, centralNodeID string, node d
 	}
 	var members []string
 	json.Unmarshal([]byte(people), &members)
+	// A home site includes its satellites (sites inside it, at any depth).
+	if sites, err = idSet(ctx, tx, `SELECT s.id FROM sites s WHERE EXISTS (SELECT 1 FROM json_each(?) h WHERE s.lineage LIKE '%/' || h.value || '/%')`, sites); err != nil {
+		return nil, err
+	}
 
 	horizon := now.Add(WorkingSetHorizon).UTC().Format("2006-01-02")
 	// Equipment at the user's home sites is included too, so breakdowns

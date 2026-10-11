@@ -2,7 +2,7 @@
 {{if .Data.Pending}}<section id="review"><h2>New locations awaiting review</h2>
 <p class="hint">Proposed by people registering equipment. Equipment can already be registered there. Rejected, a location's equipment moves to the Unallocated site (search for “Unallocated” under Equipment).</p>
 {{range .Data.Pending}}<fieldset><legend>{{.Site}} · {{.Name}} ({{.Kind}})</legend>
-  <p>Proposed by {{.ProposedBy}}{{with .ProposedAt}}, {{.}}{{end}}</p>
+  <p>Proposed by {{.ProposedBy}}, {{when .ProposedAt}}</p>
   {{with .Details}}<dl class="details">{{with .Building}}<dt>Building</dt><dd>{{.}}</dd>{{end}}{{with .Floor}}<dt>Floor</dt><dd>{{.}}</dd>{{end}}{{with .Room}}<dt>Room</dt><dd>{{.}}</dd>{{end}}{{with .Department}}<dt>Department</dt><dd>{{.}}</dd>{{end}}{{with .Contact}}<dt>Contact</dt><dd>{{.}}</dd>{{end}}{{with .Phone}}<dt>Phone</dt><dd>{{.}}</dd>{{end}}{{with .Directions}}<dt>Directions</dt><dd>{{.}}</dd>{{end}}</dl>{{end}}
   <p>{{with .Equipment}}Equipment registered there: {{range $i, $e := .}}{{if $i}}, {{end}}{{$e}}{{end}}{{else}}No equipment registered there yet.{{end}}</p>
   <form method="post" action="/admin/locations/{{.ID}}/review" class="inline">{{template "csrf" $.CSRF}}<input type="hidden" name="decision" value="approve"><button>Approve</button></form>
@@ -10,13 +10,18 @@
     <label>Reason (the proposer sees it) <input name="note" required></label><button class="danger">Reject</button></form>
 </fieldset>{{end}}
 </section>{{end}}
-{{range .Data.Sites}}<section><h2>{{.Code}} · {{.Name}}</h2><p>{{.Timezone}}</p>
+<p class="hint">Sites can sit inside other sites, such as a satellite clinic inside its hospital. Equipment at a satellite also belongs to every site above it: choosing the hospital under Equipment lists its satellites' equipment too, and an employee whose home site is the hospital gets it on their Pi.</p>
+{{range .Data.Sites}}{{$site := .}}<section class="site depth-{{if gt .Depth 4}}4{{else}}{{.Depth}}{{end}}"><h2>{{.Path}} · {{.Name}}</h2><p>{{.Timezone}} · <a href="/assets?site={{.ID}}">Equipment at this site and its satellites</a></p>
 <ul>{{range .Locations}}<li>{{.Label}}</li>{{else}}<li>No locations.</li>{{end}}</ul>
 <form method="post" action="/admin/locations" class="inline">{{template "csrf" $.CSRF}}<input type="hidden" name="site" value="{{.ID}}">
   <label>Location <input name="name" required></label><label>Kind <select name="kind">{{range $.Data.Kinds}}<option>{{.}}</option>{{end}}</select></label><button>Add location</button></form>
+<form method="post" action="/admin/sites/{{.ID}}/move" class="inline">{{template "csrf" $.CSRF}}
+  <label>Part of <select name="parent"><option value="">nothing (a top-level site)</option>{{range $.Data.Parents}}{{if ne .ID $site.ID}}<option value="{{.ID}}"{{if eq .ID $site.ParentID}} selected{{end}}>{{.Label}}</option>{{end}}{{end}}</select></label><button class="secondary">Move</button></form>
 </section>{{end}}
 <section><h2>New site</h2>
 <form method="post" action="/admin/sites" class="inline">{{template "csrf" .CSRF}}
+  <label>Part of (for a satellite) <select name="parent"><option value="">nothing (a top-level site)</option>{{range .Data.Parents}}<option value="{{.ID}}">{{.Label}}</option>{{end}}</select></label>
   <label>Code <input name="code" required pattern="[A-Za-z0-9]{2,8}" size="6"></label><label>Name <input name="name" required></label>
-  <label>Time zone <input name="timezone" required placeholder="e.g. America/New_York"></label><button>Create site</button></form></section>
+  <label>Time zone <input name="timezone" required placeholder="e.g. America/New_York"></label><button>Create site</button></form>
+<p class="hint">The code is short (2 to 8 letters or digits) and shows in lists, e.g. MAIN › NORTH › Exam 2.</p></section>
 {{end}}

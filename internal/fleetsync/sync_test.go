@@ -1034,3 +1034,35 @@ func TestLocationProposedOnAPi(t *testing.T) {
 		t.Fatalf("on the Pi after the rejection: %s", status)
 	}
 }
+
+// An employee whose home is a hospital also gets its satellites'
+// equipment on their Pi.
+func TestHomeSiteIncludesSatellites(t *testing.T) {
+	f := newFleet(t)
+	tess := f.enrol("tess", domain.RoleUser)
+	north := f.must2(f.app.CreateSiteIn(f.ctx, f.super, f.site, "NORTH", "North Satellite Clinic", "America/New_York"))
+	east := f.must2(f.app.CreateSiteIn(f.ctx, f.super, north, "EAST", "East Mobile Unit", "America/New_York"))
+	van := f.must2(f.app.CreateLocation(f.ctx, f.super, east, "", "Van 1", "area"))
+	other := f.must2(f.app.CreateSite(f.ctx, f.super, "BOS", "Boston", "America/New_York"))
+	bosLoc := f.must2(f.app.CreateLocation(f.ctx, f.super, other, "", "Shop", "room"))
+	inVan := f.must2(f.app.RegisterAsset(f.ctx, f.super, domain.AssetRegistered{Tag: "VAN-ECG", LocationID: van, Manufacturer: "GE", Model: "MAC"}))
+	f.must2(f.app.RegisterAsset(f.ctx, f.super, domain.AssetRegistered{Tag: "BOS-ECG", LocationID: bosLoc, Manufacturer: "GE", Model: "MAC"}))
+	tess.sync()
+	var tags []string
+	rows, err := tess.app.Store.DB().Query(`SELECT tag FROM assets WHERE tag LIKE '%-ECG' ORDER BY tag`)
+	f.must(err)
+	for rows.Next() {
+		var s string
+		rows.Scan(&s)
+		tags = append(tags, s)
+	}
+	rows.Close()
+	if len(tags) != 1 || tags[0] != "VAN-ECG" {
+		t.Fatalf("on tess's Pi: %v (want the satellite's VAN-ECG, not Boston's)", tags)
+	}
+	var path string
+	f.must(tess.app.Store.DB().QueryRow(`SELECT s.path FROM assets a JOIN sites s ON s.id = a.site_id WHERE a.id = ?`, inVan).Scan(&path))
+	if path != "NYC › NORTH › EAST" {
+		t.Fatalf("path on the Pi: %q", path)
+	}
+}

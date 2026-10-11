@@ -41,7 +41,7 @@ Signed: {{when .SignedAt}} ({{whenLocal .SignedAt $.WO.SiteTZ}}){{if eq .ClockSt
 {{with .Asset}}{{$a := .Asset}}
 <table class="facts"><tbody>
 <tr><th>Equipment</th><td>{{$a.Manufacturer}} {{$a.Model}}{{if $a.IsReferenceStandard}} (reference standard){{end}}</td></tr>
-<tr><th>Serial</th><td>{{$a.Serial}}</td></tr><tr><th>Site</th><td>{{.Site.Code}} · {{.Site.Name}}</td></tr>
+<tr><th>Serial</th><td>{{$a.Serial}}</td></tr><tr><th>Site</th><td>{{or .Site.Path .Site.Code}} · {{.Site.Name}}</td></tr>
 <tr><th>Location</th><td>{{.Location}}</td></tr><tr><th>Status</th><td>{{label $a.Status}}</td></tr><tr><th>Risk class</th><td>{{$a.RiskClass}}</td></tr>
 <tr><th>MasterID</th><td>{{if $a.MasterID}}{{$a.MasterID}}{{else}}not set{{end}}</td></tr>
 {{if $a.MergedInto}}<tr><th>Merged into</th><td>{{.MergedInto.Label}} (the same equipment)</td></tr>{{end}}

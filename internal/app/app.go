@@ -335,12 +335,26 @@ func (a *App) checkPassword(u domain.User, pw string) error {
 
 // --- sites and locations ---
 
-// CreateSite creates a site.
+// CreateSite creates a site at the top level.
 func (a *App) CreateSite(ctx context.Context, actor Actor, code, name, timezone string) (string, error) {
+	return a.CreateSiteIn(ctx, actor, "", code, name, timezone)
+}
+
+// CreateSiteIn creates a site inside another (a satellite), or at the top
+// level when parentID is empty.
+func (a *App) CreateSiteIn(ctx context.Context, actor Actor, parentID, code, name, timezone string) (string, error) {
 	id := newID()
 	return id, a.Store.Update(ctx, func(tx *store.Tx) error {
 		return a.emit(ctx, tx, actor, domain.TypeSiteCreated, domain.EntitySite, id, 0, "",
-			domain.SiteCreated{Code: code, Name: name, Timezone: timezone})
+			domain.SiteCreated{Code: code, Name: name, Timezone: timezone, ParentID: parentID})
+	})
+}
+
+// MoveSite puts a site, and everything inside it, inside another site, or
+// at the top level when parentID is empty.
+func (a *App) MoveSite(ctx context.Context, actor Actor, siteID, parentID string) error {
+	return a.Store.Update(ctx, func(tx *store.Tx) error {
+		return a.emit(ctx, tx, actor, domain.TypeSiteMoved, domain.EntitySite, siteID, 0, "", domain.SiteMoved{ParentID: parentID})
 	})
 }
 

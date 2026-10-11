@@ -226,6 +226,7 @@ type sitesData struct {
 	Pending []domain.ProposedLocation
 	Sites   []siteRow
 	Kinds   []string
+	Parents []option // sites another can be put inside
 }
 
 func (s *Server) siteList(w http.ResponseWriter, r *http.Request, sess *session) error {
@@ -236,6 +237,9 @@ func (s *Server) siteList(w http.ResponseWriter, r *http.Request, sess *session)
 		return err
 	}
 	if d.Sites, err = listSites(ctx, q); err != nil {
+		return err
+	}
+	if d.Parents, err = siteOptions(ctx, q); err != nil {
 		return err
 	}
 	return s.render(w, r, sess, "sites", "Sites and locations", d)
@@ -255,10 +259,18 @@ func (s *Server) locationReview(w http.ResponseWriter, r *http.Request, sess *se
 
 func (s *Server) siteCreate(w http.ResponseWriter, r *http.Request, sess *session) error {
 	f := r.PostFormValue
-	if _, err := s.App.CreateSite(r.Context(), s.actor(sess), strings.ToUpper(strings.TrimSpace(f("code"))), strings.TrimSpace(f("name")), strings.TrimSpace(f("timezone"))); err != nil {
+	if _, err := s.App.CreateSiteIn(r.Context(), s.actor(sess), f("parent"), strings.ToUpper(strings.TrimSpace(f("code"))), strings.TrimSpace(f("name")), strings.TrimSpace(f("timezone"))); err != nil {
 		return s.failed(w, r, sess, "/admin/sites", err)
 	}
 	return s.done(w, r, sess, "/admin/sites", "Site created.")
+}
+
+// siteMove puts a site inside another, or at the top level.
+func (s *Server) siteMove(w http.ResponseWriter, r *http.Request, sess *session) error {
+	if err := s.App.MoveSite(r.Context(), s.actor(sess), r.PathValue("id"), r.PostFormValue("parent")); err != nil {
+		return s.failed(w, r, sess, "/admin/sites", err)
+	}
+	return s.done(w, r, sess, "/admin/sites", "Site moved. Its equipment now also belongs to the sites above it.")
 }
 
 func (s *Server) locationCreate(w http.ResponseWriter, r *http.Request, sess *session) error {

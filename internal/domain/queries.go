@@ -115,12 +115,13 @@ func PasswordHistory(ctx context.Context, q Querier, userID string) ([]password.
 // Site is a projected site.
 type Site struct {
 	ID, Code, Name, Timezone string
+	Path                     string // codes from the top, e.g. MAIN › NORTH
 }
 
 // GetSiteByCode returns a site by its code.
 func GetSiteByCode(ctx context.Context, q Querier, code string) (Site, error) {
 	var s Site
-	err := q.QueryRowContext(ctx, `SELECT id, code, name, timezone FROM sites WHERE code = ?`, code).Scan(&s.ID, &s.Code, &s.Name, &s.Timezone)
+	err := q.QueryRowContext(ctx, `SELECT id, code, name, timezone, path FROM sites WHERE code = ?`, code).Scan(&s.ID, &s.Code, &s.Name, &s.Timezone, &s.Path)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Site{}, ErrNotFound
 	}

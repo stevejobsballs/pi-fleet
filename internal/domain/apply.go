@@ -102,6 +102,8 @@ func (p *Projector) Apply(ctx context.Context, tx *sql.Tx, e *event.Event) error
 	switch pl := v.(type) {
 	case *SiteCreated:
 		return ap.siteCreated(pl)
+	case *SiteMoved:
+		return ap.siteMoved(pl)
 	case *LocationCreated:
 		return ap.locationCreated(pl)
 	case *LocationProposed:
@@ -387,8 +389,16 @@ func (ap *applier) siteCreated(p *SiteCreated) error {
 	if exists, err := ap.exists(`SELECT 1 FROM sites WHERE code = ?`, p.Code); err != nil || exists {
 		return orConflict(err, "site code %s already exists", p.Code)
 	}
-	return ap.exec(`INSERT INTO sites (id, code, name, timezone, version, last_event_id) VALUES (?, ?, ?, ?, 1, ?)`,
-		ap.e.EntityID, p.Code, p.Name, p.Timezone, ap.e.EventID)
+	path, lineage, err := ap.sitePlace(ap.e.EntityID, p.Code, p.ParentID)
+	if err != nil {
+		return err
+	}
+	var parent any
+	if p.ParentID != "" {
+		parent = p.ParentID
+	}
+	return ap.exec(`INSERT INTO sites (id, code, name, timezone, parent_id, path, lineage, version, last_event_id) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+		ap.e.EntityID, p.Code, p.Name, p.Timezone, parent, path, lineage, ap.e.EventID)
 }
 
 func (ap *applier) locationCreated(p *LocationCreated) error {

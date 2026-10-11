@@ -113,3 +113,7 @@ table.stack td { padding: .35rem 0; border: 0; }
 table.stack td[data-label]::before { content: attr(data-label); display: block; font-size: 1rem; font-weight: 700; color: var(--muted); }
 table.stack form { display: flex; flex-direction: column; align-items: flex-start; gap: .75rem; margin: .5rem 0; }
 table.stack form label { width: 100%; max-width: 32rem; }
+
+/* Details of a proposed location. */
+dl.details dt { font-size: 1.05rem; color: var(--muted); }
+dl.details { gap: .35rem 1.25rem; }

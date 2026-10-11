@@ -20,7 +20,7 @@ type kiosksData struct {
 
 func (s *Server) kioskList(w http.ResponseWriter, r *http.Request, sess *session) error {
 	ctx, q := r.Context(), s.App.Store.DB()
-	rows, err := q.QueryContext(ctx, `SELECT k.id, k.name, s.code || ' · ' || s.name, k.activation_verifier != '',
+	rows, err := q.QueryContext(ctx, `SELECT k.id, k.name, s.path || ' · ' || s.name, k.activation_verifier != '',
 			coalesce((SELECT status FROM nodes n WHERE n.kiosk_id = k.id ORDER BY activated_at DESC LIMIT 1), 'not activated')
 		FROM kiosks k JOIN sites s ON s.id = k.site_id ORDER BY k.name`)
 	kiosks, err := scanAll(rows, err, func(r *sql.Rows) (kioskRow, error) {
