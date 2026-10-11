@@ -2,9 +2,11 @@ package web
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
+	"pi-fleet/internal/sitecert"
 	"strconv"
 	"strings"
 	"time"
@@ -300,6 +302,15 @@ type nodesData struct {
 	DefaultFrom string // suggested date a new requirement starts
 	ReportURL   string // the address phones use, as set ("" if not)
 	ReportWarn  bool   // phones may not open it
+	// The certificate browsers and phones get: the hospital's, if one is
+	// installed (CanInstall: this Pi serves HTTPS itself).
+	CanInstall  bool
+	Cert        sitecert.Info
+	HasCert     bool
+	CertHost    string // the host phones use, which it should cover
+	CertCovers  bool
+	CertDays    int // until it expires
+	PisOutdated int // active Pis too old to tell certificates apart
 }
 
 func (s *Server) nodeList(w http.ResponseWriter, r *http.Request, sess *session) error {
@@ -324,6 +335,20 @@ func (s *Server) nodeList(w http.ResponseWriter, r *http.Request, sess *session)
 	d := nodesData{Rows: rows, Fingerprint: s.CertFingerprint, Need: need, Master: s.Version, DefaultFrom: s.now().AddDate(0, 0, 7).Format("2006-01-02")}
 	d.ReportURL, _ = s.App.Store.Config(ctx, fleetsync.ConfigReportURL)
 	d.ReportWarn = phonesMayFail(s.reportBase(r))
+	if s.SiteCert != nil {
+		d.CanInstall = true
+		d.Cert, d.HasCert = s.SiteCert.Site()
+		if u, err := url.Parse(s.reportBase(r)); err == nil {
+			d.CertHost = u.Hostname()
+		}
+		d.CertCovers = d.Cert.Covers(d.CertHost)
+		d.CertDays = int(d.Cert.NotAfter.Sub(s.now()).Hours() / 24)
+		for _, row := range rows {
+			if row.Status == domain.NodeStatusActive && row.Outdated {
+				d.PisOutdated++
+			}
+		}
+	}
 	return s.render(w, r, sess, "nodes", "Pis", d)
 }
 
@@ -346,6 +371,65 @@ func (s *Server) reportAddress(w http.ResponseWriter, r *http.Request, sess *ses
 		msg += " Many phones can't open this address; a name from your IT department works better."
 	}
 	return s.done(w, r, sess, "/admin/nodes#phones", msg)
+}
+
+// certificateInstall installs the hospital's certificate for browsers and
+// phones (employee Pis keep pi-fleet's own).
+func (s *Server) certificateInstall(w http.ResponseWriter, r *http.Request, sess *session) error {
+	const back = "/admin/nodes#certificate"
+	if s.SiteCert == nil {
+		return s.done(w, r, sess, back, "This Pi doesn't serve HTTPS itself, so it has no certificate to change.")
+	}
+	read := func(field string) ([]byte, error) {
+		if r.MultipartForm == nil || len(r.MultipartForm.File[field]) == 0 {
+			return nil, userErr("choose both files: the certificate and its private key")
+		}
+		h := r.MultipartForm.File[field][0]
+		if h.Size > 64<<10 {
+			return nil, userErr("%s is too big to be a certificate or key", h.Filename)
+		}
+		f, err := h.Open()
+		if err != nil {
+			return nil, err
+		}
+		defer f.Close()
+		return io.ReadAll(f)
+	}
+	certPEM, err := read("cert")
+	var keyPEM []byte
+	if err == nil {
+		keyPEM, err = read("key")
+	}
+	if err == nil {
+		err = s.SiteCert.Install(certPEM, keyPEM)
+	}
+	if err != nil {
+		if msg := message(err); msg != "" {
+			return s.done(w, r, sess, back, "Not installed: "+msg+".")
+		}
+		return s.done(w, r, sess, back, "Not installed: "+err.Error()+".")
+	}
+	info, _ := s.SiteCert.Site()
+	log.Printf("web: %s installed the site certificate for %s (issued by %s, expires %s)", sess.User.Username,
+		strings.Join(info.Names, ", "), info.Issuer, info.NotAfter.UTC().Format(time.DateOnly))
+	msg := "Installed. Browsers and phones now get the certificate for " + strings.Join(info.Names, ", ") + ". Reload the page to see it."
+	if u, err := url.Parse(s.reportBase(r)); err == nil && !info.Covers(u.Hostname()) {
+		msg += " It isn't for " + u.Hostname() + ", the address phones use, so they will still warn there."
+	}
+	return s.done(w, r, sess, back, msg)
+}
+
+// certificateRemove goes back to pi-fleet's own certificate for everyone.
+func (s *Server) certificateRemove(w http.ResponseWriter, r *http.Request, sess *session) error {
+	const back = "/admin/nodes#certificate"
+	if s.SiteCert == nil {
+		return s.done(w, r, sess, back, "This Pi has no certificate to remove.")
+	}
+	if err := s.SiteCert.Remove(); err != nil {
+		return err
+	}
+	log.Printf("web: %s removed the site certificate", sess.User.Username)
+	return s.done(w, r, sess, back, "Removed. Browsers and phones get pi-fleet's own certificate again, and will warn about it.")
 }
 
 // nodeRequire sets the pi-fleet version employee Pis need, from a date,

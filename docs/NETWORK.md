@@ -171,15 +171,45 @@ report a problem without signing in. For that:
   **Phones and QR labels** on the master's **Pis** page: the DNS name from
   step 2 (not a `.local` name, which many phones can't resolve). Labels
   printed anywhere, also on employee Pis, then use it.
-- **The certificate:** the master's certificate is its own, so phones show
-  a warning the first time unless they trust it. To avoid that, give the
-  master a certificate from your institution's certificate authority for
-  its DNS name, or install the master's certificate on managed phones.
+- **The certificate:** out of the box the master's certificate is its
+  own, so browsers and phones warn about it. Issue it a certificate from
+  your institution's certificate authority instead (see below).
 - **What's exposed:** the report page shows only the equipment's tag,
   model and location, and the status page only a report's progress. It
   never shows who reported what. Reports are limited to 5 per address in
   10 minutes and 120 in all, and the page refuses text that looks like
   patient information. Don't make it reachable from outside the hospital.
+
+### 9. The hospital's certificate for browsers and phones
+
+So that browsers and phones open pi-fleet without a warning, give the
+master Pi a server certificate your devices already trust:
+
+- **For:** the master's DNS name from step 2 (the address phones use), as
+  a subject alternative name. Add any other names people use for it.
+- **Format:** two PEM files. The certificate, followed by any intermediate
+  certificates (the chain, without the root), and its private key,
+  **unencrypted** (`-----BEGIN PRIVATE KEY-----` or similar).
+- **From a .pfx / .p12 file:** convert it on any computer with OpenSSL:
+
+  ```sh
+  openssl pkcs12 -in master.pfx -clcerts -nokeys -out cert.pem
+  openssl pkcs12 -in master.pfx -cacerts -nokeys >> cert.pem   # the chain
+  openssl pkcs12 -in master.pfx -nocerts -nodes -out key.pem
+  ```
+
+  Keep `key.pem` safe and delete copies once it's installed.
+- **Installing:** a super user uploads both files under **Certificate for
+  browsers and phones** on the master's **Pis** page. It takes effect at
+  once, with no restart. The page shows the names and expiry date, and
+  warns when it isn't for the address phones use. From 30 days before it
+  expires, super users are reminded on every page.
+- **Employee Pis are unaffected.** They keep using the master's own
+  certificate, the one whose fingerprint they were set up with: in the TLS
+  handshake they offer the application protocol `pifleet-sync/1`, and the
+  master answers those connections with its own certificate. (Pis need
+  pi-fleet v0.15.0 or later for this.) TLS inspection must still be
+  exempted for the master's address (step 4).
 
 ## Bandwidth
 

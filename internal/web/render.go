@@ -246,6 +246,18 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, sess *session, n
 		if s.Notices != nil && p.IsMid() {
 			p.Notices = s.Notices(r.Context())
 		}
+		if s.SiteCert != nil && p.IsSuper() {
+			if info, ok := s.SiteCert.Site(); ok {
+				switch days := int(info.NotAfter.Sub(s.now()).Hours() / 24); {
+				case days < 0:
+					p.Notices = append(p.Notices, "The hospital's certificate expired on "+info.NotAfter.Format("2 January 2006")+
+						": browsers and phones warn. Install a renewed one on Admin › Pis.")
+				case days < 30:
+					p.Notices = append(p.Notices, fmt.Sprintf("The hospital's certificate expires in %d days, on %s. Ask IT for a renewed one and install it on Admin › Pis.",
+						days, info.NotAfter.Format("2 January 2006")))
+				}
+			}
+		}
 	}
 	if b, ok := data.(backLinker); ok {
 		p.BackHref, p.BackLabel = b.BackLink()

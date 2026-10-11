@@ -24,8 +24,10 @@ import (
 // work order (work_order_checklists, checklist_results.procedure_id) and
 // the equipment each checklist is for; v0.14.0 calibration modules in
 // checklists (checklist_results.as_left and found_pass, the
-// checklist_standards table, and the as_left payload field).
-const MinNodeVersion = "v0.14.0"
+// checklist_standards table, and the as_left payload field); v0.15.0
+// offering sitecert.SyncALPN, so a master showing browsers the hospital's
+// certificate still gives the Pi pi-fleet's own.
+const MinNodeVersion = "v0.15.0"
 
 const (
 	// On the master Pi: a newer version a super user requires, and when.

@@ -20,6 +20,7 @@ import (
 
 	"pi-fleet/internal/fleetsync"
 	"pi-fleet/internal/localnames"
+	"pi-fleet/internal/sitecert"
 	"pi-fleet/internal/web"
 )
 
@@ -51,12 +52,15 @@ func (n *node) client(ctx context.Context, baseURL string) (*fleetsync.Client, e
 	dial := &localnames.Dialer{Dialer: net.Dialer{Timeout: 10 * time.Second}}
 	tr := &http.Transport{DialContext: dial.DialContext, TLSHandshakeTimeout: 10 * time.Second}
 	httpc := &http.Client{Timeout: 60 * time.Second, Transport: tr}
+	// Offering sitecert.SyncALPN gets pi-fleet's own certificate from a
+	// master that shows browsers the hospital's.
+	tr.TLSClientConfig = &tls.Config{MinVersion: tls.VersionTLS12, NextProtos: sitecert.ClientProtos}
 	if pem, err := n.store.Config(ctx, configCentralCA); err == nil && pem != "" { // "" means none
 		pool := x509.NewCertPool()
 		if !pool.AppendCertsFromPEM([]byte(pem)) {
 			return nil, errors.New("stored central CA is not valid PEM")
 		}
-		tr.TLSClientConfig = &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}
+		tr.TLSClientConfig.RootCAs = pool
 	}
 	return &fleetsync.Client{
 		BaseURL: baseURL, HTTP: httpc, Store: n.store, Keys: n.keys,

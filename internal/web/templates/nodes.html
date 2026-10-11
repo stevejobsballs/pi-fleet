@@ -20,6 +20,23 @@
 {{if .Data.ReportWarn}}<p class="warn">{{if .Data.ReportURL}}Many phones can't open this address.{{else}}Not set yet: labels use the address this page was opened with, which many phones can't open.{{end}}</p>{{end}}
 <form autocomplete="off" method="post" action="/admin/report-address" class="inline">{{template "csrf" .CSRF}}<label>Address phones use <input name="address" value="{{.Data.ReportURL}}" placeholder="e.g. pifleet.hospital.org" maxlength="200"></label><button>Save</button></form>
 </section>
+{{if .Data.CanInstall}}{{$d := .Data}}<section id="certificate"><h2>Certificate for browsers and phones</h2>
+<p>Browsers and phones trust a certificate from your hospital's IT department, and then don't warn when they open pi-fleet or a QR label. Employee Pis aren't affected: they keep using pi-fleet's own certificate, with the fingerprint above.</p>
+{{if $d.HasCert}}<dl class="facts">
+  <dt>For</dt><dd>{{range $i, $n := $d.Cert.Names}}{{if $i}}, {{end}}{{$n}}{{end}}</dd>
+  <dt>Issued by</dt><dd>{{$d.Cert.Issuer}}{{if $d.Cert.SelfSigned}} <span class="warn">(itself: browsers won't trust it unless set up to)</span>{{end}}</dd>
+  <dt>Expires</dt><dd{{if lt $d.CertDays 30}} class="warn"{{end}}>{{$d.Cert.NotAfter.Format "2 January 2006"}}{{if lt $d.CertDays 0}}: expired, browsers warn. Install a renewed one.{{else if lt $d.CertDays 30}}: in {{$d.CertDays}} days. Ask IT for a renewed one.{{end}}</dd>
+</dl>
+{{if and $d.CertHost (not $d.CertCovers)}}<p class="warn">It isn't for {{$d.CertHost}}, the address phones use, so browsers there still warn. Ask IT for one that includes it, or set the address phones use to one it's for.</p>{{end}}
+{{else}}<p>None installed: browsers and phones get pi-fleet's own certificate, and warn about it.</p>{{end}}
+{{if $d.PisOutdated}}<p class="warn">{{$d.PisOutdated}} employee Pi{{if ne $d.PisOutdated 1}}s{{end}} {{if eq $d.PisOutdated 1}}needs{{else}}need{{end}} updating first (see the list above). Older Pis can't tell the certificates apart and stop syncing when one is installed.</p>{{end}}
+<form autocomplete="off" method="post" action="/admin/certificate" enctype="multipart/form-data" class="narrow">{{template "csrf" .CSRF}}
+  <label>Certificate file from IT (PEM, with any intermediate certificates after it) <input type="file" name="cert" accept=".pem,.crt,.cer,text/plain" required></label>
+  <label>Its private key file (PEM, without a password) <input type="file" name="key" accept=".pem,.key,text/plain" required></label>
+  <p class="hint">IT usually knows these as a “PEM certificate chain” and “unencrypted private key”. If they give you a .pfx file instead, docs/NETWORK.md says how to convert it.</p>
+  <button>{{if $d.HasCert}}Replace the certificate{{else}}Install the certificate{{end}}</button></form>
+{{if $d.HasCert}}<form autocomplete="off" method="post" action="/admin/certificate/remove" class="inline">{{template "csrf" .CSRF}}<button class="danger">Stop using it</button></form>{{end}}
+</section>{{end}}
 <section id="versions"><h2>Versions</h2>
 {{$n := .Data.Need}}
 <p>This master Pi runs pi-fleet {{.Data.Master}}. Employee Pis need {{$n.Min}} or newer to sync{{with $n.Next}}, and {{.}} or newer from {{$n.NextFrom.Format "2 January 2006"}}{{end}}. A Pi that is too old keeps its work and shows how to update; it syncs again once updated.</p>

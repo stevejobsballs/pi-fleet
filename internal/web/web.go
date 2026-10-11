@@ -33,6 +33,7 @@ import (
 	"pi-fleet/internal/app"
 	"pi-fleet/internal/domain"
 	"pi-fleet/internal/password"
+	"pi-fleet/internal/sitecert"
 	"pi-fleet/internal/store"
 )
 
@@ -71,6 +72,9 @@ type Server struct {
 	// CertFingerprint is the master Pi's HTTPS certificate fingerprint,
 	// shown on the Pis page so a new Pi's setup can be checked against it.
 	CertFingerprint string
+	// SiteCert is the master Pi's certificate chooser, for installing the
+	// hospital's own certificate (nil on employee Pis).
+	SiteCert SiteCerts
 	// InsecureLAN shows a warning on every page: plain HTTP is being
 	// served beyond localhost.
 	InsecureLAN bool
@@ -100,6 +104,13 @@ type Server struct {
 	flash  map[string]string
 
 	reports reportLimiter // the report page, where no one signs in
+}
+
+// SiteCerts installs and describes the certificate browsers get.
+type SiteCerts interface {
+	Site() (sitecert.Info, bool)
+	Install(certPEM, keyPEM []byte) error
+	Remove() error
 }
 
 // DefaultPHIPatterns catch common ways patient details slip into notes.
@@ -247,6 +258,8 @@ func (s *Server) Handler() (http.Handler, error) {
 		mux.Handle("POST /admin/nodes/{id}/unquarantine", super(s.nodeUnquarantine))
 		mux.Handle("POST /admin/nodes/require", super(s.nodeRequire))
 		mux.Handle("POST /admin/report-address", super(s.reportAddress))
+		mux.Handle("POST /admin/certificate", super(s.certificateInstall))
+		mux.Handle("POST /admin/certificate/remove", super(s.certificateRemove))
 		mux.Handle("GET /admin/kiosks", super(s.kioskList))
 		mux.Handle("POST /admin/kiosks", super(s.kioskCreate))
 		mux.Handle("POST /admin/kiosks/{id}/reset", super(s.kioskReset))

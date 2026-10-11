@@ -34,7 +34,7 @@ UNIT=/etc/systemd/system/pi-fleet.service
 if grep -qs -- "-releases /srv/pi-fleet/releases" "$UNIT"; then
   PORT=$(grep -o -- '-listen [^ ]*:[0-9]*' "$UNIT" | grep -o '[0-9]*$' || true)
   PORT=${PORT:-443}
-  fp=$(echo | timeout 10 openssl s_client -connect "127.0.0.1:$PORT" 2>/dev/null | openssl x509 -outform DER 2>/dev/null | sha256sum | cut -c1-64 || true)
+  fp=$(echo | timeout 10 openssl s_client -connect "127.0.0.1:$PORT" -alpn pifleet-sync/1,http/1.1 2>/dev/null | openssl x509 -outform DER 2>/dev/null | sha256sum | cut -c1-64 || true)
   if [ ${#fp} -eq 64 ] && [ "$fp" != "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" ]; then
     FINGERPRINT=$(echo "$fp" | tr a-f A-F | sed 's/..../& /g; s/ $//')
     MASTER="$(hostname).local"

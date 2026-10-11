@@ -23,6 +23,7 @@ import (
 	"pi-fleet/internal/fleetca"
 	"pi-fleet/internal/fleetsync"
 	"pi-fleet/internal/setup"
+	"pi-fleet/internal/sitecert"
 	"pi-fleet/internal/web"
 )
 
@@ -299,8 +300,23 @@ func cmdServe(ctx context.Context, args []string, c *cli) error {
 	if pemBytes, err := os.ReadFile(*certFile); err == nil {
 		fingerprint, _ = setup.Fingerprint(pemBytes)
 	}
+	// Browsers and phones get the hospital's certificate once a super user
+	// installs one; employee Pis keep getting pi-fleet's own.
+	var certs *sitecert.Server
+	if !*plain {
+		if certs, err = sitecert.NewServer(filepath.Dir(*certFile), *certFile, *keyFile); err != nil {
+			log.Printf("site certificate not used: %v", err)
+			if certs == nil {
+				return err
+			}
+		}
+	}
+	var siteCerts web.SiteCerts // nil, not a nil *sitecert.Server, without TLS
+	if certs != nil {
+		siteCerts = certs
+	}
 	_, trialErr := os.Stat(filepath.Join(*data, setup.TrialMarker))
-	ui, err := (&web.Server{App: a, Role: "central", Secure: true, PHIPatterns: web.DefaultPHIPatterns, CertFingerprint: fingerprint, Trial: trialErr == nil, Version: version,
+	ui, err := (&web.Server{App: a, Role: "central", Secure: true, PHIPatterns: web.DefaultPHIPatterns, CertFingerprint: fingerprint, Trial: trialErr == nil, Version: version, SiteCert: siteCerts,
 		Notices: func(ctx context.Context) []string {
 			return backupNotices(ctx, n, a, time.Now())
 		}}).Handler()
@@ -327,6 +343,9 @@ func cmdServe(ctx context.Context, args []string, c *cli) error {
 		WriteTimeout:      120 * time.Second,
 		TLSConfig:         &tls.Config{MinVersion: tls.VersionTLS12},
 	}
+	if certs != nil {
+		srv.TLSConfig.GetCertificate = certs.GetCertificate
+	}
 	go func() {
 		<-ctx.Done()
 		shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -337,7 +356,7 @@ func cmdServe(ctx context.Context, args []string, c *cli) error {
 	if *plain {
 		err = srv.ListenAndServe()
 	} else {
-		err = srv.ListenAndServeTLS(*certFile, *keyFile)
+		err = srv.ListenAndServeTLS("", "") // certificates from certs.GetCertificate
 	}
 	if errors.Is(err, http.ErrServerClosed) {
 		return nil

@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"pi-fleet/internal/localnames"
+	"pi-fleet/internal/sitecert"
 )
 
 // NewCertificate makes the master Pi's self-signed HTTPS certificate:
@@ -96,7 +97,9 @@ func FetchCertificate(hostport string, timeout time.Duration) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	conn := tls.Client(raw, &tls.Config{InsecureSkipVerify: true}) // checked by the user's eyes
+	// Offering sitecert.SyncALPN gets pi-fleet's own certificate (the one
+	// to pin) from a master that shows browsers the hospital's.
+	conn := tls.Client(raw, &tls.Config{InsecureSkipVerify: true, NextProtos: sitecert.ClientProtos}) // checked by the user's eyes
 	conn.SetDeadline(time.Now().Add(timeout))
 	if err := conn.Handshake(); err != nil {
 		conn.Close()
