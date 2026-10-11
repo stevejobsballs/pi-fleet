@@ -10,31 +10,20 @@
 <body>
 <header class="top">
   <a class="brand" href="/"><span class="mark" aria-hidden="true"></span>pi-fleet</a>
-  {{if .User.ID}}
-  <nav aria-label="Main">
-    <a href="/"{{if .In "/"}} aria-current="page"{{end}}>Today</a>
-    <a href="/work-orders"{{if .In "/work-orders"}} aria-current="page"{{end}}>Work orders</a>
-    <a href="/assets"{{if .In "/assets"}} aria-current="page"{{end}}>Equipment</a>
-    <a href="/schedules"{{if .In "/schedules"}} aria-current="page"{{end}}>Schedules</a>
-    <a href="/procedures"{{if .In "/procedures"}} aria-current="page"{{end}}>Checklists</a>
-    <a href="/inventory"{{if .In "/inventory"}} aria-current="page"{{end}}>Inventory</a>
-    {{if eq .Role "central"}}<a href="/requests"{{if .In "/requests"}} aria-current="page"{{end}}>Requests</a>{{end}}
-    {{if .IsMid}}<a href="/review"{{if .In "/review"}} aria-current="page"{{end}}>Review</a>{{end}}
-    {{if .IsSuper}}<a href="/admin/users"{{if .In "/admin/users"}} aria-current="page"{{end}}>Users</a><a href="/admin/sites"{{if .In "/admin/sites"}} aria-current="page"{{end}}>Sites</a>{{if eq .Role "central"}}<a href="/admin/nodes"{{if .In "/admin/nodes"}} aria-current="page"{{end}}>Pis</a><a href="/admin/kiosks"{{if .In "/admin/kiosks"}} aria-current="page"{{end}}>Kiosks</a>{{end}}{{end}}
-  </nav>
-  {{end}}
-  {{if not .Large}}<a class="display" href="/display/large?back={{urlquery .Here}}">Larger text and buttons</a>{{end}}
+  {{if .User.ID}}<nav class="groups" aria-label="Main">{{range .Nav}}<a href="{{.Href}}"{{if .Current}} aria-current="{{if eq .Href "/"}}page{{else}}true{{end}}"{{end}}>{{.Label}}</a>{{end}}</nav>{{end}}
+  <div class="me">
+    {{if .User.ID}}<span>{{.User.LegalName}}, {{label .User.Role}}</span>
+    <a href="/password">Password</a>
+    <form method="post" action="/logout"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="link">Sign out</button></form>{{end}}
+    {{if not .Large}}<a class="display" href="/display/large?back={{urlquery .Here}}">Larger text and buttons</a>{{end}}
+  </div>
 </header>
 {{if .User.ID}}
+<div class="bar2">{{with .SubNav}}<nav class="pages" aria-label="{{.Label}}">{{range .Items}}<a href="{{.Href}}"{{if .Current}} aria-current="page"{{end}}>{{.Label}}</a>{{end}}</nav>{{end}}</div>
 <div class="status">
   <span>{{if eq .Role "central"}}Master Pi{{else}}Employee Pi{{end}}</span>
   {{with .Sync}}<span>Last sync: {{when .LastSync}}</span>{{if gt .Unsynced 0}}<span class="warn">{{.Unsynced}} record{{if ne .Unsynced 1}}s{{end}} not yet synced</span>{{end}}{{end}}
   {{if eq .Clock "unverified"}}<span class="warn">Clock not verified: signatures will be flagged</span>{{end}}
-  <div class="me">
-    <span>{{.User.LegalName}} · {{label .User.Role}}</span>
-    <a href="/password">Password</a>
-    <form method="post" action="/logout"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="link">Sign out</button></form>
-  </div>
 </div>
 {{end}}
 {{with .Sync}}{{if .UpdateNeeded}}<p class="trial" role="alert"><strong>This Pi needs updating.</strong> The master Pi needs pi-fleet {{.UpdateNeeded}} or newer before this Pi can sync again. Your work is kept here meanwhile. Double-click Update-Pi, or run the newest pi-fleet release's setup on this Pi.</p>{{else if .UpdateDue}}<p class="trial" role="status">Please update this Pi to pi-fleet {{.UpdateDue}} before {{.UpdateBy.Format "2 January 2006"}}; after that it can't sync until it is updated.</p>{{end}}{{end}}

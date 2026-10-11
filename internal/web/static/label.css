@@ -1,10 +1,12 @@
 /* The printable QR label. On screen: the label with its controls above;
    on paper: only the label, about 7 cm wide, with a cutting border. */
-body { margin: 0; padding: 1.5rem; font: 18px/1.4 system-ui, sans-serif; color: #15181b; background: #f4f4f2; }
+@font-face { font-family: "Atkinson Hyperlegible"; font-weight: 400; src: url("/static/fonts/ah-400-latin.woff2") format("woff2"); }
+@font-face { font-family: "Atkinson Hyperlegible"; font-weight: 700; src: url("/static/fonts/ah-700-latin.woff2") format("woff2"); }
+body { margin: 0; padding: 1.5rem; font: 18px/1.4 "Atkinson Hyperlegible", system-ui, sans-serif; color: #15181c; background: #eceef1; }
 .controls { max-width: 34rem; margin: 0 auto 1.5rem; }
-.controls button { font: 700 1.2rem system-ui, sans-serif; padding: .8rem 1.6rem; border-radius: 6px; border: 2px solid #c51a4a;
-  background: #c51a4a; color: #fff; cursor: pointer; }
-.controls a { color: #c51a4a; margin-left: 1rem; font-size: 1.1rem; }
+.controls button { font: 700 1.2rem "Atkinson Hyperlegible", system-ui, sans-serif; padding: .8rem 1.6rem; border-radius: 8px; border: 2px solid #a11552;
+  background: #a11552; color: #fff; cursor: pointer; }
+.controls a { color: #a11552; margin-left: 1rem; font-size: 1.1rem; }
 .controls .small { font-size: .95rem; color: #3a3f45; }
 .label { width: 7cm; margin: 0 auto; padding: .4cm; background: #fff; border: 2px dashed #6b7177; text-align: center; color: #000; }
 .label h1 { font-size: 15pt; margin: 0 0 .1cm; }

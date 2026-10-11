@@ -1,14 +1,10 @@
-/* Larger text and buttons: the same Raspberry Pi colours, made for people
-   who find small text and small targets hard (often older users). Loaded
-   after style.css when chosen with the switch in the top bar. Everything
-   is bigger, plainer and higher in contrast; every control is at least
-   56 px tall, and the current place is a solid block, not a thin line. */
-:root {
-  --muted: #3a3f45; --line: #b9bec3; --line-strong: #6b7177; --tint: #fdf1f4;
-  --bar-muted: #d5d9dd;
-}
+/* Larger text and buttons (the default): the same colours, made for
+   people who find small text and small targets hard (often older users).
+   Loaded after style.css. Everything is bigger and plainer; every control
+   is at least 56 px tall, and the current place is a solid block. */
+:root { --muted: #3a3f45; --line: #b9bec3; --line-strong: #6b7177; }
 @media (prefers-color-scheme: dark) {
-  :root { --muted: #c9ced3; --line: #4a5158; --line-strong: #8a9299; --tint: #2a1820; }
+  :root { --muted: #c9ced3; --line: #4a5158; --line-strong: #8a9299; }
 }
 
 body { font-size: 20px; line-height: 1.6; }
@@ -17,28 +13,25 @@ a { text-decoration: underline; text-decoration-thickness: 2px; text-underline-o
 :focus-visible { outline: 4px solid var(--accent); outline-offset: 3px; }
 p { margin: .8rem 0; }
 
-/* Top bar: big menu buttons; the current page is a solid raspberry block. */
-header.top { gap: .6rem 1rem; padding: .6rem 1rem .75rem; min-height: 4.5rem; border-bottom-width: 6px; }
-/* Logo on the first line, the menu below at full width. */
-header.top nav { flex-basis: 100%; }
-.brand { font-size: 1.4rem; gap: .65rem; }
+/* The header: four big tabs; the open one a silver folder tab over its
+   pages, the current page a solid dark pink block. */
+header.top { gap: .5rem 1.25rem; padding: .7rem 1rem 0; }
+.brand { font-size: 1.45rem; gap: .7rem; padding-bottom: .7rem; }
 .brand .mark { width: 1.1rem; height: 1.35rem; border-top-width: .32rem; }
-header nav { gap: .4rem; }
-header nav a { min-height: 3.5rem; padding: .5rem .8rem; margin: 0; border: 2px solid transparent; border-radius: 6px;
-  font-size: 1.05rem; font-weight: 600; color: #fff; text-decoration: none; }
-header nav a:hover { background: rgba(255, 255, 255, .12); border-color: rgba(255, 255, 255, .35); }
-header nav a[aria-current="page"] { background: var(--raspberry); border-color: var(--raspberry); }
-
-/* Who is signed in, and the sync line: plain text, not small print. */
-.status { font: 1.1rem/1.5 system-ui, sans-serif; color: var(--fg); padding: .6rem 1.25rem; gap: .5rem 1.75rem; }
-.me { font-size: 1.1rem; gap: 1.25rem; }
-.me button.link { font-size: 1.1rem; }
+nav.groups { gap: .4rem; }
+nav.groups a { min-height: 3.5rem; display: flex; align-items: center; padding: .6rem 1.4rem; font-size: 1.2rem; border-radius: 10px 10px 0 0; }
+.me { padding-bottom: .7rem; gap: .5rem 1.25rem; font-size: 1.05rem; }
+header.top .me a, .me button.link { font-size: 1.05rem; }
+.bar2 { padding: .6rem 1rem; gap: .6rem 1.5rem; border-bottom-width: 5px; }
+.bar2:empty { padding: 0; min-height: .9rem; }
+nav.pages { gap: .5rem; }
+nav.pages a { min-height: 3rem; display: flex; align-items: center; padding: .4rem 1.05rem; font-size: 1.1rem; border-radius: 8px; }
+.status { font-size: 1rem; padding: .45rem 1.25rem; gap: .4rem 1.75rem; }
 .trial, .insecure { font-size: 1.05rem; padding: .9rem 1.25rem; }
 
 /* Headings in plain, larger words. */
-h1 { font-size: 2.1rem; font-weight: 700; margin: .5rem 0 1.25rem; }
-h2 { font-size: 1.45rem; font-weight: 700; text-transform: none; letter-spacing: 0; color: var(--fg);
-  margin: 2.25rem 0 .9rem; padding-bottom: .5rem; border-bottom: 3px solid var(--line); }
+h1 { font-size: 2.2rem; font-weight: 700; margin: .5rem 0 1.25rem; letter-spacing: -.015em; }
+h2 { font-size: 1.5rem; margin: 2.25rem 0 .9rem; padding-bottom: .5rem; border-bottom: 3px solid var(--line); }
 h2::before { width: .8rem; height: .8rem; margin-right: .6rem; }
 footer { font-size: 1.1rem; padding: 1.5rem; }
 footer p { margin: .3rem 0; }
@@ -54,7 +47,7 @@ button.link { min-height: 0; padding: 0; font-weight: 600; font-size: 1em; }
 .actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr)); align-items: start; gap: 1rem; padding: 0; background: none; border: 0; }
 .act { display: flex; flex-direction: column; align-items: stretch; gap: .75rem; margin: 0; padding: 1.1rem 1.25rem;
   background: var(--panel); border: 2px solid var(--line); border-radius: 8px; }
-.act h3 { font-size: 1.3rem; text-transform: none; letter-spacing: 0; color: var(--fg); }
+.act h3 { font-size: 1.3rem; color: var(--fg); }
 .act > button, .act > .button { align-self: flex-start; }
 .act label { width: 100%; }
 .act label input:not([type="checkbox"]), .act label select, table.stack form label input:not([type="checkbox"]), table.stack form label select { width: 100%; }
@@ -77,7 +70,7 @@ summary { font-size: 1.15rem; padding: .5rem 0; text-decoration: underline; text
 /* Tables: bigger rows, striped so a line is easy to follow across. */
 table { border-width: 2px; }
 th, td { padding: .85rem .9rem; border-bottom-width: 2px; }
-th { font-size: 1.05rem; text-transform: none; letter-spacing: 0; color: var(--fg); }
+th { font-size: 1.05rem; color: var(--fg); }
 tbody tr:nth-child(even) { background: var(--bg); }
 td:first-child a { font-size: 1.05rem; }
 .tag { font-size: .85rem; padding: .1rem .5rem; }
@@ -90,7 +83,7 @@ td:first-child a { font-size: 1.05rem; }
 
 /* Facts about a record: label above value, easy to scan. */
 dl.facts { grid-template-columns: max-content 1fr; gap: .75rem 1.75rem; padding: 1.25rem 1.5rem; }
-dl.facts dt { font-size: 1.05rem; text-transform: none; letter-spacing: 0; font-weight: 700; color: var(--muted); }
+dl.facts dt { font-size: 1.05rem; color: var(--muted); }
 .s-in_service::before, .s-out_of_service::before, .s-missing::before, .s-retired::before { font-size: 1em; }
 .otp { font-size: 2.2rem; }
 

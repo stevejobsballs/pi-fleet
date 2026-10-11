@@ -36,6 +36,77 @@ type page struct {
 func (p page) IsMid() bool   { return roleRank[p.User.Role] >= roleRank[domain.RoleMidTier] }
 func (p page) IsSuper() bool { return p.User.Role == domain.RoleSuperUser }
 
+// navItem is one page in the menu; navGroup is a top-level tab and the
+// pages under it, shown on a second row when it is the open group.
+type navItem struct {
+	Href, Label string
+	Current     bool
+}
+
+type navGroup struct {
+	Label, Href string
+	Current     bool
+	Items       []navItem
+}
+
+// Nav is the menu for this person and this Pi: four groups (Today, Work,
+// Equipment, Admin), the open one marked, with its pages and the current
+// one (the longest matching address, so Register equipment beats the
+// equipment list).
+func (p page) Nav() []navGroup {
+	central := p.Role == "central"
+	work := []navItem{{Href: "/work-orders", Label: "Work orders"}}
+	if central {
+		work = append(work, navItem{Href: "/requests", Label: "Reported problems"})
+	}
+	work = append(work, navItem{Href: "/schedules", Label: "Schedules"}, navItem{Href: "/procedures", Label: "Checklists"})
+	if p.IsMid() {
+		work = append(work, navItem{Href: "/review", Label: "Review"})
+	}
+	groups := []navGroup{
+		{Label: "Today", Href: "/"},
+		{Label: "Work", Items: work},
+		{Label: "Equipment", Items: []navItem{{Href: "/assets", Label: "All equipment"}, {Href: "/assets/new", Label: "Register equipment"},
+			{Href: "/inventory", Label: "Parts and stock"}}},
+	}
+	if p.IsSuper() {
+		admin := []navItem{{Href: "/admin/users", Label: "People"}, {Href: "/admin/sites", Label: "Sites and locations"}}
+		if central {
+			admin = append(admin, navItem{Href: "/admin/nodes", Label: "Pis"}, navItem{Href: "/admin/kiosks", Label: "Kiosks"})
+		}
+		groups = append(groups, navGroup{Label: "Admin", Items: admin})
+	}
+	for gi := range groups {
+		g := &groups[gi]
+		if g.Href == "" {
+			g.Href = g.Items[0].Href
+		}
+		best := -1
+		for i, it := range g.Items {
+			if p.In(it.Href) && (best < 0 || len(it.Href) > len(g.Items[best].Href)) {
+				best = i
+			}
+		}
+		if best >= 0 {
+			g.Items[best].Current, g.Current = true, true
+		}
+		if g.Href == "/" && p.Path == "/" {
+			g.Current = true
+		}
+	}
+	return groups
+}
+
+// SubNav is the open group's pages, or nil.
+func (p page) SubNav() *navGroup {
+	for _, g := range p.Nav() {
+		if g.Current && len(g.Items) > 0 {
+			return &g
+		}
+	}
+	return nil
+}
+
 // Here reports whether the page is in the menu section at prefix.
 func (p page) In(prefix string) bool {
 	if prefix == "/" {

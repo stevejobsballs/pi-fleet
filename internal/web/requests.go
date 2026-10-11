@@ -113,7 +113,7 @@ func (s *Server) assetLabel(w http.ResponseWriter, r *http.Request, sess *sessio
 	if err := s.pages["label"].ExecuteTemplate(&buf, "label", labelData{Asset: a, Code: reportCode(a), URL: reportURL(s.reportBase(r), reportCode(a))}); err != nil {
 		return err
 	}
-	w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, err = buf.WriteTo(w)
 	return err
