@@ -95,6 +95,8 @@ type Server struct {
 	pages  map[string]*template.Template
 	flashM sync.Mutex
 	flash  map[string]string
+
+	reports reportLimiter // the report page, where no one signs in
 }
 
 // DefaultPHIPatterns catch common ways patient details slip into notes.
@@ -146,6 +148,8 @@ func (s *Server) Handler() (http.Handler, error) {
 	mux.Handle("POST /meters/{id}/void", user(s.meterVoid))
 	mux.Handle("GET /assets/{id}/audit", user(s.auditPage("asset")))
 	mux.Handle("GET /assets/{id}/print", user(s.printPage("asset")))
+	mux.Handle("GET /assets/{id}/qr.png", user(s.assetQR))
+	mux.Handle("GET /assets/{id}/label", user(s.assetLabel))
 	mux.Handle("GET /assets/{id}/export.json", user(s.exportJSON("asset")))
 	mux.Handle("GET /work-orders/{id}/audit", user(s.auditPage("work_order")))
 	mux.Handle("GET /work-orders/{id}/print", user(s.printPage("work_order")))
@@ -199,6 +203,13 @@ func (s *Server) Handler() (http.Handler, error) {
 	mux.Handle("POST /admin/locations", super(s.locationCreate))
 	mux.Handle("POST /admin/locations/{id}/review", super(s.locationReview))
 	if s.Role == "central" {
+		// Reporting a problem from an equipment QR label: no sign-in.
+		mux.HandleFunc("GET /r/{code}", s.reportPage)
+		mux.HandleFunc("POST /r/{code}", s.reportSubmit)
+		mux.HandleFunc("GET /r/status/{number}", s.reportStatus)
+		mux.Handle("GET /requests", user(s.requestList))
+		mux.Handle("POST /requests/{id}/convert", user(s.requestConvert))
+		mux.Handle("POST /requests/{id}/close", user(s.requestClose))
 		mux.Handle("GET /admin/nodes", super(s.nodeList))
 		mux.Handle("POST /admin/nodes/{id}/confirm", super(s.nodeConfirm))
 		mux.Handle("POST /admin/nodes/{id}/reject", super(s.nodeReject))

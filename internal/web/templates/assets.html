@@ -6,7 +6,7 @@
 {{if eq .Role "node"}} <a href="/fleet/assets?q={{urlquery .Data.Search}}">Search the whole fleet instead (needs a connection)</a>{{end}}</p>
 {{if .Data.Assets}}
 <table><thead><tr><th>Tag</th><th>MasterID</th><th>Equipment</th><th>Serial</th><th>Site</th><th>Location</th><th>Status</th><th>Next due</th></tr></thead><tbody>
-{{range .Data.Assets}}<tr><td><a href="/assets/{{.ID}}">{{.Tag}}</a>{{if .Reference}} <span class="tag">standard</span>{{end}}</td><td>{{.MasterID}}</td><td>{{.Manufacturer}} {{.Model}}</td><td>{{.Serial}}</td>
+{{range .Data.Assets}}<tr><td><a href="/assets/{{.ID}}">{{.Tag}}</a>{{if .Reference}} <span class="tag">standard</span>{{end}}</td><td>{{if .MasterID}}{{template "qrpop" (qrpop .ID .MasterID .MasterID $.Data.ReportBase)}}{{end}}</td><td>{{.Manufacturer}} {{.Model}}</td><td>{{.Serial}}</td>
   <td>{{.Site}}</td><td>{{.Location}}</td><td class="s-{{.Status}}">{{if .MergedIntoTag}}merged into {{.MergedIntoTag}}{{else}}{{label .Status}}{{end}}</td><td>{{.NextDue}}</td></tr>{{end}}
 </tbody></table>
 {{else}}<p>No equipment {{if or .Data.Search .Data.Site}}matches{{if .Data.Search}} “{{.Data.Search}}”{{end}}{{if .Data.Site}} at that site{{end}}{{else}}on this Pi yet{{end}}.{{if eq .Role "node"}} This Pi holds equipment due in the next 31 days, open work, reference standards and your home sites' equipment.{{end}}</p>{{end}}

@@ -460,6 +460,15 @@ func NodeShortCode(nodeID string) string {
 func (a *App) OpenWorkOrder(ctx context.Context, actor Actor, w NewWorkOrder) (id, number string, err error) {
 	id = newID()
 	err = a.Store.Update(ctx, func(tx *store.Tx) error {
+		number, err = a.openWorkOrder(ctx, tx, actor, id, w)
+		return err
+	})
+	return id, number, err
+}
+
+// openWorkOrder opens work order id in tx and returns its number.
+func (a *App) openWorkOrder(ctx context.Context, tx *store.Tx, actor Actor, id string, w NewWorkOrder) (number string, err error) {
+	err = func() error {
 		var siteCode string
 		err := tx.QueryRowContext(ctx, `SELECT s.code FROM assets a JOIN sites s ON s.id = a.site_id WHERE a.id = ?`, w.AssetID).Scan(&siteCode)
 		if err != nil {
@@ -475,8 +484,8 @@ func (a *App) OpenWorkOrder(ctx context.Context, actor Actor, w NewWorkOrder) (i
 			Number: number, Type: w.Type, AssetID: w.AssetID, Priority: w.Priority,
 			Title: w.Title, Problem: w.Problem, DueAt: w.DueAt, ScheduleID: w.scheduleID, ProcedureID: w.ProcedureID,
 		})
-	})
-	return id, number, err
+	}()
+	return number, err
 }
 
 // AssignWorkOrder assigns (or reassigns) a work order, granting the

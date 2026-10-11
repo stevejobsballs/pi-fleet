@@ -61,7 +61,11 @@ var funcs = template.FuncMap{
 		}
 		return t.In(loc).Format("2006-01-02 15:04 MST")
 	},
-	"label":       func(s string) string { return strings.ReplaceAll(s, "_", " ") },
+	"label": func(s string) string { return strings.ReplaceAll(s, "_", " ") },
+	// qrpop is what the QR label pop-up (layout.html) needs.
+	"qrpop": func(id, code, text, base string) map[string]string {
+		return map[string]string{"ID": id, "Code": code, "Text": text, "URL": reportURL(base, code)}
+	},
 	"urlquery":    urlQuery,
 	"meaningText": func(m string) string { return domain.MeaningText[m] },
 	"add":         func(a, b int) int { return a + b },

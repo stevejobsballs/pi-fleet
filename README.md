@@ -13,7 +13,10 @@ electronic signatures; the web interface; verified, encrypted backups with
 off-site USB rotation; signed releases with automatic rollback;
 attachments (certificates and photos); kiosk mode for shared Pis; and
 locations proposed while registering equipment, which a super user approves
-or rejects (rejected, their equipment moves to the *Unallocated* site).
+or rejects (rejected, their equipment moves to the *Unallocated* site). Every
+piece of equipment has a printable QR label: scanning it opens a page where
+anyone on the hospital network can report a problem without signing in, and
+staff turn each report into a work order on the master Pi's Requests page.
 Installation and day-to-day operation: [docs/OPERATIONS.md](docs/OPERATIONS.md).
 
 ## Install

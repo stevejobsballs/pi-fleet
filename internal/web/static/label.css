@@ -1,0 +1,21 @@
+/* The printable QR label. On screen: the label with its controls above;
+   on paper: only the label, about 7 cm wide, with a cutting border. */
+body { margin: 0; padding: 1.5rem; font: 18px/1.4 system-ui, sans-serif; color: #15181b; background: #f4f4f2; }
+.controls { max-width: 34rem; margin: 0 auto 1.5rem; }
+.controls button { font: 700 1.2rem system-ui, sans-serif; padding: .8rem 1.6rem; border-radius: 6px; border: 2px solid #c51a4a;
+  background: #c51a4a; color: #fff; cursor: pointer; }
+.controls a { color: #c51a4a; margin-left: 1rem; font-size: 1.1rem; }
+.controls .small { font-size: .95rem; color: #3a3f45; }
+.label { width: 7cm; margin: 0 auto; padding: .4cm; background: #fff; border: 2px dashed #6b7177; text-align: center; color: #000; }
+.label h1 { font-size: 15pt; margin: 0 0 .1cm; }
+.label .scan { font-size: 11pt; margin: 0 0 .15cm; }
+.label img { width: 5cm; height: 5cm; image-rendering: pixelated; }
+.label .code { font: 700 16pt ui-monospace, "DejaVu Sans Mono", monospace; margin: .1cm 0 0; word-break: break-all; }
+.label .what { font-size: 9pt; margin: .05cm 0 0; }
+.label .url { font: 7pt ui-monospace, "DejaVu Sans Mono", monospace; margin: .1cm 0 0; word-break: break-all; color: #333; }
+@media print {
+  body { padding: 0; background: #fff; }
+  .controls { display: none; }
+  .label { margin: 0; }
+  @page { margin: 1cm; }
+}

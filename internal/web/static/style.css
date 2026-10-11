@@ -87,8 +87,8 @@ button, .button { font: 600 14px/1.2 system-ui, sans-serif; display: inline-bloc
 button:hover, .button:hover { background: var(--accent-hover); border-color: var(--accent-hover); color: var(--on-accent); }
 button.danger { background: transparent; color: var(--bad); border-color: var(--bad); }
 button.danger:hover { background: var(--bad); color: #fff; }
-button.secondary { background: var(--panel); color: var(--fg); border-color: var(--line-strong); }
-button.secondary:hover { background: var(--tint); color: var(--fg); border-color: var(--fg); }
+button.secondary, .button.secondary { background: var(--panel); color: var(--fg); border-color: var(--line-strong); }
+button.secondary:hover, .button.secondary:hover { background: var(--tint); color: var(--fg); border-color: var(--fg); }
 p.buttons { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; margin: .25rem 0 0; }
 button.link { background: none; border: none; color: var(--accent); padding: 0; font-weight: 400; text-decoration: underline; text-underline-offset: 2px; }
 button.link:hover { background: none; color: var(--accent-hover); }
@@ -96,7 +96,17 @@ details { margin: .5rem 0; }
 /* A pop-up panel (the popover attribute: no script needed). */
 .popup { max-width: 34rem; width: calc(100% - 2rem); max-height: calc(100% - 2rem); overflow: auto; padding: 1rem 1.25rem;
   color: var(--fg); background: var(--panel); border: 1px solid var(--line-strong); border-radius: var(--radius); }
-.popup:popover-open { display: grid; gap: 1rem; }
+.popup:popover-open { display: grid; gap: 1rem; animation: popup-in .22s ease-out; }
+.popup:popover-open::backdrop { animation: backdrop-in .22s ease-out; }
+@keyframes popup-in { from { opacity: 0; transform: translateY(14px) scale(.96); } to { opacity: 1; transform: none; } }
+@keyframes backdrop-in { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .popup:popover-open, .popup:popover-open::backdrop { animation: none; } }
+/* The QR label pop-up. */
+.qr-pop { max-width: 24rem; justify-items: center; text-align: center; }
+.qr-pop img { width: 260px; height: 260px; image-rendering: pixelated; border: 1px solid var(--line); }
+.qr-pop .qr-code { font: 700 1.3rem var(--mono); margin: 0; word-break: break-all; }
+.qr-pop .buttons { justify-content: center; }
+button.qr-open { font-family: var(--mono); }
 .popup::backdrop { background: rgb(0 0 0 / .35); }
 .popup h2 { margin: 0; }
 /* Sites inside sites, indented under their parent. */

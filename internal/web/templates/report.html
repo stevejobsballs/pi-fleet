@@ -1,0 +1,39 @@
+{{define "content"}}{{$d := .Data}}
+{{with $d.Request}}
+<section class="report">
+  <p class="flash" role="status">Thank you. Your reference is <strong>{{.Number}}</strong>. Keep this page, or note the number, to check on it.</p>
+  <dl class="details">
+    <dt>Equipment</dt><dd>{{.AssetTag}} · {{.Equipment}}</dd>
+    <dt>Where</dt><dd>{{.Place}}</dd>
+    <dt>Problem</dt><dd>{{.Category}}</dd>
+    <dt>Reported</dt><dd>{{when .SubmittedAt}}</dd>
+    <dt>Status</dt><dd>{{if eq .Status "new"}}Received: waiting for the biomedical engineering team to look at it.
+      {{else if eq .Status "closed"}}Closed: {{.ClosedReason}}
+      {{else if or (eq .WorkOrderStatus "closed") (eq .WorkOrderStatus "reviewed") (eq .WorkOrderStatus "completed")}}Done: the work on it is finished (work order {{.WorkOrderNumber}}).
+      {{else if eq .WorkOrderStatus "cancelled"}}No work was needed (work order {{.WorkOrderNumber}} was cancelled).
+      {{else}}Being worked on: work order {{.WorkOrderNumber}} ({{label .WorkOrderStatus}}).{{end}}</dd>
+  </dl>
+</section>
+{{else}}{{if not $d.Asset.ID}}
+<p class="error" role="alert">No equipment has the label “{{$d.Code}}”. Check the label, or phone the biomedical engineering team.</p>
+{{else}}
+<section class="report">
+  <p>Tell the biomedical engineering team what's wrong with this equipment. They will contact you if they need more.</p>
+  <dl class="details"><dt>Equipment</dt><dd>{{$d.Asset.Tag}} · {{$d.Asset.Manufacturer}} {{$d.Asset.Model}}</dd><dt>Where</dt><dd>{{$d.Place}}</dd></dl>
+  <p class="warn"><strong>If anyone is in danger, stop using the equipment and phone for help now.</strong> This form is not watched around the clock.</p>
+  <form method="post" action="/r/{{urlquery $d.Code}}" class="narrow">
+    {{with $d.Error}}<p class="error" role="alert">{{.}}</p>{{end}}
+    <fieldset><legend>What's wrong?</legend>
+      {{range $d.Categories}}<label class="check"><input type="radio" name="category" value="{{.}}" required{{if eq . ($d.F.Get "category")}} checked{{end}}> {{.}}</label>{{end}}
+    </fieldset>
+    <label>Describe the problem <textarea name="description" rows="4" required maxlength="2000" placeholder="e.g. occlusion alarm keeps sounding with no line blocked">{{$d.F.Get "description"}}</textarea></label>
+    <p class="hint">Never include patient information: no names, bed numbers with names, or record numbers.</p>
+    <label>Your name <input name="name" value="{{$d.F.Get "name"}}" required maxlength="120" autocomplete="name"></label>
+    <label>Your department or ward <input name="department" value="{{$d.F.Get "department"}}" required maxlength="120" placeholder="e.g. Ward 3B"></label>
+    <label>Phone or extension to call you back <input name="phone" value="{{$d.F.Get "phone"}}" required maxlength="120" type="tel" autocomplete="tel"></label>
+    {{template "nophi"}}
+    <button>Send report</button>
+  </form>
+</section>
+{{end}}{{end}}
+{{end}}

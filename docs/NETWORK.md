@@ -160,6 +160,26 @@ about the self-signed certificate.
 - **Moving the master Pi to another address:** update its DNS record.
   If the Pis use its DNS name, they follow by themselves.
 
+### 8. Phones reporting problems (QR labels)
+
+Each piece of equipment can carry a QR label. Scanning it opens the master
+Pi's report page (`https://<master's name>/r/<label>`), where anyone can
+report a problem without signing in. For that:
+
+- **Reach:** phones on the hospital Wi-Fi need to reach the master Pi on
+  port 443, by the same name the label was printed with. Print labels from
+  a browser that opened the master by that name (the DNS name from step 2,
+  rather than `.local`, which some phones can't resolve).
+- **The certificate:** the master's certificate is its own, so phones show
+  a warning the first time unless they trust it. To avoid that, give the
+  master a certificate from your institution's certificate authority for
+  its DNS name, or install the master's certificate on managed phones.
+- **What's exposed:** the report page shows only the equipment's tag,
+  model and location, and the status page only a report's progress. It
+  never shows who reported what. Reports are limited to 5 per address in
+  10 minutes and 120 in all, and the page refuses text that looks like
+  patient information. Don't make it reachable from outside the hospital.
+
 ## Bandwidth
 
 Small. Each sync is a few kilobytes when there's little new work. A Pi

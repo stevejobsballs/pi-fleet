@@ -120,6 +120,7 @@ const (
 var systemActorTypes = map[string][]string{
 	SystemConsole:    {TypeUserCreated},
 	SystemScheduler:  {TypeWorkOrderOpened},
+	SystemReport:     {TypeRequestSubmitted},
 	SystemAuth:       {TypeUserLocked},
 	SystemActivation: {TypeNodeActivated},
 }
@@ -419,6 +420,9 @@ var payloadTypes = map[string]struct {
 }{
 	TypeSiteCreated:            {EntitySite, func() any { return &SiteCreated{} }},
 	TypeSiteMoved:              {EntitySite, func() any { return &SiteMoved{} }},
+	TypeRequestSubmitted:       {EntityRequest, func() any { return &RequestSubmitted{} }},
+	TypeRequestConverted:       {EntityRequest, func() any { return &RequestConverted{} }},
+	TypeRequestClosed:          {EntityRequest, func() any { return &RequestClosed{} }},
 	TypeLocationCreated:        {EntityLocation, func() any { return &LocationCreated{} }},
 	TypeLocationProposed:       {EntityLocation, func() any { return &LocationProposed{} }},
 	TypeLocationReviewed:       {EntityLocation, func() any { return &LocationReviewed{} }},

@@ -216,7 +216,13 @@ func checkPage(t reporter, req *http.Request, resp *http.Response, body string) 
 	for _, tag := range tagRE.FindAllStringSubmatch(body, -1) {
 		name, a := strings.ToLower(tag[1]), attrs(tag[2])
 		switch name {
-		case "script", "style", "iframe", "object", "embed", "base":
+		case "script":
+			// Only a script file from this site, on a page whose CSP allows
+			// it (the QR label page's Print button); never inline.
+			if src := a["src"]; !strings.HasPrefix(src, "/static/") || !strings.Contains(csp, "script-src 'self'") {
+				fail("<script> element (blocked by the CSP or not allowed)")
+			}
+		case "style", "iframe", "object", "embed", "base":
 			fail("<%s> element (blocked by the CSP or not allowed)", name)
 		}
 		for k, v := range a {
@@ -260,7 +266,9 @@ func checkPage(t reporter, req *http.Request, resp *http.Response, body string) 
 		if method != "post" {
 			continue
 		}
-		if action != "/login" && !csrfFormRE.MatchString(inner) {
+		// Signing in and reporting a problem have no session to protect;
+		// the same-origin check covers them.
+		if action != "/login" && !strings.HasPrefix(action, "/r/") && !csrfFormRE.MatchString(inner) {
 			fail("post form to %q has no csrf field, so it would be refused", action)
 		}
 		if fileRE.MatchString(inner) && a["enctype"] != "multipart/form-data" {

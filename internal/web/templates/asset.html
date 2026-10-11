@@ -7,7 +7,7 @@
 <dl class="facts">
   <dt>Equipment</dt><dd>{{$a.Manufacturer}} {{$a.Model}}{{if $a.IsReferenceStandard}} <span class="tag">reference standard</span>{{end}}</dd>
   <dt>Serial</dt><dd>{{$a.Serial}}</dd>
-  <dt>MasterID</dt><dd>{{if $a.MasterID}}{{$a.MasterID}}{{else}}not set{{end}}</dd>
+  <dt>MasterID</dt><dd>{{if $a.MasterID}}{{template "qrpop" (qrpop $a.ID $a.MasterID $a.MasterID $.Data.ReportBase)}}{{else}}not set · {{template "qrpop" (qrpop $a.ID $a.Tag "QR label" $.Data.ReportBase)}}{{end}}</dd>
   <dt>Site</dt><dd>{{or .Data.Site.Path .Data.Site.Code}} · {{.Data.Site.Name}}</dd>
   <dt>Location</dt><dd>{{.Data.Location}}</dd>
   <dt>Status</dt><dd class="s-{{$a.Status}}"><strong>{{label $a.Status}}</strong></dd>

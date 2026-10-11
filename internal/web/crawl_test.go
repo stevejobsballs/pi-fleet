@@ -90,6 +90,15 @@ func (e *env) seedEverything() {
 	must(err)
 	_, err = e.app.RegisterAsset(e.ctx, e.super, domain.AssetRegistered{Tag: "ECG-9", LocationID: exam, Manufacturer: "GE", Model: "MAC 2000"})
 	must(err)
+	// Problems reported from QR labels: one waiting, one turned into work.
+	_, _, err = e.app.SubmitRequest(e.ctx, domain.RequestSubmitted{AssetID: kept, Category: "Alarm or error message",
+		Description: "Occlusion alarm with no line blocked", Name: "Nora Nurse", Department: "Ward 3B", Phone: "x4410"})
+	must(err)
+	reqID, _, err := e.app.SubmitRequest(e.ctx, domain.RequestSubmitted{AssetID: vent, Category: "Not working",
+		Description: "Won't power on", Name: "Ray Resp", Department: "ICU", Phone: "x2200"})
+	must(err)
+	_, _, err = e.app.ConvertRequest(e.ctx, mid, reqID, "corrective", "high")
+	must(err)
 	propose("Ultrasound 3", "US-1")
 	must(e.app.ReviewLocation(e.ctx, e.super, propose("Closet B", "US-2"), false, "not a clinical area"))
 }

@@ -1,0 +1,23 @@
+{{define "content"}}{{$d := .Data}}
+<p class="hint">Problems reported by scanning equipment QR labels. Open a work order for each, or close it with a reason the person who reported it will see.</p>
+{{range $d.New}}<fieldset><legend>{{.Number}} · {{.Category}}</legend>
+  <dl class="details">
+    <dt>Equipment</dt><dd><a href="/assets/{{.AssetID}}">{{.AssetTag}}</a> · {{.Equipment}}</dd>
+    <dt>Where</dt><dd>{{.Place}}</dd>
+    <dt>Problem</dt><dd>{{.Description}}</dd>
+    <dt>Reported by</dt><dd>{{.Name}}, {{.Department}} · {{.Phone}}</dd>
+    <dt>When</dt><dd>{{when .SubmittedAt}}</dd>
+  </dl>
+  <form method="post" action="/requests/{{.ID}}/convert" class="inline">{{template "csrf" $.CSRF}}
+    <label>Type <select name="type">{{range $d.Types}}<option>{{.}}</option>{{end}}</select></label>
+    <label>Priority <select name="priority">{{range $d.Priorities}}<option>{{.}}</option>{{end}}</select></label>
+    <button>Open work order</button></form>
+  <form method="post" action="/requests/{{.ID}}/close" class="inline">{{template "csrf" $.CSRF}}
+    <label>Reason <input name="reason" required placeholder="e.g. same as R-00012, or no fault found"></label><button class="secondary">Close</button></form>
+</fieldset>{{else}}<p>No problems waiting. Reports appear here when someone scans an equipment QR label and sends one.</p>{{end}}
+{{if $d.Handled}}<section><h2>Recently handled</h2>
+<table><thead><tr><th>Number</th><th>Equipment</th><th>Problem</th><th>Reported</th><th>Outcome</th></tr></thead><tbody>
+{{range $d.Handled}}<tr><td>{{.Number}}</td><td><a href="/assets/{{.AssetID}}">{{.AssetTag}}</a></td><td>{{.Category}}</td><td>{{when .SubmittedAt}}</td>
+  <td>{{if eq .Status "closed"}}closed: {{.ClosedReason}}{{else}}<a href="/work-orders/{{.WorkOrderID}}">{{.WorkOrderNumber}}</a> ({{label .WorkOrderStatus}}){{end}}</td></tr>{{end}}
+</tbody></table></section>{{end}}
+{{end}}

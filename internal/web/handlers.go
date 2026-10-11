@@ -109,6 +109,7 @@ type dashboardData struct {
 	Unassigned int
 	Flags      int
 	Locations  int // proposed locations waiting for a super user
+	Requests   int // reported problems waiting (master Pi)
 }
 
 func (s *Server) dashboard(w http.ResponseWriter, r *http.Request, sess *session) error {
@@ -126,6 +127,7 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request, sess *session
 	}
 	q.QueryRowContext(ctx, `SELECT count(*) FROM work_orders WHERE status = 'open'`).Scan(&d.Unassigned)
 	q.QueryRowContext(ctx, `SELECT count(*) FROM locations WHERE status = 'pending'`).Scan(&d.Locations)
+	q.QueryRowContext(ctx, `SELECT count(*) FROM service_requests WHERE status = 'new'`).Scan(&d.Requests)
 	q.QueryRowContext(ctx, `SELECT count(*) FROM event_flags f WHERE NOT EXISTS (SELECT 1 FROM flag_resolutions r WHERE r.event_id = f.event_id)`).Scan(&d.Flags)
 	return s.render(w, r, sess, "dashboard", "Today", d)
 }
@@ -134,13 +136,14 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request, sess *session
 
 type assetListData struct {
 	Search, Site string
+	ReportBase   string // for QR labels
 	Sites        []option
 	Assets       []assetRow
 }
 
 func (s *Server) assetList(w http.ResponseWriter, r *http.Request, sess *session) error {
 	q, site := strings.TrimSpace(r.URL.Query().Get("q")), r.URL.Query().Get("site")
-	d := assetListData{Search: q, Site: site}
+	d := assetListData{Search: q, Site: site, ReportBase: s.reportBase(r)}
 	var err error
 	if d.Assets, err = listAssetsAt(r.Context(), s.App.Store.DB(), q, site); err != nil {
 		return err
@@ -256,7 +259,7 @@ func (s *Server) assetCreate(w http.ResponseWriter, r *http.Request, sess *sessi
 	if len(problems) > 0 {
 		return s.done(w, r, sess, "/assets/"+id, "Equipment registered, but not attached: "+strings.Join(problems, "; ")+". Add files below.")
 	}
-	return s.done(w, r, sess, "/assets/"+id, "Equipment registered.")
+	return s.done(w, r, sess, "/assets/"+id, "Equipment registered. Its QR label is ready: choose its MasterID below to see and print it.")
 }
 
 func countFiles(r *http.Request) int {
@@ -288,6 +291,7 @@ type assetData struct {
 	Merged     []option // records merged into this one, history integrated
 	Separate   []option // records merged into this one, history kept with them
 	Duplicates []option // other unmerged records with the same MasterID
+	ReportBase string   // for its QR label
 }
 
 func (s *Server) assetView(w http.ResponseWriter, r *http.Request, sess *session) error {
@@ -295,6 +299,7 @@ func (s *Server) assetView(w http.ResponseWriter, r *http.Request, sess *session
 	if err != nil {
 		return err
 	}
+	d.ReportBase = s.reportBase(r)
 	return s.render(w, r, sess, "asset", d.Asset.Tag, d)
 }
 

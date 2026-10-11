@@ -18,6 +18,7 @@
     <a href="/schedules"{{if .In "/schedules"}} aria-current="page"{{end}}>Schedules</a>
     <a href="/procedures"{{if .In "/procedures"}} aria-current="page"{{end}}>Checklists</a>
     <a href="/inventory"{{if .In "/inventory"}} aria-current="page"{{end}}>Inventory</a>
+    {{if eq .Role "central"}}<a href="/requests"{{if .In "/requests"}} aria-current="page"{{end}}>Requests</a>{{end}}
     {{if .IsMid}}<a href="/review"{{if .In "/review"}} aria-current="page"{{end}}>Review</a>{{end}}
     {{if .IsSuper}}<a href="/admin/users"{{if .In "/admin/users"}} aria-current="page"{{end}}>Users</a><a href="/admin/sites"{{if .In "/admin/sites"}} aria-current="page"{{end}}>Sites</a>{{if eq .Role "central"}}<a href="/admin/nodes"{{if .In "/admin/nodes"}} aria-current="page"{{end}}>Pis</a><a href="/admin/kiosks"{{if .In "/admin/kiosks"}} aria-current="page"{{end}}>Kiosks</a>{{end}}{{end}}
   </nav>
@@ -87,3 +88,12 @@
   {{template "nophi"}}<button>Attach</button></form>
 <p class="hint">Photos must not show patients, screens with patient data, or wristbands.</p>{{end}}
 {{end}}
+
+{{define "qrpop"}}<button type="button" class="link qr-open" popovertarget="qr-{{.ID}}">{{.Text}}</button>
+<div id="qr-{{.ID}}" popover class="popup qr-pop" role="dialog" aria-labelledby="qr-{{.ID}}-title">
+  <h2 id="qr-{{.ID}}-title">QR label</h2>
+  <img src="/assets/{{.ID}}/qr.png" alt="QR code for {{.Code}}" width="260" height="260" loading="lazy">
+  <p class="qr-code">{{.Code}}</p>
+  <p class="hint">Scanning it opens {{.URL}}, where anyone on the hospital network can report a problem with this equipment.</p>
+  <p class="buttons"><a class="button" href="/assets/{{.ID}}/label" target="_blank" rel="noopener">Print label</a><a class="button secondary" href="/assets/{{.ID}}/qr.png?download=1">Download image</a><button type="button" class="secondary" popovertarget="qr-{{.ID}}" popovertargetaction="hide">Close</button></p>
+</div>{{end}}
