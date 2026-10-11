@@ -4,6 +4,7 @@
   <span class="hint">Work order {{$d.WO.Number}}: {{$d.WO.Title}}{{with $cl.Reference}} · follows {{.}}{{end}}</span></p>
   <p class="cl-progress"><progress value="{{$d.Answered}}" max="{{$d.Total}}">{{$d.Answered}} of {{$d.Total}}</progress>
     <span><strong>{{$d.Answered}} of {{$d.Total}}</strong> answered{{if $d.Failed}} · <span class="fail">{{$d.Failed}} failed</span>{{end}}</span></p>
+  <p><a href="/work-orders/{{$d.WO.ID}}/checklists/{{$cl.ID}}/checklist.csv">Download as filled in (spreadsheet, to print or keep)</a></p>
   {{if not $edit}}<p class="hint">{{if eq $d.WO.Status "in_progress"}}Only the person doing this work order fills in its checklists.{{else if or (eq $d.WO.Status "open") (eq $d.WO.Status "assigned")}}Start the work on the work order to fill this in.{{else}}This work order is {{label $d.WO.Status}}; its checklist can no longer be changed.{{end}}</p>{{end}}
 </div>
 <form method="post" action="/work-orders/{{$d.WO.ID}}/checklist" class="checklist" enctype="multipart/form-data">{{template "csrf" .CSRF}}<input type="hidden" name="procedure" value="{{$cl.ID}}">
@@ -14,7 +15,7 @@
     <legend>{{.Text}}{{if .Required}} <span class="tag">required</span>{{end}}{{if .Critical}} <span class="tag crit">critical</span>{{end}}</legend>
     {{with .Help}}<p class="hint pre">{{.}}</p>{{end}}
     {{if not .Applies}}<p class="hint">Not needed: only when “{{stepName $cl.Procedure.Steps .ShowIf.Step}}” is “{{.ShowIf.Equals}}”.</p>{{end}}
-    {{if .Recorded}}<p class="cl-answer"><strong>{{.Display}}{{if eq .Kind "number"}} {{.Unit}}{{end}}</strong>{{if eq .Outcome "pass"}} <span class="pass">pass</span>{{else if eq .Outcome "fail"}} <span class="fail">fail</span>{{end}}
+    {{if .Recorded}}<p class="cl-answer"><strong>{{.Display}}{{if eq .Kind "number"}} {{.Unit}}{{end}}</strong>{{if .Measured}} · measured <strong>{{.Measured}}{{if .Unit}} {{.Unit}}{{end}}</strong>{{end}}{{if eq .Outcome "pass"}} <span class="pass">pass</span>{{else if eq .Outcome "fail"}} <span class="fail">fail</span>{{end}}
       <span class="hint">· {{.RecordedBy}}, {{when .RecordedAt}}</span>{{with .Note}}<br>Note: {{.}}{{end}}</p>{{end}}
     {{with .Photos}}<div class="thumbs">{{range .}}<a href="/attachments/{{.ID}}?view=1" target="_blank" rel="noopener"><img src="/attachments/{{.ID}}?view=1" alt="Photo: {{.Filename}}" loading="lazy"></a>{{end}}</div>{{end}}
     {{if and $edit .Applies}}{{$s := .}}
@@ -22,6 +23,7 @@
         <label class="pill"><input type="radio" name="v_{{.ID}}" value="pass"{{if eq .Value "pass"}} checked{{end}}> Pass</label>
         <label class="pill"><input type="radio" name="v_{{.ID}}" value="fail"{{if eq .Value "fail"}} checked{{end}}> Fail</label>
         {{if not .Required}}<label class="pill"><input type="radio" name="v_{{.ID}}" value="n/a"{{if eq .Value "n/a"}} checked{{end}}> Not applicable</label>{{end}}</div>
+        <label class="measured">Measured value{{if .Unit}} in {{.Unit}}{{end}} (if one was measured) <input name="m_{{.ID}}" value="{{.Measured}}" maxlength="60" autocomplete="off"></label>
       {{else if eq .Kind "number"}}<label>Reading{{if .Unit}} in {{.Unit}}{{end}}{{if or .Lower .Upper}} (passes {{if .Lower}}from {{.Lower}}{{end}}{{if .Upper}} up to {{.Upper}}{{end}}){{end}}
         <input name="v_{{.ID}}" value="{{.Value}}" inputmode="decimal" size="10" autocomplete="off"></label>
       {{else if eq .Kind "choice"}}<div class="choices">{{range .Options}}<label class="pill"><input type="radio" name="v_{{$s.ID}}" value="{{.Label}}"{{if eq .Label $s.Value}} checked{{end}}> {{.Label}}</label>{{end}}</div>

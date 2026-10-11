@@ -50,6 +50,12 @@ func (a *App) RecordStep(ctx context.Context, actor Actor, woID, stepID, value, 
 // RecordChecklistStep records one step of one of a work order's
 // checklists ("" for its first) under the actor's lease.
 func (a *App) RecordChecklistStep(ctx context.Context, actor Actor, woID, procedureID, stepID, value, note string) error {
+	return a.RecordAnswer(ctx, actor, woID, procedureID, stepID, value, note, "")
+}
+
+// RecordAnswer records one step, with the value measured to decide a
+// pass/fail step.
+func (a *App) RecordAnswer(ctx context.Context, actor Actor, woID, procedureID, stepID, value, note, measured string) error {
 	return a.Store.Update(ctx, func(tx *store.Tx) error {
 		w, err := domain.GetWorkOrder(ctx, tx, woID)
 		if err != nil {
@@ -62,7 +68,7 @@ func (a *App) RecordChecklistStep(ctx context.Context, actor Actor, woID, proced
 			procedureID = "" // the first checklist, recorded as it always was
 		}
 		return a.emit(ctx, tx, actor, domain.TypeWorkOrderStepRecorded, domain.EntityWorkOrder, woID, w.Version, w.LeaseID,
-			domain.WorkOrderStepRecorded{ProcedureID: procedureID, StepID: stepID, Value: value, Note: note})
+			domain.WorkOrderStepRecorded{ProcedureID: procedureID, StepID: stepID, Value: value, Note: note, Measured: measured})
 	})
 }
 
@@ -129,4 +135,23 @@ func (a *App) ReviewChecklist(ctx context.Context, actor Actor, proposalID strin
 		return a.emit(ctx, tx, actor, domain.TypeProcedureProposalReviewed, domain.EntityProposal, proposalID, 0, "",
 			domain.ProcedureProposalReviewed{Approved: approved, Note: note, PublishedID: pub})
 	})
+}
+
+// StartChecklist fills in a checklist on a piece of equipment straight
+// from the library: it opens an inspection work order with the checklist,
+// takes it for the actor and starts it.
+func (a *App) StartChecklist(ctx context.Context, actor Actor, assetID, procedureID string) (string, error) {
+	p, err := domain.GetProcedure(ctx, a.Store.DB(), procedureID)
+	if err != nil {
+		return "", err
+	}
+	id, _, err := a.OpenWorkOrder(ctx, actor, NewWorkOrder{Type: "inspection", AssetID: assetID, Priority: "normal",
+		Title: "Checklist: " + p.Name, ProcedureID: procedureID})
+	if err != nil {
+		return "", err
+	}
+	if _, err := a.ClaimWorkOrder(ctx, actor, id); err != nil {
+		return id, err
+	}
+	return id, a.ChangeWorkOrderStatus(ctx, actor, id, domain.WOInProgress, "")
 }

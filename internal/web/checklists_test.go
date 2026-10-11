@@ -1,6 +1,8 @@
 package web
 
 import (
+	"bytes"
+	"encoding/csv"
 	"html"
 	"net/http"
 	"net/url"
@@ -439,6 +441,72 @@ func TestSamplePortableXRayChecklist(t *testing.T) {
 	for _, want := range []string{"Half-value layer at 80 kVp", "only when “What powers the drive and generator?” is “Battery”", "Fail: removed from service (fails)"} {
 		if !strings.Contains(html.UnescapeString(page), want) {
 			t.Errorf("published checklist lacks %q", want)
+		}
+	}
+}
+
+// From the library: fill a checklist in on a chosen piece of equipment,
+// with measured values, and download it to print, blank and filled in.
+func TestFillAChecklistFromTheLibraryAndPrintIt(t *testing.T) {
+	e := newEnv(t)
+	e.user("tess", "Tess Tech", domain.RoleUser)
+	asset, _ := e.app.RegisterAsset(e.ctx, e.super, domain.AssetRegistered{Tag: "XRAY-1", LocationID: e.loc, Manufacturer: "GE", Model: "AMX 4+", Serial: "S-451"})
+	e.app.RegisterAsset(e.ctx, e.super, domain.AssetRegistered{Tag: "PUMP-1", LocationID: e.loc, Manufacturer: "Baxter", Model: "Sigma"})
+	proc, _, err := e.app.PublishChecklist(e.ctx, e.super, domain.ProcedurePublished{Name: "Portable X-ray PM", Reference: "21 CFR 1020.31",
+		AppliesTo: []domain.EquipmentMatch{{Manufacturer: "GE", Model: "AMX 4+"}}, Steps: []domain.Step{
+			{ID: "h1", Text: "Mechanical", Kind: domain.StepHeading},
+			{ID: "cord", Text: "Exposure switch cord at least 1.8 m", Kind: domain.StepCheck, Unit: "m", Required: true},
+			{ID: "kv80", Text: "kVp at 80 kV", Kind: domain.StepNumber, Unit: "kV", Lower: "76", Upper: "84", Required: true},
+			{ID: "cond", Text: "Housing", Kind: domain.StepChoice, Options: []domain.StepOption{{Label: "Good"}, {Label: "Cracked", Fails: true}}},
+		}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tess := e.browser()
+	tess.login("tess", "brass-kettle-orchard-7")
+	_, _, page := tess.get("/procedures/" + proc)
+	sel := page[strings.Index(page, `name="asset" required>`):]
+	if !strings.Contains(sel[:strings.Index(sel, "Other equipment")], ">XRAY-1 · GE AMX 4&#43;") || !strings.Contains(page, `href="/procedures/`+proc+`/checklist.csv">Download to print (spreadsheet)`) {
+		t.Fatalf("checklist page:\n%s", page)
+	}
+	// The blank spreadsheet: lines for the visit, and a row per step.
+	resp, _ := tess.c.Get(e.srv.URL + "/procedures/" + proc + "/checklist.csv")
+	var blank bytes.Buffer
+	blank.ReadFrom(resp.Body)
+	resp.Body.Close()
+	cr := csv.NewReader(bytes.NewReader(bytes.TrimPrefix(blank.Bytes(), []byte("\xef\xbb\xbf"))))
+	cr.FieldsPerRecord = -1 // the lines about the visit are shorter than the step rows
+	rows, err := cr.ReadAll()
+	if err != nil || resp.Header.Get("Content-Type") != "text/csv; charset=utf-8" {
+		t.Fatalf("blank CSV: %v %s", err, resp.Header.Get("Content-Type"))
+	}
+	text := blank.String()
+	for _, want := range []string{"Portable X-ray PM (version 1)", "Serial number,", "Signature,", "No.,Section,Step,How to do it,Kind of answer,Passes if,Required,Measured value / answer,Result,Note,Initials",
+		"1,Mechanical,Exposure switch cord at least 1.8 m,,\"Pass / fail, measured in m\",Pass,yes,,,,", "2,Mechanical,kVp at 80 kV,,Reading (a number) (kV),76 to 84 kV,yes,,,,", "One of: Good"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("blank CSV lacks %q:\n%s", want, text)
+		}
+	}
+	_ = rows
+
+	// Start filling it in on the X-ray unit: a work order is opened, taken and started.
+	_, page = tess.post("/procedures/"+proc+"/fill", url.Values{"asset": {asset}})
+	if !strings.Contains(page, "Started: a work order was opened for this checklist") || !strings.Contains(page, "<button>Save and continue</button>") ||
+		!strings.Contains(page, `name="m_cord"`) || !strings.Contains(page, "Measured value in m (if one was measured)") {
+		t.Fatalf("started:\n%s", page)
+	}
+	wo := regexp.MustCompile(`/work-orders/([0-9a-f-]{36})/checklist"`).FindStringSubmatch(page)[1]
+	_, page = tess.post("/work-orders/"+wo+"/checklist", url.Values{"procedure": {proc}, "v_cord": {"pass"}, "m_cord": {"2.1"}, "v_kv80": {"81.3"}, "n_kv80": {"Piranha 657"}})
+	if !strings.Contains(page, "<strong>pass</strong> · measured <strong>2.1 m</strong>") {
+		t.Fatalf("measured value:\n%s", page)
+	}
+	resp, _ = tess.c.Get(e.srv.URL + "/work-orders/" + wo + "/checklists/" + proc + "/checklist.csv")
+	var filled bytes.Buffer
+	filled.ReadFrom(resp.Body)
+	resp.Body.Close()
+	for _, want := range []string{"Equipment (asset tag),XRAY-1", "Serial number,S-451", ",2.1,pass,,TT", ",81.3,pass,Piranha 657,TT"} {
+		if !strings.Contains(filled.String(), want) {
+			t.Errorf("filled CSV lacks %q:\n%s", want, filled.String())
 		}
 	}
 }

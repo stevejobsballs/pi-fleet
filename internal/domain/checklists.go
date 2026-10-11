@@ -60,7 +60,7 @@ type Step struct {
 	Text  string `json:"text"`
 	Kind  string `json:"kind"`            // one of StepKinds
 	Help  string `json:"help,omitempty"`  // how to do it, shown under the step
-	Unit  string `json:"unit,omitempty"`  // number
+	Unit  string `json:"unit,omitempty"`  // number; check: of the measured value
 	Lower string `json:"lower,omitempty"` // number: inclusive limits, decimals
 	Upper string `json:"upper,omitempty"`
 	// Options are the answers to a choice or multi step.
@@ -142,8 +142,10 @@ type WorkOrderProcedureSet struct {
 type WorkOrderStepRecorded struct {
 	ProcedureID string `json:"procedure_id,omitempty"`
 	StepID      string `json:"step_id"`
-	Value       string `json:"value"`
-	Note        string `json:"note,omitempty"`
+	// Measured is the value measured to decide a pass/fail step, if any.
+	Measured string `json:"measured,omitempty"`
+	Value    string `json:"value"`
+	Note     string `json:"note,omitempty"`
 }
 
 // LaborLogged is time a user spent on a work order.
@@ -189,8 +191,14 @@ func validateSteps(steps []Step) error {
 		if blank(st.Text) || len(st.Text) > 500 || len(st.Help) > 2000 {
 			return invalid("step %d needs text (at most 500 characters; help at most 2000)", n)
 		}
-		if st.Kind != StepNumber && (st.Unit != "" || st.Lower != "" || st.Upper != "") {
-			return invalid("step %d: only reading steps have units and limits", n)
+		if st.Kind != StepNumber && (st.Lower != "" || st.Upper != "") {
+			return invalid("step %d: only reading steps have limits", n)
+		}
+		if st.Kind != StepNumber && st.Kind != StepCheck && st.Unit != "" {
+			return invalid("step %d: only readings and pass/fail steps have a unit", n)
+		}
+		if len(st.Unit) > 20 {
+			return invalid("step %d: the unit is too long", n)
 		}
 		if st.Kind != StepChoice && st.Kind != StepMulti && len(st.Options) > 0 {
 			return invalid("step %d: only choice steps have options", n)
@@ -425,13 +433,17 @@ func (ap *applier) workOrderStepRecorded(p *WorkOrderStepRecorded) error {
 	if err != nil {
 		return invalid("%q: %v", step.Text, err)
 	}
+	if p.Measured != "" && (step.Kind != StepCheck || len(p.Measured) > 60) {
+		return invalid("%q: a measured value goes with a pass/fail step, in at most 60 characters", step.Text)
+	}
 	if pass != nil && !*pass && step.NoteOnFail && blank(p.Note) {
 		return invalid("%q failed: say why in the note", step.Text)
 	}
-	if err := ap.exec(`INSERT INTO checklist_results (wo_id, procedure_id, step_id, value, pass, note, recorded_by, recorded_at, event_id)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (wo_id, procedure_id, step_id) DO UPDATE SET value = excluded.value, pass = excluded.pass,
-		note = excluded.note, recorded_by = excluded.recorded_by, recorded_at = excluded.recorded_at, event_id = excluded.event_id`,
-		w.ID, proc.ID, step.ID, p.Value, pass, p.Note, ap.actor.id, ap.wall(), ap.e.EventID); err != nil {
+	if err := ap.exec(`INSERT INTO checklist_results (wo_id, procedure_id, step_id, value, pass, note, recorded_by, recorded_at, event_id, measured)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (wo_id, procedure_id, step_id) DO UPDATE SET value = excluded.value, pass = excluded.pass,
+		note = excluded.note, recorded_by = excluded.recorded_by, recorded_at = excluded.recorded_at, event_id = excluded.event_id,
+		measured = excluded.measured`,
+		w.ID, proc.ID, step.ID, p.Value, pass, p.Note, ap.actor.id, ap.wall(), ap.e.EventID, strings.TrimSpace(p.Measured)); err != nil {
 		return err
 	}
 	return ap.exec(`UPDATE work_orders SET version = version + 1, last_event_id = ? WHERE id = ?`, ap.e.EventID, w.ID)
@@ -774,6 +786,7 @@ func (ap *applier) laborReversed(p *LaborReversed) error {
 type StepResult struct {
 	Step
 	Value, Note, RecordedBy string
+	Measured                string // for a pass/fail step, the value measured
 	Pass                    *bool
 	RecordedAt              time.Time
 	Recorded                bool
@@ -847,8 +860,8 @@ func Checklists(ctx context.Context, q Querier, w WorkOrder) ([]WorkOrderCheckli
 			var pass sql.NullBool
 			var at string
 			err := q.QueryRowContext(ctx, `SELECT value, pass, note, coalesce((SELECT legal_name FROM users WHERE id = recorded_by), recorded_by),
-				recorded_at FROM checklist_results WHERE wo_id = ? AND procedure_id = ? AND step_id = ?`, w.ID, id, st.ID).
-				Scan(&c.Steps[i].Value, &pass, &c.Steps[i].Note, &c.Steps[i].RecordedBy, &at)
+				recorded_at, measured FROM checklist_results WHERE wo_id = ? AND procedure_id = ? AND step_id = ?`, w.ID, id, st.ID).
+				Scan(&c.Steps[i].Value, &pass, &c.Steps[i].Note, &c.Steps[i].RecordedBy, &at, &c.Steps[i].Measured)
 			if errors.Is(err, sql.ErrNoRows) {
 				continue
 			}

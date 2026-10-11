@@ -229,6 +229,7 @@ form.builder .row { display: flex; flex-wrap: wrap; gap: .6rem 1rem; align-items
 form.builder .grow { flex: 1 1 16rem; }
 form.builder textarea { width: 100%; }
 fieldset.bstep:not(:has(option[value="number"]:checked)) .for-number,
+fieldset.bstep:not(:has(option[value="number"]:checked, option[value="check"]:checked)) .for-unit,
 fieldset.bstep:not(:has(option[value="choice"]:checked, option[value="multi"]:checked)) .for-choice,
 fieldset.bstep:has(option[value="heading"]:checked, option[value="info"]:checked) .for-answer { display: none; }
 
@@ -266,3 +267,5 @@ a.cl-open .button { grid-column: 2; grid-row: 1 / span 2; }
 .thumbs { display: flex; flex-wrap: wrap; gap: .5rem; }
 .thumbs img { width: 7rem; height: 7rem; object-fit: cover; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--panel); }
 label.photo-pick input[type="file"] { font-size: 14px; }
+label.measured input { max-width: 14rem; }
+form.fill-checklist { padding: .75rem 1rem; background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: var(--radius); }

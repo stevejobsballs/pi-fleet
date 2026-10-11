@@ -125,7 +125,8 @@
       "required": true,
       "critical": true,
       "note_on_fail": true,
-      "help": "21 CFR 1020.31(i) asks for at least 1.8 m (6 ft) of cord for mobile units."
+      "help": "21 CFR 1020.31(i) asks for at least 1.8 m (6 ft) of cord for mobile units.",
+      "unit": "m"
     },
     {
       "id": "battery",

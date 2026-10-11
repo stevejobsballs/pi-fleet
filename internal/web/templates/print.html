@@ -25,7 +25,7 @@ As found: <strong>{{.AsFound}}</strong> · As left: <strong>{{.AsLeft}}</strong>
 {{end}}
 {{range .Checklists}}<h2>Checklist: {{.Name}} v{{.Version}}</h2>
 <table><thead><tr><th>Step</th><th>Result</th><th>Recorded</th><th>Note</th></tr></thead><tbody>
-{{range .Steps}}{{if eq .Kind "heading"}}<tr><th colspan="9">{{.Text}}</th></tr>{{else if eq .Kind "info"}}{{else}}<tr><td>{{.Text}}{{if .Required}} (required){{end}}{{if .Critical}} (critical){{end}}</td><td>{{if not .Applies}}not needed{{else if .Recorded}}{{.Display}} {{if eq .Kind "number"}}{{.Unit}}{{end}}{{if eq .Outcome "pass"}} pass{{else if eq .Outcome "fail"}} FAIL{{end}}{{else}}not recorded{{end}}</td>
+{{range .Steps}}{{if eq .Kind "heading"}}<tr><th colspan="9">{{.Text}}</th></tr>{{else if eq .Kind "info"}}{{else}}<tr><td>{{.Text}}{{if .Required}} (required){{end}}{{if .Critical}} (critical){{end}}</td><td>{{if not .Applies}}not needed{{else if .Recorded}}{{.Display}} {{if eq .Kind "number"}}{{.Unit}}{{end}}{{if .Measured}} (measured {{.Measured}}{{if .Unit}} {{.Unit}}{{end}}){{end}}{{if eq .Outcome "pass"}} pass{{else if eq .Outcome "fail"}} FAIL{{end}}{{else}}not recorded{{end}}</td>
   <td>{{if .Recorded}}{{.RecordedBy}} {{when .RecordedAt}}{{end}}</td><td>{{.Note}}</td></tr>{{end}}{{end}}</tbody></table>{{end}}
 <h2>Labour ({{hhmm .LaborTotal}} total)</h2>
 {{range .Labor}}<p>{{.Date}} · {{.User}} · {{hhmm .Minutes}}{{if .Note}} · {{.Note}}{{end}}{{if eq .Status "reversed"}} · reversed: {{.ReverseReason}}{{end}}</p>{{else}}<p>None.</p>{{end}}

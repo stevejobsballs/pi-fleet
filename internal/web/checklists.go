@@ -151,8 +151,12 @@ func (s *Server) procedureList(w http.ResponseWriter, r *http.Request, sess *ses
 	return s.render(w, r, sess, "procedures", "Checklists", d)
 }
 
-// procedureData is a published checklist version, on its page.
-type procedureData struct{ domain.Procedure }
+// procedureData is a published checklist version, on its page, with the
+// equipment it can be filled in on (that it is for first).
+type procedureData struct {
+	domain.Procedure
+	Equipment []choiceGroup
+}
 
 func (procedureData) BackLink() (string, string) { return "/procedures", "checklists" }
 
@@ -161,7 +165,56 @@ func (s *Server) procedureView(w http.ResponseWriter, r *http.Request, sess *ses
 	if err != nil {
 		return err
 	}
-	return s.render(w, r, sess, "procedure", fmt.Sprintf("%s v%d", p.Name, p.Version), procedureData{p})
+	d := procedureData{Procedure: p}
+	if p.Status == "active" {
+		if d.Equipment, err = fillChoices(r.Context(), s.App.Store.DB(), p); err != nil {
+			return err
+		}
+	}
+	return s.render(w, r, sess, "procedure", fmt.Sprintf("%s v%d", p.Name, p.Version), d)
+}
+
+// fillChoices groups the equipment a checklist can be filled in on.
+func fillChoices(ctx context.Context, q domain.Querier, p domain.Procedure) ([]choiceGroup, error) {
+	rows, err := q.QueryContext(ctx, `SELECT a.id, a.tag || ' · ' || a.manufacturer || ' ' || a.model || ' · ' || s.path || ' › ' || l.name, a.manufacturer, a.model
+		FROM assets a JOIN sites s ON s.id = a.site_id JOIN locations l ON l.id = a.location_id
+		WHERE a.merged_into = '' AND a.status != 'retired' ORDER BY a.tag LIMIT 2000`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	groups := []choiceGroup{{Label: "Equipment this checklist is for"}, {Label: "Other equipment"}}
+	for rows.Next() {
+		var o option
+		var mfr, model string
+		if err := rows.Scan(&o.ID, &o.Label, &mfr, &model); err != nil {
+			return nil, err
+		}
+		g := 1
+		for _, m := range p.AppliesTo {
+			if m.Matches(mfr, model) {
+				g = 0
+			}
+		}
+		groups[g].Items = append(groups[g].Items, o)
+	}
+	var out []choiceGroup
+	for _, g := range groups {
+		if len(g.Items) > 0 {
+			out = append(out, g)
+		}
+	}
+	return out, rows.Err()
+}
+
+// procedureFill starts filling in a checklist on a piece of equipment.
+func (s *Server) procedureFill(w http.ResponseWriter, r *http.Request, sess *session) error {
+	procID := r.PathValue("id")
+	wo, err := s.App.StartChecklist(r.Context(), s.actor(sess), r.PostFormValue("asset"), procID)
+	if err != nil {
+		return s.failed(w, r, sess, "/procedures/"+procID, err)
+	}
+	return s.done(w, r, sess, "/work-orders/"+wo+"/checklists/"+procID, "Started: a work order was opened for this checklist and taken by you. Fill it in below.")
 }
 
 // proposalData is a checklist waiting for approval, on its page.
@@ -352,6 +405,9 @@ func readBuilder(f url.Values) (builderData, []domain.Step, error) {
 		st := domain.Step{ID: id, Text: fs.Text, Kind: fs.Kind, Help: fs.Help, Required: fs.Required, Critical: fs.Critical, NoteOnFail: fs.NoteOnFail}
 		if st.Kind == domain.StepNumber {
 			st.Unit, st.Lower, st.Upper = fs.Unit, fs.Lower, fs.Upper
+		}
+		if st.Kind == domain.StepCheck {
+			st.Unit = fs.Unit // of the measured value
 		}
 		if st.Kind == domain.StepChoice || st.Kind == domain.StepMulti {
 			fails := map[string]bool{}
@@ -615,12 +671,13 @@ func (s *Server) workOrderChecklist(w http.ResponseWriter, r *http.Request, sess
 			value = strings.TrimSpace(r.PostFormValue("v_" + st.ID))
 		}
 		note := strings.TrimSpace(r.PostFormValue("n_" + st.ID))
-		if value == "" || (st.Recorded && value == st.Value && note == st.Note) {
+		measured := strings.TrimSpace(r.PostFormValue("m_" + st.ID))
+		if value == "" || (st.Recorded && value == st.Value && note == st.Note && measured == st.Measured) {
 			continue
 		}
-		err := s.phiCheck(r, value, note)
+		err := s.phiCheck(r, value, note, measured)
 		if err == nil {
-			err = s.App.RecordChecklistStep(ctx, s.actor(sess), id, procID, st.ID, value, note)
+			err = s.App.RecordAnswer(ctx, s.actor(sess), id, procID, st.ID, value, note, measured)
 		}
 		if err != nil {
 			if err := problem(err); err != nil {

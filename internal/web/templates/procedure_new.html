@@ -28,8 +28,10 @@
       <label>Kind of answer <select name="kind_{{$i}}">{{$k := .Kind}}{{range $d.Kinds}}<option value="{{.}}"{{if eq . $k}} selected{{end}}>{{kindLabel .}}</option>{{end}}</select></label>
     </div>
     <label>How to do it (optional) <textarea name="help_{{$i}}" rows="1" maxlength="2000">{{.Help}}</textarea></label>
+    <div class="row for-unit">
+      <label>Unit (for a pass/fail step: of the value measured, if any) <input name="unit_{{$i}}" value="{{.Unit}}" size="6" placeholder="e.g. µA"></label>
+    </div>
     <div class="row for-number">
-      <label>Unit <input name="unit_{{$i}}" value="{{.Unit}}" size="6" placeholder="e.g. µA"></label>
       <label>Lowest passing <input name="lower_{{$i}}" value="{{.Lower}}" size="8" inputmode="decimal"></label>
       <label>Highest passing <input name="upper_{{$i}}" value="{{.Upper}}" size="8" inputmode="decimal"></label>
     </div>
