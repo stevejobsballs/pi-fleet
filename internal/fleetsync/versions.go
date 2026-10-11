@@ -22,8 +22,10 @@ import (
 // location.reviewed events; v0.9.0 checklists' new kinds of step and
 // settings, and their description columns; v0.10.0 several checklists per
 // work order (work_order_checklists, checklist_results.procedure_id) and
-// the equipment each checklist is for.
-const MinNodeVersion = "v0.10.0"
+// the equipment each checklist is for; v0.14.0 calibration modules in
+// checklists (checklist_results.as_left and found_pass, the
+// checklist_standards table, and the as_left payload field).
+const MinNodeVersion = "v0.14.0"
 
 const (
 	// On the master Pi: a newer version a super user requires, and when.

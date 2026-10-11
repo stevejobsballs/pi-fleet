@@ -294,6 +294,7 @@ func (s *Server) proposalReview(w http.ResponseWriter, r *http.Request, sess *se
 type formStep struct {
 	Num                                                      int // 1-based, as shown
 	ID, Text, Kind, Help, Unit, Lower, Upper, Options, Fails string
+	Nominal, TolKind, TolValue                               string // a calibration point's
 	Required, Critical, NoteOnFail                           bool
 	ShowIfStep, ShowIfValue                                  string // a step number, and its answer
 }
@@ -304,6 +305,7 @@ type builderData struct {
 	Manufacturers, Models                  []string                // suggestions, from the equipment registered
 	Steps                                  []formStep
 	Kinds, Categories                      []string
+	TolKinds                               []struct{ Value, Label string }
 	From                                   string // the version this starts from, if any
 	Error, Notice                          string
 	CanPublish                             bool // mid-tier and super users; others send it for approval
@@ -323,6 +325,12 @@ var kindLabels = map[string]string{
 	domain.StepCheck: "Pass / fail", domain.StepNumber: "Reading (a number)", domain.StepChoice: "Choose one",
 	domain.StepMulti: "Tick all that apply", domain.StepText: "Short answer", domain.StepLongText: "Notes (several lines)",
 	domain.StepDate: "Date", domain.StepPhoto: "Photo", domain.StepHeading: "Section heading", domain.StepInfo: "Instruction or warning (no answer)",
+	domain.StepCalibration: "Calibration point (as found / as left)", domain.StepStandards: "Reference standards used",
+}
+
+// tolKinds are the kinds of calibration tolerance, as the builder offers them.
+var tolKinds = []struct{ Value, Label string }{
+	{domain.TolAbsolute, "± a value"}, {domain.TolPercent, "± a percentage"}, {domain.TolLimits, "between lowest and highest"},
 }
 
 // stepsToForm turns a published checklist's steps into builder rows.
@@ -332,7 +340,13 @@ func stepsToForm(steps []domain.Step) []formStep {
 	for i, st := range steps {
 		num[st.ID] = i + 1
 		f := formStep{Num: i + 1, ID: st.ID, Text: st.Text, Kind: st.Kind, Help: st.Help, Unit: st.Unit, Lower: st.Lower, Upper: st.Upper,
-			Required: st.Required, Critical: st.Critical, NoteOnFail: st.NoteOnFail}
+			Nominal: st.Nominal, Required: st.Required, Critical: st.Critical, NoteOnFail: st.NoteOnFail}
+		if t := st.Tolerance; t != nil {
+			f.TolKind, f.TolValue = t.Kind, t.Value
+			if t.Kind == domain.TolLimits {
+				f.Lower, f.Upper = t.Lower, t.Upper
+			}
+		}
 		var opts, fails []string
 		for _, o := range st.Options {
 			opts = append(opts, o.Label)
@@ -421,7 +435,7 @@ func renumberSteps(steps []formStep, moved func(old int) int, lost func(formStep
 }
 
 func (s *Server) renderBuilder(w http.ResponseWriter, r *http.Request, sess *session, d builderData) error {
-	d.Kinds, d.Categories = domain.StepKinds, domain.CategoryOptions
+	d.Kinds, d.Categories, d.TolKinds = domain.StepKinds, domain.CategoryOptions, tolKinds
 	d.CanPublish = roleRank[sess.User.Role] >= roleRank[domain.RoleMidTier]
 	for len(d.AppliesTo) < 3 || d.AppliesTo[len(d.AppliesTo)-1].Manufacturer != "" {
 		d.AppliesTo = append(d.AppliesTo, domain.EquipmentMatch{})
@@ -503,6 +517,7 @@ func readBuilder(f url.Values) (builderData, []domain.Step, error) {
 	for i := 0; i < count; i++ {
 		d.Steps = append(d.Steps, formStep{Num: i + 1, ID: get("id", i), Text: get("text", i), Kind: get("kind", i), Help: get("help", i),
 			Unit: get("unit", i), Lower: get("lower", i), Upper: get("upper", i), Options: get("options", i), Fails: get("fails", i),
+			Nominal: get("nominal", i), TolKind: get("tolkind", i), TolValue: get("tolvalue", i),
 			Required: yes("required", i), Critical: yes("critical", i), NoteOnFail: yes("notefail", i),
 			ShowIfStep: get("showif_step", i), ShowIfValue: get("showif_value", i)})
 	}
@@ -530,6 +545,13 @@ func readBuilder(f url.Values) (builderData, []domain.Step, error) {
 		}
 		if st.Kind == domain.StepCheck {
 			st.Unit = fs.Unit // of the measured value
+		}
+		if st.Kind == domain.StepCalibration {
+			st.Unit, st.Nominal = fs.Unit, fs.Nominal
+			st.Tolerance = &domain.Tolerance{Kind: fs.TolKind, Value: fs.TolValue}
+			if fs.TolKind == domain.TolLimits {
+				st.Tolerance.Value, st.Tolerance.Lower, st.Tolerance.Upper = "", fs.Lower, fs.Upper
+			}
 		}
 		if st.Kind == domain.StepChoice || st.Kind == domain.StepMulti {
 			fails := map[string]bool{}
@@ -797,7 +819,7 @@ func (s *Server) workOrderChecklist(w http.ResponseWriter, r *http.Request, sess
 			continue
 		}
 		var value string
-		if st.Kind == domain.StepMulti {
+		if st.Kind == domain.StepMulti || st.Kind == domain.StepStandards {
 			chosen := r.PostForm["v_"+st.ID]
 			if len(chosen) == 0 && !st.Recorded {
 				continue
@@ -812,12 +834,13 @@ func (s *Server) workOrderChecklist(w http.ResponseWriter, r *http.Request, sess
 		}
 		note := strings.TrimSpace(r.PostFormValue("n_" + st.ID))
 		measured := strings.TrimSpace(r.PostFormValue("m_" + st.ID))
-		if value == "" || (st.Recorded && value == st.Value && note == st.Note && measured == st.Measured) {
+		asLeft := strings.TrimSpace(r.PostFormValue("l_" + st.ID))
+		if value == "" || (st.Recorded && value == st.Value && note == st.Note && measured == st.Measured && asLeft == st.AsLeft) {
 			continue
 		}
 		err := s.phiCheck(r, value, note, measured)
 		if err == nil {
-			err = s.App.RecordAnswer(ctx, s.actor(sess), id, procID, st.ID, value, note, measured)
+			err = s.App.RecordAnswer(ctx, s.actor(sess), id, procID, st.ID, value, note, measured, asLeft)
 		}
 		if err != nil {
 			if err := problem(err); err != nil {

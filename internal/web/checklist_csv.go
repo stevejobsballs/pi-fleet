@@ -34,6 +34,10 @@ func passesIf(st domain.Step) string {
 		case st.Upper != "":
 			return fmt.Sprintf("at most %s %s", st.Upper, st.Unit)
 		}
+	case domain.StepCalibration:
+		if l := st.CalLimits(); l != "" {
+			return l + " " + st.Unit
+		}
 	case domain.StepChoice, domain.StepMulti:
 		var ok, all []string
 		for _, o := range st.Options {
@@ -72,7 +76,7 @@ func writeChecklistCSV(w http.ResponseWriter, filename string, head [][]string, 
 		}
 		n++
 		kind := kindLabels[st.Kind]
-		if st.Kind == domain.StepNumber && st.Unit != "" {
+		if (st.Kind == domain.StepNumber || st.Kind == domain.StepCalibration) && st.Unit != "" {
 			kind += " (" + st.Unit + ")"
 		}
 		if st.Kind == domain.StepCheck && st.Unit != "" {
@@ -94,7 +98,7 @@ func writeChecklistCSV(w http.ResponseWriter, filename string, head [][]string, 
 			case !r.Applies:
 				row[8] = "not needed"
 			case r.Recorded:
-				answer := r.Display()
+				answer := r.Summary()
 				if r.Kind == domain.StepCheck {
 					answer = r.Measured
 				}

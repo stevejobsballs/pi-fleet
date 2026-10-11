@@ -37,6 +37,12 @@
     <div class="row for-unit">
       <label>Unit (for a pass/fail step: of the value measured, if any) <input name="unit_{{$i}}" value="{{.Unit}}" size="6" placeholder="e.g. µA"></label>
     </div>
+    <div class="row for-cal">
+      <label>Nominal (expected) value <input name="nominal_{{$i}}" value="{{.Nominal}}" size="8" inputmode="decimal" placeholder="e.g. 25"></label>
+      <label>Tolerance <select name="tolkind_{{$i}}">{{$t := .TolKind}}{{range $d.TolKinds}}<option value="{{.Value}}"{{if eq .Value $t}} selected{{end}}>{{.Label}}</option>{{end}}</select></label>
+      <label class="for-tolvalue">± how much <input name="tolvalue_{{$i}}" value="{{.TolValue}}" size="6" inputmode="decimal" placeholder="e.g. 0.5"></label>
+    </div>
+    <p class="hint for-cal">The technician enters the reading as found and, if they adjust the equipment, as left. Pass or fail is worked out from the tolerance. For “between lowest and highest”, fill in the two boxes below.</p>
     <div class="row for-number">
       <label>Lowest passing <input name="lower_{{$i}}" value="{{.Lower}}" size="8" inputmode="decimal"></label>
       <label>Highest passing <input name="upper_{{$i}}" value="{{.Upper}}" size="8" inputmode="decimal"></label>

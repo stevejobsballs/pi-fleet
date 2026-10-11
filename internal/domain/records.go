@@ -180,38 +180,11 @@ func (ap *applier) calibrationRecorded(p *CalibrationRecorded) error {
 			continue
 		}
 		seen[sid] = true
-		if sid == w.AssetID {
-			return invalid("an instrument cannot be its own reference standard")
-		}
-		s, err := GetAsset(ap.ctx, ap.tx, sid)
-		if errors.Is(err, ErrNotFound) {
-			return invalid("reference standard %s not found", sid)
-		}
+		due, err := ap.checkStandard(sid, w.AssetID, today)
 		if err != nil {
 			return err
 		}
-		if !s.IsReferenceStandard || s.Status != AssetInService {
-			return invalid("asset %s is not an in-service reference standard", s.Tag)
-		}
-		var due sql.NullString
-		if err := ap.tx.QueryRowContext(ap.ctx, `SELECT min(next_due) FROM pm_schedules
-			WHERE asset_id = ? AND wo_type = 'calibration' AND status = 'active'`, sid).Scan(&due); err != nil {
-			return err
-		}
-		switch {
-		case !due.Valid:
-			if err := ap.warn(FlagStandardUntracked, "standard %s has no active calibration schedule", s.Tag); err != nil {
-				return err
-			}
-		case due.String < today.Format(dateLayout):
-			if ap.p.BlockOverdueStandards {
-				return store.Reject(FlagStandardOverdue, "standard %s was due for calibration on %s", s.Tag, due.String)
-			}
-			if err := ap.warn(FlagStandardOverdue, "standard %s was due for calibration on %s", s.Tag, due.String); err != nil {
-				return err
-			}
-		}
-		standards = append(standards, standard{sid, due.String})
+		standards = append(standards, standard{sid, due})
 	}
 	if len(mismatches) > 0 {
 		if err := ap.warn(FlagRecomputeMismatch, "node's pass/fail differs from recomputation at %s", strings.Join(mismatches, ", ")); err != nil {
@@ -244,6 +217,46 @@ func (ap *applier) calibrationRecorded(p *CalibrationRecorded) error {
 		}
 	}
 	return nil
+}
+
+// checkStandard checks that sid is an in-service reference standard other
+// than the equipment being calibrated (assetID), and returns when its
+// calibration is due ("" if it has no calibration schedule). An overdue
+// or untracked standard is flagged, or an overdue one refused when the
+// fleet's policy says so.
+func (ap *applier) checkStandard(sid, assetID string, today time.Time) (string, error) {
+	if sid == assetID {
+		return "", invalid("an instrument cannot be its own reference standard")
+	}
+	s, err := GetAsset(ap.ctx, ap.tx, sid)
+	if errors.Is(err, ErrNotFound) {
+		return "", invalid("reference standard %s not found", sid)
+	}
+	if err != nil {
+		return "", err
+	}
+	if !s.IsReferenceStandard || s.Status != AssetInService {
+		return "", invalid("asset %s is not an in-service reference standard", s.Tag)
+	}
+	var due sql.NullString
+	if err := ap.tx.QueryRowContext(ap.ctx, `SELECT min(next_due) FROM pm_schedules
+		WHERE asset_id = ? AND wo_type = 'calibration' AND status = 'active'`, sid).Scan(&due); err != nil {
+		return "", err
+	}
+	switch {
+	case !due.Valid:
+		if err := ap.warn(FlagStandardUntracked, "standard %s has no active calibration schedule", s.Tag); err != nil {
+			return "", err
+		}
+	case due.String < today.Format(dateLayout):
+		if ap.p.BlockOverdueStandards {
+			return "", store.Reject(FlagStandardOverdue, "standard %s was due for calibration on %s", s.Tag, due.String)
+		}
+		if err := ap.warn(FlagStandardOverdue, "standard %s was due for calibration on %s", s.Tag, due.String); err != nil {
+			return "", err
+		}
+	}
+	return due.String, nil
 }
 
 type pointResult struct {
@@ -354,7 +367,18 @@ func (ap *applier) checkCompletion(w WorkOrder) error {
 	var leftResult string
 	err := ap.tx.QueryRowContext(ap.ctx, `SELECT as_left_result FROM calibration_records WHERE wo_id = ? AND status = 'valid'`, w.ID).Scan(&leftResult)
 	if errors.Is(err, sql.ErrNoRows) {
-		return invalid("calibration work order %s needs a calibration record before completion", w.Number)
+		// Calibration points in its checklists count instead (only they
+		// record an as-found result).
+		var points, failed int
+		if err := ap.tx.QueryRowContext(ap.ctx, `SELECT count(*), coalesce(sum(pass = 0), 0) FROM checklist_results
+			WHERE wo_id = ? AND found_pass IS NOT NULL`, w.ID).Scan(&points, &failed); err != nil {
+			return err
+		}
+		if points == 0 {
+			return invalid("calibration work order %s needs calibration readings before completion: a calibration point in its checklist, or a calibration record", w.Number)
+		}
+		leftResult = passFail(failed == 0)
+		err = nil
 	}
 	if err != nil {
 		return err

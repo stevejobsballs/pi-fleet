@@ -99,6 +99,11 @@ func snapshotPages(t *testing.T, e *env, dir string) {
 	tess := e.browser()
 	tess.login("tess", "brass-kettle-orchard-7")
 	saveAs(tess, "my-work", "/")
+	var wo, cal string
+	e.app.Store.DB().QueryRow(`SELECT id FROM work_orders WHERE title = 'Yearly inspection'`).Scan(&wo)
+	e.app.Store.DB().QueryRow(`SELECT id FROM procedures WHERE name = 'Energy calibration'`).Scan(&cal)
+	saveAs(tess, "calibration-checklist", "/work-orders/"+wo+"/checklists/"+cal)
+	saveAs(b, "calibration-builder", "/procedures/new?from="+cal)
 	// The sign-in page, signed out.
 	out := e.browser()
 	r2, err := out.c.Get(e.srv.URL + "/login")

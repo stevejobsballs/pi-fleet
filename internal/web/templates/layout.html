@@ -122,7 +122,7 @@
   {{if eq .Kind "heading"}}<li class="cl-heading"><h3>{{.Text}}</h3></li>
   {{else if eq .Kind "info"}}<li class="cl-info"><p>{{.Text}}</p></li>
   {{else}}<li><strong>{{.Text}}</strong>{{if .Required}} <span class="tag">required</span>{{end}}{{if .Critical}} <span class="tag crit">critical</span>{{end}}
-    <br><span class="hint">{{kindLabel .Kind}}{{if eq .Kind "number"}}{{if .Unit}} in {{.Unit}}{{end}}{{if or .Lower .Upper}}, passes {{if .Lower}}from {{.Lower}}{{end}}{{if .Upper}} up to {{.Upper}}{{end}}{{end}}{{end}}{{if .Options}}: {{range $i, $o := .Options}}{{if $i}}, {{end}}{{$o.Label}}{{if $o.Fails}} (fails){{end}}{{end}}{{end}}{{if .NoteOnFail}}; a failure needs a note{{end}}{{with .ShowIf}}; only when “{{stepName $ .Step}}” is “{{.Equals}}”{{end}}</span>
+    <br><span class="hint">{{kindLabel .Kind}}{{if eq .Kind "number"}}{{if .Unit}} in {{.Unit}}{{end}}{{if or .Lower .Upper}}, passes {{if .Lower}}from {{.Lower}}{{end}}{{if .Upper}} up to {{.Upper}}{{end}}{{end}}{{end}}{{if eq .Kind "calibration"}} in {{.Unit}}{{with .Nominal}}, nominal {{.}}{{end}}, passes from {{.CalLimits}}{{end}}{{if .Options}}: {{range $i, $o := .Options}}{{if $i}}, {{end}}{{$o.Label}}{{if $o.Fails}} (fails){{end}}{{end}}{{end}}{{if .NoteOnFail}}; a failure needs a note{{end}}{{with .ShowIf}}; only when “{{stepName $ .Step}}” is “{{.Equals}}”{{end}}</span>
     {{with .Help}}<br><span class="hint pre">{{.}}</span>{{end}}</li>{{end}}
 {{end}}</ol>{{end}}
 

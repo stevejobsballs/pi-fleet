@@ -140,7 +140,7 @@ func WorkOrderContentHash(ctx context.Context, q Querier, woID string) (string, 
 	}
 	content["attachments"] = toAny(files)
 	content["procedure_id"] = w.ProcedureID
-	steps, err := queryStrings(ctx, q, `SELECT step_id || char(31) || value || char(31) || note || CASE WHEN measured != '' THEN char(31) || measured ELSE '' END FROM checklist_results
+	steps, err := queryStrings(ctx, q, `SELECT step_id || char(31) || value || char(31) || note || CASE WHEN measured != '' THEN char(31) || measured ELSE '' END || CASE WHEN as_left != '' THEN char(31) || 'as left ' || as_left ELSE '' END FROM checklist_results
 		WHERE wo_id = ? AND procedure_id = ? ORDER BY step_id`, woID, w.ProcedureID)
 	if err != nil {
 		return "", err
@@ -148,7 +148,7 @@ func WorkOrderContentHash(ctx context.Context, q Querier, woID string) (string, 
 	content["checklist"] = toAny(steps)
 	// Checklists added beside the first (only when there are any, so the
 	// content of work orders with one checklist is as it always was).
-	more, err := queryStrings(ctx, q, `SELECT c.procedure_id || char(30) || coalesce((SELECT group_concat(step_id || char(31) || value || char(31) || note || CASE WHEN measured != '' THEN char(31) || measured ELSE '' END, char(29))
+	more, err := queryStrings(ctx, q, `SELECT c.procedure_id || char(30) || coalesce((SELECT group_concat(step_id || char(31) || value || char(31) || note || CASE WHEN measured != '' THEN char(31) || measured ELSE '' END || CASE WHEN as_left != '' THEN char(31) || 'as left ' || as_left ELSE '' END, char(29))
 			FROM (SELECT * FROM checklist_results r WHERE r.wo_id = c.wo_id AND r.procedure_id = c.procedure_id ORDER BY step_id)), '')
 		FROM work_order_checklists c WHERE c.wo_id = ? ORDER BY c.procedure_id`, woID)
 	if err != nil {

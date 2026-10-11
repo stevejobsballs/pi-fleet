@@ -15,7 +15,13 @@
     <legend>{{.Text}}{{if .Required}} <span class="tag">required</span>{{end}}{{if .Critical}} <span class="tag crit">critical</span>{{end}}</legend>
     {{with .Help}}<p class="hint pre">{{.}}</p>{{end}}
     {{if not .Applies}}<p class="hint">Not needed: only when “{{stepName $cl.Procedure.Steps .ShowIf.Step}}” is “{{.ShowIf.Equals}}”.</p>{{end}}
-    {{if .Recorded}}<p class="cl-answer"><strong>{{.Display}}{{if eq .Kind "number"}} {{.Unit}}{{end}}</strong>{{if .Measured}} · measured <strong>{{.Measured}}{{if .Unit}} {{.Unit}}{{end}}</strong>{{end}}{{if eq .Outcome "pass"}} <span class="pass">pass</span>{{else if eq .Outcome "fail"}} <span class="fail">fail</span>{{end}}
+    {{if eq .Kind "calibration"}}<p class="hint">Nominal {{or .Nominal "not given"}} {{.Unit}}; passes from {{.CalLimits}} {{.Unit}}.</p>{{end}}
+    {{if and .Recorded (eq .Kind "calibration")}}<p class="cl-answer">As found <strong>{{.Value}} {{.Unit}}</strong> {{if eq .FoundOutcome "pass"}}<span class="pass">pass</span>{{else if eq .FoundOutcome "fail"}}<span class="fail">fail</span>{{end}}
+      · as left <strong>{{if .AsLeft}}{{.AsLeft}} {{.Unit}}{{else}}not adjusted{{end}}</strong>{{if eq .Outcome "pass"}} <span class="pass">pass</span>{{else if eq .Outcome "fail"}} <span class="fail">fail</span>{{end}}
+      <span class="hint">· {{.RecordedBy}}, {{when .RecordedAt}}</span>{{with .Note}}<br>Note: {{.}}{{end}}</p>
+    {{else if and .Recorded (eq .Kind "standards")}}<p class="cl-answer">{{range $i, $u := .Standards}}{{if $i}}; {{end}}<strong>{{$u.Tag}}</strong> {{$u.Model}} <span class="hint">({{if $u.Due}}due {{$u.Due}}{{else}}no calibration schedule{{end}})</span>{{else}}none{{end}}
+      <span class="hint">· {{.RecordedBy}}, {{when .RecordedAt}}</span>{{with .Note}}<br>Note: {{.}}{{end}}</p>
+    {{else if .Recorded}}<p class="cl-answer"><strong>{{.Display}}{{if eq .Kind "number"}} {{.Unit}}{{end}}</strong>{{if .Measured}} · measured <strong>{{.Measured}}{{if .Unit}} {{.Unit}}{{end}}</strong>{{end}}{{if eq .Outcome "pass"}} <span class="pass">pass</span>{{else if eq .Outcome "fail"}} <span class="fail">fail</span>{{end}}
       <span class="hint">· {{.RecordedBy}}, {{when .RecordedAt}}</span>{{with .Note}}<br>Note: {{.}}{{end}}</p>{{end}}
     {{with .Photos}}<div class="thumbs">{{range .}}<a href="/attachments/{{.ID}}?view=1" target="_blank" rel="noopener"><img src="/attachments/{{.ID}}?view=1" alt="Photo: {{.Filename}}" loading="lazy"></a>{{end}}</div>{{end}}
     {{if and $edit .Applies}}{{$s := .}}
@@ -28,6 +34,11 @@
         <input name="v_{{.ID}}" value="{{.Value}}" inputmode="decimal" size="10" autocomplete="off"></label>
       {{else if eq .Kind "choice"}}<div class="choices">{{range .Options}}<label class="pill"><input type="radio" name="v_{{$s.ID}}" value="{{.Label}}"{{if eq .Label $s.Value}} checked{{end}}> {{.Label}}</label>{{end}}</div>
       {{else if eq .Kind "multi"}}<div class="choices">{{range .Options}}<label class="pill"><input type="checkbox" name="v_{{$s.ID}}" value="{{.Label}}"{{if $s.Chosen .Label}} checked{{end}}> {{.Label}}</label>{{end}}</div>
+      {{else if eq .Kind "calibration"}}<div class="row cal-readings">
+        <label>As found, in {{.Unit}} <input name="v_{{.ID}}" value="{{.Value}}" inputmode="decimal" size="10" autocomplete="off"></label>
+        <label>As left, in {{.Unit}} (only if you adjusted it) <input name="l_{{.ID}}" value="{{.AsLeft}}" inputmode="decimal" size="10" autocomplete="off"></label></div>
+      {{else if eq .Kind "standards"}}{{if $d.Standards}}<div class="choices">{{range $d.Standards}}<label class="pill"><input type="checkbox" name="v_{{$s.ID}}" value="{{.ID}}"{{if $s.Chosen .ID}} checked{{end}}> {{.Tag}} · {{.Equipment}} <span class="{{if .Overdue}}fail{{else}}hint{{end}}">{{if .Due}}{{if .Overdue}}overdue since{{else}}due{{end}} {{.Due}}{{else}}no calibration schedule{{end}}</span></label>{{end}}</div>
+        {{else}}<p class="warn">No in-service reference standards are registered. Register them as equipment and tick “This is a reference standard”.</p>{{end}}
       {{else if eq .Kind "date"}}<label>Date <input type="date" name="v_{{.ID}}" value="{{.Value}}"></label>
       {{else if eq .Kind "longtext"}}<label>Answer <textarea name="v_{{.ID}}" rows="3">{{.Value}}</textarea></label>
       {{else if eq .Kind "photo"}}<label class="photo-pick">{{if .Photos}}Add more photos{{else}}Add a photo{{end}} <input type="file" name="p_{{.ID}}" accept="image/jpeg,image/png,image/webp" multiple></label>

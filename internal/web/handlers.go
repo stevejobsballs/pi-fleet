@@ -633,6 +633,9 @@ type woData struct {
 	Labor            []domain.LaborEntry
 	LaborTotal       int
 	Today            string
+	// CalPoints: its checklists have calibration points, so the
+	// calibration readings are recorded there, not on a separate form.
+	CalPoints bool
 	// SignAs is the meaning the current user may sign with now, if any.
 	SignAs    string
 	Performer bool
@@ -682,6 +685,11 @@ func (s *Server) loadWorkOrder(r *http.Request, sess *session, id string) (woDat
 	}
 	if d.Labor, d.LaborTotal, err = domain.Labor(ctx, q, wo.ID); err != nil {
 		return d, err
+	}
+	for _, c := range d.Checklists {
+		for _, st := range c.Steps {
+			d.CalPoints = d.CalPoints || st.Kind == domain.StepCalibration
+		}
 	}
 	d.Today = today(s.now())
 	isMid := roleRank[sess.User.Role] >= roleRank[domain.RoleMidTier]

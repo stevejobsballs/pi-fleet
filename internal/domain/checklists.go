@@ -38,12 +38,17 @@ const (
 	StepMulti    = "multi"    // any of a list (tick all that apply)
 	StepDate     = "date"     // YYYY-MM-DD
 	StepPhoto    = "photo"    // one or more photos; answered once one is added
-	StepHeading  = "heading"  // starts a section
-	StepInfo     = "info"     // an instruction or warning to read
+	// Calibration modules: a calibration point (a reading against a
+	// nominal value and tolerance, as found and, if adjusted, as left),
+	// and the reference standards used (a JSON list of their asset ids).
+	StepCalibration = "calibration"
+	StepStandards   = "standards"
+	StepHeading     = "heading" // starts a section
+	StepInfo        = "info"    // an instruction or warning to read
 )
 
 // StepKinds are the kinds of step, in the order offered.
-var StepKinds = []string{StepCheck, StepNumber, StepChoice, StepMulti, StepText, StepLongText, StepDate, StepPhoto, StepHeading, StepInfo}
+var StepKinds = []string{StepCheck, StepNumber, StepChoice, StepMulti, StepText, StepLongText, StepDate, StepPhoto, StepCalibration, StepStandards, StepHeading, StepInfo}
 
 // Inputless reports whether a kind of step takes no answer.
 func Inputless(kind string) bool { return kind == StepHeading || kind == StepInfo }
@@ -63,6 +68,10 @@ type Step struct {
 	Unit  string `json:"unit,omitempty"`  // number; check: of the measured value
 	Lower string `json:"lower,omitempty"` // number: inclusive limits, decimals
 	Upper string `json:"upper,omitempty"`
+	// Nominal and Tolerance: a calibration point's expected value and how
+	// far from it a reading may be and still pass.
+	Nominal   string     `json:"nominal,omitempty"`
+	Tolerance *Tolerance `json:"tolerance,omitempty"`
 	// Options are the answers to a choice or multi step.
 	Options  []StepOption `json:"options,omitempty"`
 	Required bool         `json:"required"`
@@ -150,6 +159,9 @@ type WorkOrderStepRecorded struct {
 	Measured string `json:"measured,omitempty"`
 	Value    string `json:"value"`
 	Note     string `json:"note,omitempty"`
+	// AsLeft is a calibration point's reading after adjustment; empty
+	// when it wasn't adjusted (Value is the as-found reading).
+	AsLeft string `json:"as_left,omitempty"`
 }
 
 // LaborLogged is time a user spent on a work order.
@@ -198,8 +210,11 @@ func validateSteps(steps []Step) error {
 		if st.Kind != StepNumber && (st.Lower != "" || st.Upper != "") {
 			return invalid("step %d: only reading steps have limits", n)
 		}
-		if st.Kind != StepNumber && st.Kind != StepCheck && st.Unit != "" {
-			return invalid("step %d: only readings and pass/fail steps have a unit", n)
+		if st.Kind != StepNumber && st.Kind != StepCheck && st.Kind != StepCalibration && st.Unit != "" {
+			return invalid("step %d: only readings, calibration points and pass/fail steps have a unit", n)
+		}
+		if st.Kind != StepCalibration && (st.Nominal != "" || st.Tolerance != nil) {
+			return invalid("step %d: only calibration points have a nominal value and tolerance", n)
 		}
 		if len(st.Unit) > 20 {
 			return invalid("step %d: the unit is too long", n)
@@ -208,7 +223,22 @@ func validateSteps(steps []Step) error {
 			return invalid("step %d: only choice steps have options", n)
 		}
 		switch st.Kind {
-		case StepCheck, StepText, StepLongText, StepDate, StepPhoto:
+		case StepCheck, StepText, StepLongText, StepDate, StepPhoto, StepStandards:
+		case StepCalibration:
+			if blank(st.Unit) {
+				return invalid("step %d: a calibration point needs a unit", n)
+			}
+			if st.Tolerance == nil {
+				return invalid("step %d: a calibration point needs a tolerance", n)
+			}
+			if _, _, err := st.Tolerance.Limits(st.Nominal); err != nil {
+				return invalid("step %d: %v", n, err)
+			}
+			if st.Nominal != "" {
+				if _, err := parseDecimal(st.Nominal); err != nil {
+					return invalid("step %d nominal: %v", n, err)
+				}
+			}
 		case StepNumber:
 			for _, v := range []string{st.Lower, st.Upper} {
 				if v != "" {
@@ -277,7 +307,7 @@ func validateSteps(steps []Step) error {
 // canFail reports whether a step has a failing answer.
 func canFail(st Step) bool {
 	switch st.Kind {
-	case StepCheck:
+	case StepCheck, StepCalibration:
 		return true
 	case StepNumber:
 		return st.Lower != "" || st.Upper != ""
@@ -464,9 +494,30 @@ func (ap *applier) workOrderStepRecorded(p *WorkOrderStepRecorded) error {
 	if !StepApplies(*step, answers) {
 		return invalid("%q only applies when %q is %q", step.Text, stepText(proc.Steps, step.ShowIf.Step), step.ShowIf.Equals)
 	}
-	pass, err := evaluateStep(*step, p.Value)
-	if err != nil {
-		return invalid("%q: %v", step.Text, err)
+	asLeft := strings.TrimSpace(p.AsLeft)
+	if asLeft != "" && step.Kind != StepCalibration {
+		return invalid("%q: only a calibration point has an as-left reading", step.Text)
+	}
+	var pass, foundPass *bool
+	var standards []string
+	switch step.Kind {
+	case StepCalibration:
+		f, l, err := EvaluateCalibrationStep(*step, p.Value, asLeft)
+		if err != nil {
+			return invalid("%q: %v", step.Text, err)
+		}
+		foundPass, pass = &f, &l
+	case StepStandards:
+		if standards, err = MultiValues(p.Value); err != nil || (step.Required && len(standards) == 0) {
+			return invalid("%q: tick the reference standards used", step.Text)
+		}
+		standards = slices.Compact(slices.Sorted(slices.Values(standards)))
+		b, _ := json.Marshal(standards)
+		p.Value = string(b)
+	default:
+		if pass, err = evaluateStep(*step, p.Value); err != nil {
+			return invalid("%q: %v", step.Text, err)
+		}
 	}
 	if p.Measured != "" && (step.Kind != StepCheck || len(p.Measured) > 60) {
 		return invalid("%q: a measured value goes with a pass/fail step, in at most 60 characters", step.Text)
@@ -474,14 +525,74 @@ func (ap *applier) workOrderStepRecorded(p *WorkOrderStepRecorded) error {
 	if pass != nil && !*pass && step.NoteOnFail && blank(p.Note) {
 		return invalid("%q failed: say why in the note", step.Text)
 	}
-	if err := ap.exec(`INSERT INTO checklist_results (wo_id, procedure_id, step_id, value, pass, note, recorded_by, recorded_at, event_id, measured)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (wo_id, procedure_id, step_id) DO UPDATE SET value = excluded.value, pass = excluded.pass,
+	if step.Kind == StepStandards {
+		a, err := GetAsset(ap.ctx, ap.tx, w.AssetID)
+		if err != nil {
+			return err
+		}
+		today, err := ap.localDate(a.SiteID)
+		if err != nil {
+			return err
+		}
+		if err := ap.exec(`DELETE FROM checklist_standards WHERE wo_id = ? AND procedure_id = ? AND step_id = ?`, w.ID, proc.ID, step.ID); err != nil {
+			return err
+		}
+		for _, sid := range standards {
+			due, err := ap.checkStandard(sid, w.AssetID, today)
+			if err != nil {
+				return err
+			}
+			if err := ap.exec(`INSERT INTO checklist_standards (wo_id, procedure_id, step_id, standard_asset_id, due_at_time_of_use)
+				VALUES (?, ?, ?, ?, ?)`, w.ID, proc.ID, step.ID, sid, due); err != nil {
+				return err
+			}
+		}
+	}
+	if err := ap.exec(`INSERT INTO checklist_results (wo_id, procedure_id, step_id, value, pass, note, recorded_by, recorded_at, event_id, measured,
+			as_left, found_pass)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (wo_id, procedure_id, step_id) DO UPDATE SET value = excluded.value, pass = excluded.pass,
 		note = excluded.note, recorded_by = excluded.recorded_by, recorded_at = excluded.recorded_at, event_id = excluded.event_id,
-		measured = excluded.measured`,
-		w.ID, proc.ID, step.ID, p.Value, pass, p.Note, ap.actor.id, ap.wall(), ap.e.EventID, strings.TrimSpace(p.Measured)); err != nil {
+		measured = excluded.measured, as_left = excluded.as_left, found_pass = excluded.found_pass`,
+		w.ID, proc.ID, step.ID, p.Value, pass, p.Note, ap.actor.id, ap.wall(), ap.e.EventID, strings.TrimSpace(p.Measured),
+		asLeft, foundPass); err != nil {
 		return err
 	}
 	return ap.exec(`UPDATE work_orders SET version = version + 1, last_event_id = ? WHERE id = ?`, ap.e.EventID, w.ID)
+}
+
+// EvaluateCalibrationStep checks a calibration point's as-found reading
+// and, when it was adjusted, its as-left one (empty: not adjusted, so as
+// left is as found) against its tolerance, exactly.
+func EvaluateCalibrationStep(st Step, found, left string) (foundPass, leftPass bool, err error) {
+	if st.Tolerance == nil {
+		return false, false, errors.New("no tolerance")
+	}
+	lo, hi, err := st.Tolerance.Limits(st.Nominal)
+	if err != nil {
+		return false, false, err
+	}
+	if foundPass, err = within(found, lo, hi); err != nil {
+		return false, false, fmt.Errorf("as found: %w", err)
+	}
+	if left == "" {
+		return foundPass, foundPass, nil
+	}
+	if leftPass, err = within(left, lo, hi); err != nil {
+		return false, false, fmt.Errorf("as left: %w", err)
+	}
+	return foundPass, leftPass, nil
+}
+
+// CalLimits are a calibration point's passing range, for showing it.
+func (st Step) CalLimits() string {
+	if st.Tolerance == nil {
+		return ""
+	}
+	lo, hi, err := st.Tolerance.Limits(st.Nominal)
+	if err != nil {
+		return ""
+	}
+	return formatLimit(lo) + " to " + formatLimit(hi)
 }
 
 // evaluateStep checks a value against its step and returns pass/fail
@@ -823,8 +934,14 @@ type StepResult struct {
 	Value, Note, RecordedBy string
 	Measured                string // for a pass/fail step, the value measured
 	Pass                    *bool
-	RecordedAt              time.Time
-	Recorded                bool
+	// A calibration point's as-left reading (empty: not adjusted) and
+	// as-found result; Pass is the as-left result.
+	AsLeft    string
+	FoundPass *bool
+	// The reference standards a standards step records.
+	Standards  []StandardUse
+	RecordedAt time.Time
+	Recorded   bool
 	// Applies is false for a step that depends on an earlier answer it
 	// didn't get; such a step is skipped.
 	Applies bool
@@ -832,8 +949,57 @@ type StepResult struct {
 	Photos []Attachment
 }
 
+// StandardUse is a reference standard used, and when it was then due.
+type StandardUse struct {
+	AssetID, Tag, Model, Due string
+}
+
+// Summary is the answer in a line of text, for printouts and
+// spreadsheets: a calibration point's readings and results, the
+// standards used with their due dates, or Display.
+func (r StepResult) Summary() string {
+	switch r.Kind {
+	case StepCalibration:
+		res := func(p *bool) string {
+			if p == nil {
+				return ""
+			}
+			return " (" + passFail(*p) + ")"
+		}
+		s := "as found " + r.Value + " " + r.Unit + res(r.FoundPass)
+		if r.AsLeft == "" {
+			return s + "; not adjusted"
+		}
+		return s + "; as left " + r.AsLeft + " " + r.Unit + res(r.Pass)
+	case StepStandards:
+		var out []string
+		for _, u := range r.Standards {
+			due := "no calibration schedule"
+			if u.Due != "" {
+				due = "due " + u.Due
+			}
+			out = append(out, u.Tag+" ("+due+")")
+		}
+		if len(out) == 0 {
+			return "none"
+		}
+		return strings.Join(out, "; ")
+	}
+	return r.Display()
+}
+
 // Display is the answer as people read it (a multi step's options joined).
 func (r StepResult) Display() string {
+	if r.Kind == StepStandards {
+		var tags []string
+		for _, s := range r.Standards {
+			tags = append(tags, s.Tag)
+		}
+		if len(tags) == 0 {
+			return "none"
+		}
+		return strings.Join(tags, ", ")
+	}
 	if r.Kind == StepMulti {
 		if chosen, err := MultiValues(r.Value); err == nil {
 			if len(chosen) == 0 {
@@ -849,6 +1015,15 @@ func (r StepResult) Display() string {
 func (r StepResult) Chosen(o string) bool {
 	chosen, _ := MultiValues(r.Value)
 	return slices.Contains(chosen, o)
+}
+
+// FoundOutcome is a calibration point's as-found result: "pass", "fail",
+// or "" for any other step.
+func (r StepResult) FoundOutcome() string {
+	if r.FoundPass == nil {
+		return ""
+	}
+	return passFail(*r.FoundPass)
 }
 
 // Outcome is "pass", "fail", or "" when the step has no pass/fail or
@@ -894,9 +1069,10 @@ func Checklists(ctx context.Context, q Querier, w WorkOrder) ([]WorkOrderCheckli
 			c.Steps[i].Step = st
 			var pass sql.NullBool
 			var at string
+			var found sql.NullBool
 			err := q.QueryRowContext(ctx, `SELECT value, pass, note, coalesce((SELECT legal_name FROM users WHERE id = recorded_by), recorded_by),
-				recorded_at, measured FROM checklist_results WHERE wo_id = ? AND procedure_id = ? AND step_id = ?`, w.ID, id, st.ID).
-				Scan(&c.Steps[i].Value, &pass, &c.Steps[i].Note, &c.Steps[i].RecordedBy, &at, &c.Steps[i].Measured)
+				recorded_at, measured, as_left, found_pass FROM checklist_results WHERE wo_id = ? AND procedure_id = ? AND step_id = ?`, w.ID, id, st.ID).
+				Scan(&c.Steps[i].Value, &pass, &c.Steps[i].Note, &c.Steps[i].RecordedBy, &at, &c.Steps[i].Measured, &c.Steps[i].AsLeft, &found)
 			if errors.Is(err, sql.ErrNoRows) {
 				continue
 			}
@@ -911,6 +1087,15 @@ func Checklists(ctx context.Context, q Querier, w WorkOrder) ([]WorkOrderCheckli
 				c.Steps[i].Pass = &b
 			}
 			c.Steps[i].RecordedAt, _ = time.Parse(time.RFC3339, at)
+			if found.Valid {
+				b := found.Bool
+				c.Steps[i].FoundPass = &b
+			}
+			if st.Kind == StepStandards {
+				if c.Steps[i].Standards, err = standardsUsed(ctx, q, w.ID, id, st.ID); err != nil {
+					return nil, err
+				}
+			}
 		}
 		for i := range c.Steps {
 			c.Steps[i].Applies = Inputless(c.Steps[i].Kind) || StepApplies(c.Steps[i].Step, answers)
@@ -1024,4 +1209,24 @@ func Labor(ctx context.Context, q Querier, woID string) ([]LaborEntry, int, erro
 		out = append(out, e)
 	}
 	return out, total, rows.Err()
+}
+
+// standardsUsed are the reference standards a standards step recorded.
+func standardsUsed(ctx context.Context, q Querier, woID, procID, stepID string) ([]StandardUse, error) {
+	rows, err := q.QueryContext(ctx, `SELECT s.standard_asset_id, coalesce(a.tag, s.standard_asset_id), coalesce(trim(a.manufacturer || ' ' || a.model), ''),
+			s.due_at_time_of_use FROM checklist_standards s LEFT JOIN assets a ON a.id = s.standard_asset_id
+		WHERE s.wo_id = ? AND s.procedure_id = ? AND s.step_id = ? ORDER BY 2`, woID, procID, stepID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []StandardUse
+	for rows.Next() {
+		var u StandardUse
+		if err := rows.Scan(&u.AssetID, &u.Tag, &u.Model, &u.Due); err != nil {
+			return nil, err
+		}
+		out = append(out, u)
+	}
+	return out, rows.Err()
 }

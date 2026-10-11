@@ -39,11 +39,12 @@
   {{end}}
 </section>
 
-{{if or (eq $w.Type "calibration") $d.Calibrations}}
+{{if or (and (eq $w.Type "calibration") (not $d.CalPoints)) $d.Calibrations}}
 <section>
   <h2>Calibration</h2>
   {{range $d.Calibrations}}{{template "calrecord" (dict2 . $.CSRF)}}{{end}}
-  {{if and $d.Holder (eq $w.Status "in_progress") (eq $w.Type "calibration")}}
+  {{if and $d.Holder (eq $w.Status "in_progress") (eq $w.Type "calibration") (not $d.CalPoints)}}
+  <p class="hint">Easier: add a checklist with calibration points, and record the readings there.</p>
   <details {{if not $d.Calibrations}}open{{end}}><summary>Record calibration</summary>
   <form autocomplete="off" method="post" action="/work-orders/{{$w.ID}}/calibration">{{template "csrf" .CSRF}}
     <label>Procedure <input name="procedure" required></label>

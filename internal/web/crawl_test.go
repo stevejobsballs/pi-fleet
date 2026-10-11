@@ -143,6 +143,25 @@ func (e *env) seedEverything() {
 		}})
 	must(err)
 	must(e.app.AddChecklist(e.ctx, tessAct, richWO, esa))
+	// Calibration modules, in a checklist added to the same work order.
+	analyser, err := e.app.RegisterAsset(e.ctx, e.super, domain.AssetRegistered{Tag: "ANALYSER-1", LocationID: e.loc, Manufacturer: "Fluke",
+		Model: "Impulse 7000DP", IsReferenceStandard: true})
+	must(err)
+	_, err = e.app.CreateSchedule(e.ctx, mid, domain.PMScheduleCreated{AssetID: analyser, WOType: "calibration", Title: "Yearly calibration",
+		IntervalDays: 365, FirstDue: "2027-03-01"})
+	must(err)
+	calProc, _, err := e.app.PublishChecklist(e.ctx, mid, domain.ProcedurePublished{Name: "Energy calibration", Category: "Calibration",
+		Steps: []domain.Step{
+			{ID: "stds", Text: "Reference standards used", Kind: domain.StepStandards, Required: true},
+			{ID: "e50", Text: "Delivered energy at 50 J", Kind: domain.StepCalibration, Unit: "J", Nominal: "50",
+				Tolerance: &domain.Tolerance{Kind: domain.TolPercent, Value: "15"}, Required: true},
+			{ID: "e200", Text: "Delivered energy at 200 J", Kind: domain.StepCalibration, Unit: "J", Nominal: "200",
+				Tolerance: &domain.Tolerance{Kind: domain.TolPercent, Value: "15"}, Required: true, Critical: true},
+		}})
+	must(err)
+	must(e.app.AddChecklist(e.ctx, tessAct, richWO, calProc))
+	must(e.app.RecordAnswer(e.ctx, tessAct, richWO, calProc, "stds", `["`+analyser+`"]`, "", "", ""))
+	must(e.app.RecordAnswer(e.ctx, tessAct, richWO, calProc, "e50", "61", "", "", "52"))
 	// The sample portable X-ray checklist, for a GE AMX 4+, in progress.
 	file, err := os.ReadFile("../../deploy/sample-checklists/portable-x-ray.checklist.json")
 	must(err)

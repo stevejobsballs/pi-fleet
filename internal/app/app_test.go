@@ -462,7 +462,7 @@ func snapshot(t *testing.T, db *sql.DB) map[string][]string {
 	for _, table := range []string{"users", "user_password_history", "user_lockouts", "sites", "locations", "assets",
 		"work_orders", "wo_leases", "pm_schedules", "calibration_records", "cal_points", "cal_standards",
 		"parts", "stock_locations", "stock_txns", "stock_levels", "event_flags",
-		"procedures", "checklist_results", "labor_entries", "attachments", "meter_readings"} {
+		"procedures", "checklist_results", "checklist_standards", "models", "labor_entries", "attachments", "meter_readings"} {
 		rows, err := db.Query(`SELECT * FROM ` + table + ` ORDER BY 1, 2`)
 		if err != nil {
 			t.Fatal(err)

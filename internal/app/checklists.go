@@ -50,12 +50,14 @@ func (a *App) RecordStep(ctx context.Context, actor Actor, woID, stepID, value, 
 // RecordChecklistStep records one step of one of a work order's
 // checklists ("" for its first) under the actor's lease.
 func (a *App) RecordChecklistStep(ctx context.Context, actor Actor, woID, procedureID, stepID, value, note string) error {
-	return a.RecordAnswer(ctx, actor, woID, procedureID, stepID, value, note, "")
+	return a.RecordAnswer(ctx, actor, woID, procedureID, stepID, value, note, "", "")
 }
 
 // RecordAnswer records one step, with the value measured to decide a
 // pass/fail step.
-func (a *App) RecordAnswer(ctx context.Context, actor Actor, woID, procedureID, stepID, value, note, measured string) error {
+// For a calibration point, value is the reading as found and asLeft the
+// reading after adjustment ("" when not adjusted).
+func (a *App) RecordAnswer(ctx context.Context, actor Actor, woID, procedureID, stepID, value, note, measured, asLeft string) error {
 	return a.Store.Update(ctx, func(tx *store.Tx) error {
 		w, err := domain.GetWorkOrder(ctx, tx, woID)
 		if err != nil {
@@ -68,7 +70,7 @@ func (a *App) RecordAnswer(ctx context.Context, actor Actor, woID, procedureID, 
 			procedureID = "" // the first checklist, recorded as it always was
 		}
 		return a.emit(ctx, tx, actor, domain.TypeWorkOrderStepRecorded, domain.EntityWorkOrder, woID, w.Version, w.LeaseID,
-			domain.WorkOrderStepRecorded{ProcedureID: procedureID, StepID: stepID, Value: value, Note: note, Measured: measured})
+			domain.WorkOrderStepRecorded{ProcedureID: procedureID, StepID: stepID, Value: value, Note: note, Measured: measured, AsLeft: asLeft})
 	})
 }
 

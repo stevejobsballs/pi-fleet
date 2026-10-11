@@ -233,8 +233,10 @@ form.builder fieldset { margin: 0; display: grid; gap: .6rem; }
 form.builder .row { display: flex; flex-wrap: wrap; gap: .6rem 1rem; align-items: end; }
 form.builder .grow { flex: 1 1 16rem; }
 form.builder textarea { width: 100%; }
-fieldset.bstep:not(:has(option[value="number"]:checked)) .for-number,
-fieldset.bstep:not(:has(option[value="number"]:checked, option[value="check"]:checked)) .for-unit,
+fieldset.bstep:not(:has(option[value="number"]:checked)):not(:has(option[value="calibration"]:checked):has(option[value="limits"]:checked)) .for-number,
+fieldset.bstep:not(:has(option[value="number"]:checked, option[value="check"]:checked, option[value="calibration"]:checked)) .for-unit,
+fieldset.bstep:not(:has(option[value="calibration"]:checked)) .for-cal,
+fieldset.bstep:has(option[value="limits"]:checked) .for-tolvalue,
 fieldset.bstep:not(:has(option[value="choice"]:checked, option[value="multi"]:checked)) .for-choice,
 fieldset.bstep:has(option[value="heading"]:checked, option[value="info"]:checked) .for-answer { display: none; }
 
