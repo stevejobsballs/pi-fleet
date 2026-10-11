@@ -4,7 +4,7 @@
   {{template "csrf" .CSRF}}
   {{with .Data.Error}}<p class="error" role="alert">{{.}}</p>{{end}}
   {{with .Data.Proposed}}<p class="flash" role="status">{{.}}</p>{{end}}
-  <label>Asset tag (as on the label) <input name="tag" value="{{$f.Get "tag"}}" required></label>
+  <label>Asset tag (as on the label) <input name="tag" value="{{$f.Get "tag"}}" required autocomplete="off"></label>
   <label>Location <select name="location" required>{{range .Data.Locations}}<option value="{{.ID}}"{{if eq .ID ($f.Get "location")}} selected{{end}}>{{.Label}}</option>{{end}}</select></label>
   <p class="hint">Not in the list? <button type="button" class="link" popovertarget="new-location">Submit new location for review</button></p>
   <div id="new-location" popover class="popup" role="dialog" aria-labelledby="new-location-title">
@@ -12,7 +12,7 @@
     <p class="hint">A super user reviews it. You can register equipment there straight away. If the location isn't approved, its equipment moves to the Unallocated site, where it can still be found.</p>
     {{with .Data.LocError}}<p class="error" role="alert">{{.}}</p>{{end}}
     <label>Site <select name="loc_site">{{range .Data.Sites}}<option value="{{.ID}}"{{if eq .ID ($f.Get "loc_site")}} selected{{end}}>{{.Label}}</option>{{end}}</select></label>
-    <label>Location name <input name="loc_name" value="{{$f.Get "loc_name"}}" placeholder="e.g. Ultrasound room 3"></label>
+    <label>Location name <input name="loc_name" value="{{$f.Get "loc_name"}}" autocomplete="off" placeholder="e.g. Ultrasound room 3"></label>
     <label>Kind <select name="loc_kind">{{range .Data.Kinds}}<option{{if eq . ($f.Get "loc_kind")}} selected{{end}}>{{.}}</option>{{end}}</select></label>
     <label>Building <input name="loc_building" value="{{$f.Get "loc_building"}}"></label>
     <label>Floor <input name="loc_floor" value="{{$f.Get "loc_floor"}}"></label>
@@ -26,8 +26,8 @@
   </div>
   <label>Manufacturer <input name="manufacturer" value="{{$f.Get "manufacturer"}}" required></label>
   <label>Model <input name="model" value="{{$f.Get "model"}}" required></label>
-  <label>Serial number <input name="serial" value="{{$f.Get "serial"}}"></label>
-  <label>MasterID <input name="master_id" value="{{$f.Get "master_id"}}" maxlength="64"></label>
+  <label>Serial number <input name="serial" value="{{$f.Get "serial"}}" autocomplete="off"></label>
+  <label>MasterID <input name="master_id" value="{{$f.Get "master_id"}}" maxlength="64" autocomplete="off"></label>
   <p class="hint">Records with the same MasterID are treated as the same equipment and can be merged. Leave it empty if the equipment has none.</p>
   <label>Risk class <select name="risk_class"><option value="">not set</option>{{range .Data.RiskClasses}}<option{{if eq . ($f.Get "risk_class")}} selected{{end}}>{{.}}</option>{{end}}</select></label>
   <label class="check"><input type="checkbox" name="reference" value="yes"{{if eq ($f.Get "reference") "yes"}} checked{{end}}> This is a reference standard used to calibrate other equipment</label>
