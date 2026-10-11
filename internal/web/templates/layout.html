@@ -14,7 +14,7 @@
   <div class="me">
     {{if .User.ID}}<span>{{.User.LegalName}}, {{label .User.Role}}</span>
     <a href="/password">Password</a>
-    <form method="post" action="/logout"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="link">Sign out</button></form>{{end}}
+    <form autocomplete="off" method="post" action="/logout"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="link">Sign out</button></form>{{end}}
     {{if not .Large}}<a class="display" href="/display/large?back={{urlquery .Here}}">Larger text and buttons</a>{{end}}
   </div>
 </header>
@@ -23,7 +23,7 @@
 <div class="status">
   <span>{{if eq .Role "central"}}Master Pi{{else}}Employee Pi{{end}}</span>
   {{with .Sync}}<span>Last sync: {{when .LastSync}}</span>{{if gt .Unsynced 0}}<span class="warn">{{.Unsynced}} record{{if ne .Unsynced 1}}s{{end}} not yet synced</span>{{end}}{{end}}
-  {{if .CanSync}}<form method="post" action="/sync" class="sync-now"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="back" value="{{.Here}}"><button class="link">Sync now</button></form>{{end}}
+  {{if .CanSync}}<form autocomplete="off" method="post" action="/sync" class="sync-now"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="back" value="{{.Here}}"><button class="link">Sync now</button></form>{{end}}
   {{if eq .Clock "unverified"}}<span class="warn">Clock not verified: signatures will be flagged</span>{{end}}
 </div>
 {{end}}
@@ -68,12 +68,12 @@
     · {{kib .Size}} · {{.MIME}} · added by {{.AddedBy}} {{when .AddedAt}}{{if .Description}}<br>{{.Description}}{{end}}
     {{if eq .Status "detached"}}<span class="warn">removed: {{.DetachReason}}</span>{{end}}
     <br><small>sha256 {{.SHA256}}</small>
-    {{if ne .Status "purged"}}<details><summary>Remove</summary><form method="post" action="/attachments/{{.ID}}/detach">{{template "csrf" $csrf}}
+    {{if ne .Status "purged"}}<details><summary>Remove</summary><form autocomplete="off" method="post" action="/attachments/{{.ID}}/detach">{{template "csrf" $csrf}}
       <label>Reason <input name="reason" required></label>
       {{if $mid}}<label class="check"><input type="checkbox" name="purge" value="yes"> Delete the file itself everywhere (e.g. it shows patient information)</label>{{end}}
       <button class="danger">Remove</button></form></details>{{end}}
   </li>{{end}}</ul>{{else}}<p>No files.</p>{{end}}
-{{if .Can}}<form method="post" action="{{.Action}}" enctype="multipart/form-data" class="inline">{{template "csrf" $csrf}}
+{{if .Can}}<form autocomplete="off" method="post" action="{{.Action}}" enctype="multipart/form-data" class="inline">{{template "csrf" $csrf}}
   <label>File (photo (JPEG, PNG, WebP) or PDF, up to 10 MiB) <input type="file" name="file" accept="image/jpeg,image/png,image/webp,application/pdf" required></label>
   <label>Description <input name="description" placeholder="e.g. calibration certificate"></label>
   {{template "nophi"}}<button>Attach</button></form>

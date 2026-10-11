@@ -263,6 +263,13 @@ func checkPage(t reporter, req *http.Request, resp *http.Response, body string) 
 		if action != "" && (!strings.HasPrefix(action, "/") || strings.HasPrefix(action, "//")) {
 			fail("form action %q is not on this site (form-action 'self')", action)
 		}
+		// The browser's list of earlier entries is off: it offers one
+		// person's entries to the next on a shared Pi, and on the Pis'
+		// desktop its pop-up can take the keyboard from the field being
+		// typed in. Signing in, passwords and phones reporting keep it.
+		if a["autocomplete"] != "off" && action != "/login" && action != "/password" && !strings.HasPrefix(action, "/r/") {
+			fail("form to %q lacks autocomplete=\"off\"", action)
+		}
 		if method != "post" {
 			continue
 		}

@@ -13,7 +13,7 @@
 {{with $d.Mine}}<section><h2>Your checklists, decided</h2>
 <ul class="cl-list">{{range .}}<li><a href="/checklist-proposals/{{.ID}}">{{.Name}}</a> <span class="hint">{{if eq .Status "approved"}}approved{{else}}<span class="fail">not approved</span>: {{.ReviewNote}}{{end}}</span></li>{{end}}</ul>
 </section>{{end}}
-<form method="get" action="/procedures" class="inline"><label>Find a checklist <input name="q" type="search" value="{{$d.Search}}" placeholder="e.g. Zoll, defibrillator or IEC 62353"></label><button>Find</button></form>
+<form autocomplete="off" method="get" action="/procedures" class="inline"><label>Find a checklist <input name="q" type="search" value="{{$d.Search}}" placeholder="e.g. Zoll, defibrillator or IEC 62353"></label><button>Find</button></form>
 {{range $d.Sections}}<section class="library{{if .Custom}} custom{{end}}"><h2>{{.Title}}</h2><p class="hint">{{.Hint}}</p>
 {{if or .Any .Makers}}
 {{with .Any}}<h3>For any equipment</h3>{{template "cl-list" .}}{{end}}
@@ -24,7 +24,7 @@
 </section>{{end}}
 <section><h2>Copy a checklist from another pi-fleet</h2>
 <p class="hint">On the other pi-fleet, open the checklist and choose Download. Then choose the file here. It opens in the builder for you to check before publishing.</p>
-<form method="post" action="/procedures/import" enctype="multipart/form-data" class="inline">{{template "csrf" .CSRF}}
+<form autocomplete="off" method="post" action="/procedures/import" enctype="multipart/form-data" class="inline">{{template "csrf" .CSRF}}
   <label>Checklist file <input type="file" name="file" accept=".json,application/json" required></label><button>Open</button></form>
 </section>
 {{end}}

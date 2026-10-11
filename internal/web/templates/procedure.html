@@ -7,7 +7,7 @@
   {{with $p.Reference}}<dt>Follows</dt><dd>{{.}}</dd>{{end}}
   {{with $p.Description}}<dt>About</dt><dd class="pre">{{.}}</dd>{{end}}
 </dl>
-{{if .Data.Equipment}}<form method="post" action="/procedures/{{$p.ID}}/fill" class="inline fill-checklist">{{template "csrf" .CSRF}}
+{{if .Data.Equipment}}<form autocomplete="off" method="post" action="/procedures/{{$p.ID}}/fill" class="inline fill-checklist">{{template "csrf" .CSRF}}
   <label>Fill in this checklist on <select name="asset" required><option value="" selected disabled>Choose the equipment</option>{{range .Data.Equipment}}<optgroup label="{{.Label}}">{{range .Items}}<option value="{{.ID}}">{{.Label}}</option>{{end}}</optgroup>{{end}}</select></label>
   <button>Start filling it in</button></form>
 <p class="hint">This opens a work order for the equipment, takes it for you and starts it, so the results are kept with the equipment's history.</p>{{end}}
@@ -15,5 +15,5 @@
   <a class="button secondary" href="/procedures/{{$p.ID}}/checklist.csv">Download to print (spreadsheet)</a></p>
 <p class="hint"><a href="/procedures/{{$p.ID}}/export.json">Download to copy to another pi-fleet</a></p>
 {{template "clsteps" $p.Steps}}
-{{if and .IsMid (eq $p.Status "active")}}<form method="post" action="/procedures/{{$p.ID}}/retire" class="inline">{{template "csrf" .CSRF}}<label>Reason <input name="reason" required></label><button class="danger">Retire this version</button></form>{{end}}
+{{if and .IsMid (eq $p.Status "active")}}<form autocomplete="off" method="post" action="/procedures/{{$p.ID}}/retire" class="inline">{{template "csrf" .CSRF}}<label>Reason <input name="reason" required></label><button class="danger">Retire this version</button></form>{{end}}
 {{end}}

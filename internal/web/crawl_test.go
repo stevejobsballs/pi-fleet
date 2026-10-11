@@ -280,23 +280,24 @@ func TestPageChecksCatchProblems(t *testing.T) {
 		return r.msgs
 	}
 	fine := `<link rel="stylesheet" href="/static/style.css"><a href="https://example.org">x</a>
-<form method="post" action="/a"><input type="hidden" name="csrf" value="t"></form>
+<form autocomplete="off" method="post" action="/a"><input type="hidden" name="csrf" value="t"></form>
 <form method="post" action="/login"><input name="username"></form>
-<form method="post" action="/up" enctype="multipart/form-data"><input type="hidden" name="csrf" value="t"><input type="file" name="f"></form>
-<form method="get" action="/search"><input name="q"></form>`
+<form autocomplete="off" method="post" action="/up" enctype="multipart/form-data"><input type="hidden" name="csrf" value="t"><input type="file" name="f"></form>
+<form autocomplete="off" method="get" action="/search"><input name="q"></form>`
 	if msgs := run(good, fine); len(msgs) != 0 {
 		t.Fatalf("a good page was reported: %q", msgs)
 	}
 	for _, c := range []struct{ body, want string }{
 		{`<script>alert(1)</script>`, "<script>"},
+		{`<form method="get" action="/assets"><input name="q"></form>`, `lacks autocomplete="off"`},
 		{`<p style="color:red">`, "inline style"},
 		{`<button onclick="x()">`, "inline event handler"},
 		{`<a href="javascript:x()">`, "javascript: URL"},
 		{`<img src="https://cdn.example/x.png">`, "another origin"},
 		{`<link rel="stylesheet" href="//cdn.example/x.css">`, "another origin"},
-		{`<form method="post" action="/a"></form>`, "no csrf field"},
-		{`<form method="post" action="https://evil.example/a"><input name="csrf"></form>`, "not on this site"},
-		{`<form method="post" action="/up"><input name="csrf"><input type="file" name="f"></form>`, "file input"},
+		{`<form autocomplete="off" method="post" action="/a"></form>`, "no csrf field"},
+		{`<form autocomplete="off" method="post" action="https://evil.example/a"><input name="csrf"></form>`, "not on this site"},
+		{`<form autocomplete="off" method="post" action="/up"><input name="csrf"><input type="file" name="f"></form>`, "file input"},
 	} {
 		if msgs := run(good, c.body); len(msgs) != 1 || !strings.Contains(msgs[0], c.want) {
 			t.Errorf("%s: got %q, want one report containing %q", c.body, msgs, c.want)

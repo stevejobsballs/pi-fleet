@@ -13,7 +13,7 @@
   <td data-label="What">{{label .Type}}{{if eq .EntityType "work_order"}}<br><a href="/work-orders/{{.EntityID}}">work order</a>{{else if eq .EntityType "asset"}}<br><a href="/assets/{{.EntityID}}">equipment</a>{{end}}</td>
   <td data-label="Who">{{.Actor}}</td><td data-label="Flag">{{label .Flag}}<br><small>{{if .Projected}}applied with a warning{{else}}not applied{{end}}</small></td><td data-label="Detail">{{.Detail}}</td>
   <td data-label="Decision">{{if .Resolution}}<strong>{{.Resolution}}</strong> by {{.ResolvedBy}}: {{.ResolutionNote}}{{else}}
-    <form method="post" action="/review/{{.EventID}}/resolve" class="inline">{{template "csrf" $.CSRF}}
+    <form autocomplete="off" method="post" action="/review/{{.EventID}}/resolve" class="inline">{{template "csrf" $.CSRF}}
       <select name="resolution" aria-label="Decision"><option value="acknowledged">acknowledged</option><option value="accepted">accepted</option><option value="rejected">rejected</option></select>
       <label>Note <input name="note" required></label>{{template "nophi"}}<button>Record</button></form>{{end}}</td></tr>{{end}}
 </tbody></table>{{else}}<p>Nothing to review.</p>{{end}}

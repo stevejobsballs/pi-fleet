@@ -14,10 +14,10 @@
 <p class="records"><a href="/work-orders/{{$w.ID}}/audit">Audit trail</a> · <a href="/work-orders/{{$w.ID}}/print">Printable record</a> · <a href="/work-orders/{{$w.ID}}/export.json">Download signed JSON</a></p>
 <section class="actions">
   {{if and (eq $w.Status "open") (not $d.Holder)}}
-  <form method="post" action="/work-orders/{{$w.ID}}/claim" class="act">{{template "csrf" .CSRF}}<h3>Take on this work</h3><button>Claim this work</button></form>
+  <form autocomplete="off" method="post" action="/work-orders/{{$w.ID}}/claim" class="act">{{template "csrf" .CSRF}}<h3>Take on this work</h3><button>Claim this work</button></form>
   {{end}}
   {{if and .IsMid (ne $w.Status "closed") (ne $w.Status "cancelled") (ne $w.Status "completed") (ne $w.Status "reviewed")}}
-  <form method="post" action="/work-orders/{{$w.ID}}/assign" class="act">{{template "csrf" .CSRF}}
+  <form autocomplete="off" method="post" action="/work-orders/{{$w.ID}}/assign" class="act">{{template "csrf" .CSRF}}
     <h3>Who does it</h3>
     <label>Assign to <select name="assignee">{{range $d.Users}}<option value="{{.ID}}">{{.Label}}</option>{{end}}</select></label>
     <button>{{if $w.AssignedTo}}Reassign{{else}}Assign{{end}}</button></form>
@@ -28,12 +28,12 @@
     {{if eq $w.Status "on_hold"}}{{template "status" (dict3 $w.ID "in_progress" "Resume" $.CSRF)}}{{end}}
   {{end}}
   {{if and .IsMid (or (eq $w.Status "completed") (eq $w.Status "reviewed"))}}
-  <form method="post" action="/work-orders/{{$w.ID}}/status" class="act">{{template "csrf" .CSRF}}
+  <form autocomplete="off" method="post" action="/work-orders/{{$w.ID}}/status" class="act">{{template "csrf" .CSRF}}
     <h3>Reopen this work order</h3>
     <input type="hidden" name="to" value="in_progress"><label>Why it needs reopening <input name="reason" required></label>{{template "nophi"}}<button>Reopen</button></form>
   {{end}}
   {{if and .IsMid (ne $w.Status "closed") (ne $w.Status "cancelled")}}
-  <form method="post" action="/work-orders/{{$w.ID}}/status" class="act">{{template "csrf" .CSRF}}
+  <form autocomplete="off" method="post" action="/work-orders/{{$w.ID}}/status" class="act">{{template "csrf" .CSRF}}
     <h3>Cancel this work order</h3>
     <input type="hidden" name="to" value="cancelled"><label>Why it is cancelled <input name="reason" required></label>{{template "nophi"}}<button class="danger">Cancel work order</button></form>
   {{end}}
@@ -45,7 +45,7 @@
   {{range $d.Calibrations}}{{template "calrecord" (dict2 . $.CSRF)}}{{end}}
   {{if and $d.Holder (eq $w.Status "in_progress") (eq $w.Type "calibration")}}
   <details {{if not $d.Calibrations}}open{{end}}><summary>Record calibration</summary>
-  <form method="post" action="/work-orders/{{$w.ID}}/calibration">{{template "csrf" .CSRF}}
+  <form autocomplete="off" method="post" action="/work-orders/{{$w.ID}}/calibration">{{template "csrf" .CSRF}}
     <label>Procedure <input name="procedure" required></label>
     <div class="row"><label>Temperature °C <input name="temperature" inputmode="decimal"></label><label>Humidity %RH <input name="humidity" inputmode="decimal"></label>
       <label class="check"><input type="checkbox" name="adjusted" value="yes"> Instrument was adjusted</label></div>
@@ -68,7 +68,7 @@
 <section id="checklist">
   <h2>Checklists</h2>
   {{$edit := and $d.Holder (eq $w.Status "in_progress")}}
-  {{if $d.ChangeChecklists}}{{if $d.AddChoices}}<form method="post" action="/work-orders/{{$w.ID}}/checklists" class="inline add-checklist">{{template "csrf" .CSRF}}
+  {{if $d.ChangeChecklists}}{{if $d.AddChoices}}<form autocomplete="off" method="post" action="/work-orders/{{$w.ID}}/checklists" class="inline add-checklist">{{template "csrf" .CSRF}}
     <label>Add a checklist <select name="procedure" required><option value="" selected disabled>Choose a checklist</option>{{range $d.AddChoices}}<optgroup label="{{.Label}}">{{range .Items}}<option value="{{.ID}}">{{.Label}}</option>{{end}}</optgroup>{{end}}</select></label>
     <button>Add checklist</button></form>{{end}}{{end}}
   {{range $d.Checklists}}{{$total := 0}}{{$done := 0}}
@@ -78,7 +78,7 @@
       <span class="hint">{{.Answered}} of {{.Total}} answered{{with .Reference}} · follows {{.}}{{end}}{{with .AddedBy}} · added by {{.}}{{end}}</span>
       <span class="button">{{if $edit}}Open and fill in{{else}}Open{{end}}</span>
     </a>
-    {{if and $d.ChangeChecklists (eq .Answered 0)}}<form method="post" action="/work-orders/{{$w.ID}}/checklists/remove" class="inline">{{template "csrf" $.CSRF}}<input type="hidden" name="procedure" value="{{.ID}}"><button class="link">Remove this checklist</button></form>{{end}}
+    {{if and $d.ChangeChecklists (eq .Answered 0)}}<form autocomplete="off" method="post" action="/work-orders/{{$w.ID}}/checklists/remove" class="inline">{{template "csrf" $.CSRF}}<input type="hidden" name="procedure" value="{{.ID}}"><button class="link">Remove this checklist</button></form>{{end}}
   </div>
   {{else}}<p>No checklist yet.{{if $d.ChangeChecklists}} Add one above: those made for this equipment are listed first.{{end}}</p>{{end}}
 </section>
@@ -88,9 +88,9 @@
   {{if $d.Labor}}<table><thead><tr><th>Date</th><th>Who</th><th>Time</th><th>Note</th><th></th></tr></thead><tbody>
   {{range $d.Labor}}<tr class="{{if eq .Status "reversed"}}old{{end}}"><td>{{.Date}}</td><td>{{.User}}</td><td>{{hhmm .Minutes}}</td>
     <td>{{.Note}}{{if eq .Status "reversed"}} <span class="warn">reversed: {{.ReverseReason}}</span>{{end}}</td>
-    <td>{{if and (eq .Status "logged") (or $.IsMid (eq .UserID $.User.ID))}}<details><summary>Reverse</summary><form method="post" action="/labor/{{.ID}}/reverse">{{template "csrf" $.CSRF}}<label>Reason <input name="reason" required></label><button class="danger">Reverse</button></form></details>{{end}}</td></tr>{{end}}
+    <td>{{if and (eq .Status "logged") (or $.IsMid (eq .UserID $.User.ID))}}<details><summary>Reverse</summary><form autocomplete="off" method="post" action="/labor/{{.ID}}/reverse">{{template "csrf" $.CSRF}}<label>Reason <input name="reason" required></label><button class="danger">Reverse</button></form></details>{{end}}</td></tr>{{end}}
   </tbody></table>{{end}}
-  {{if ne $w.Status "cancelled"}}<form method="post" action="/work-orders/{{$w.ID}}/labor" class="inline">{{template "csrf" .CSRF}}
+  {{if ne $w.Status "cancelled"}}<form autocomplete="off" method="post" action="/work-orders/{{$w.ID}}/labor" class="inline">{{template "csrf" .CSRF}}
     <label>Time <input name="time" placeholder="e.g. 45, 1:30 or 1.5h" size="10" required></label>
     <label>Date <input name="date" type="date" value="{{$d.Today}}" required></label>
     <label>Note <input name="note"></label><button>Log my time</button></form>{{end}}
@@ -111,13 +111,13 @@
       {{if eq .ClockState "unverified"}}<span class="warn">signed with an unverified clock</span>{{end}}
       {{if eq .Status "withdrawn"}}<span class="warn">withdrawn: {{.WithdrawReason}}</span>{{else if .Stale}}<span class="warn">stale: the record changed or was reopened after signing</span>{{end}}
       {{if and (eq .SignerUsername $.User.Username) (eq .Status "valid")}}
-      <details><summary>Withdraw</summary><form method="post" action="/signatures/{{.ID}}/withdraw">{{template "csrf" $.CSRF}}<label>Reason <input name="reason" required></label><button class="danger">Withdraw signature</button></form></details>
+      <details><summary>Withdraw</summary><form autocomplete="off" method="post" action="/signatures/{{.ID}}/withdraw">{{template "csrf" $.CSRF}}<label>Reason <input name="reason" required></label><button class="danger">Withdraw signature</button></form></details>
       {{end}}
     </li>{{end}}</ul>
   {{else}}<p>No signatures yet.</p>{{end}}
 
   {{with $d.SignAs}}
-  <form method="post" action="/work-orders/{{$w.ID}}/sign" class="sign narrow">{{template "csrf" $.CSRF}}
+  <form autocomplete="off" method="post" action="/work-orders/{{$w.ID}}/sign" class="sign narrow">{{template "csrf" $.CSRF}}
     <h3>Sign as {{.}}</h3>
     <p>By signing you state: <strong>“{{meaningText .}}”</strong></p>
     <p class="hint">Your signature is linked to the record as it is now (content {{printf "%.12s" $d.ContentHash}}). Any later change makes it stale.</p>
@@ -130,7 +130,7 @@
 </section>
 {{end}}
 
-{{define "status"}}<form method="post" action="/work-orders/{{.A}}/status" class="act"><input type="hidden" name="csrf" value="{{.D}}"><input type="hidden" name="to" value="{{.B}}"><h3>Progress</h3><button>{{.C}}</button></form>{{end}}
+{{define "status"}}<form autocomplete="off" method="post" action="/work-orders/{{.A}}/status" class="act"><input type="hidden" name="csrf" value="{{.D}}"><input type="hidden" name="to" value="{{.B}}"><h3>Progress</h3><button>{{.C}}</button></form>{{end}}
 
 {{define "calrecord"}}{{$c := .A}}
 <article class="cal {{if eq $c.Status "voided"}}old{{end}}">
@@ -144,6 +144,6 @@
   {{range $c.Points}}<tr><td>{{.Parameter}} ({{.Unit}})</td><td>{{.Nominal}}</td><td>{{.Lower}} – {{.Upper}}</td>
     <td class="{{if .FoundPass}}pass{{else}}fail{{end}}">{{.AsFound}}</td><td class="{{if .LeftPass}}pass{{else}}fail{{end}}">{{.AsLeft}}</td></tr>{{end}}
   </tbody></table></div>
-  {{if eq $c.Status "valid"}}<details><summary>Void</summary><form method="post" action="/calibrations/{{$c.ID}}/void">{{template "csrf" .B}}<label>Reason <input name="reason" required></label><button class="danger">Void calibration</button></form></details>{{end}}
+  {{if eq $c.Status "valid"}}<details><summary>Void</summary><form autocomplete="off" method="post" action="/calibrations/{{$c.ID}}/void">{{template "csrf" .B}}<label>Reason <input name="reason" required></label><button class="danger">Void calibration</button></form></details>{{end}}
 </article>
 {{end}}

@@ -1,6 +1,6 @@
 {{define "content"}}
 {{$f := .Data.F}}
-<form method="post" action="/assets" class="narrow" enctype="multipart/form-data">
+<form autocomplete="off" method="post" action="/assets" class="narrow" enctype="multipart/form-data">
   {{template "csrf" .CSRF}}
   {{with .Data.Error}}<p class="error" role="alert">{{.}}</p>{{end}}
   {{with .Data.Proposed}}<p class="flash" role="status">{{.}}</p>{{end}}

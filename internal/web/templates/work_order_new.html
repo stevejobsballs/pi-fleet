@@ -1,5 +1,5 @@
 {{define "content"}}
-<form method="post" action="/work-orders" class="narrow">
+<form autocomplete="off" method="post" action="/work-orders" class="narrow">
   {{template "csrf" .CSRF}}
   <label>Equipment
     <select name="asset" required>{{range .Data.Assets}}<option value="{{.ID}}" {{if eq .ID $.Data.Asset}}selected{{end}}>{{.Tag}} · {{.Manufacturer}} {{.Model}} · {{.Site}} {{.Location}}</option>{{end}}</select></label>

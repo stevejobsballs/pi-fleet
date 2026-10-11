@@ -5,11 +5,11 @@
 {{range .Data.Rows}}<tr><td data-label="Pi"><code>{{.ID}}</code></td><td data-label="Belongs to">{{if eq .Mode "kiosk"}}kiosk{{else}}{{.Username}}{{end}}</td><td data-label="Status">{{label .Status}}{{if .Quarantined}}<br><span class="warn">quarantined after a chain fork</span>{{end}}</td>
   <td data-label="Version">{{if .Version}}{{.Version}}{{else}}not seen yet{{end}}{{if .Outdated}}<br><span class="warn">needs updating</span>{{end}}</td><td data-label="Activated">{{.ActivatedAt}}</td><td data-label="Pairing words">{{.PairingWords}}</td><td>
   {{if eq .Status "pending_confirmation"}}
-  <form method="post" action="/admin/nodes/{{.ID}}/confirm" class="inline">{{template "csrf" $.CSRF}}<label>Words the employee reads out <input name="words" required></label><button>Confirm</button></form>
-  <form method="post" action="/admin/nodes/{{.ID}}/reject" class="inline">{{template "csrf" $.CSRF}}<label>Reason <input name="reason" required></label><button class="danger">Reject</button></form>
+  <form autocomplete="off" method="post" action="/admin/nodes/{{.ID}}/confirm" class="inline">{{template "csrf" $.CSRF}}<label>Words the employee reads out <input name="words" required></label><button>Confirm</button></form>
+  <form autocomplete="off" method="post" action="/admin/nodes/{{.ID}}/reject" class="inline">{{template "csrf" $.CSRF}}<label>Reason <input name="reason" required></label><button class="danger">Reject</button></form>
   {{else if eq .Status "active"}}
-  {{if .Quarantined}}<form method="post" action="/admin/nodes/{{.ID}}/unquarantine" class="inline">{{template "csrf" $.CSRF}}<label>Finding <input name="reason" required></label><button>Lift quarantine</button></form>{{end}}
-  <form method="post" action="/admin/nodes/{{.ID}}/revoke" class="inline">{{template "csrf" $.CSRF}}<label>Reason <input name="reason" required></label>
+  {{if .Quarantined}}<form autocomplete="off" method="post" action="/admin/nodes/{{.ID}}/unquarantine" class="inline">{{template "csrf" $.CSRF}}<label>Finding <input name="reason" required></label><button>Lift quarantine</button></form>{{end}}
+  <form autocomplete="off" method="post" action="/admin/nodes/{{.ID}}/revoke" class="inline">{{template "csrf" $.CSRF}}<label>Reason <input name="reason" required></label>
     <label class="check"><input type="checkbox" name="keep" value="yes"> Accept work it recorded before now</label><button class="danger">Revoke</button></form>
   {{end}}</td></tr>{{end}}
 </tbody></table>
@@ -18,16 +18,16 @@
 <section id="phones"><h2>Phones and QR labels</h2>
 <p>QR labels open this master Pi's report page on people's phones, so they need an address phones can open: the name your IT department gave this Pi, such as pifleet.hospital.org. Many phones can't open names ending in .local. Employee Pis use it too, once they next sync.</p>
 {{if .Data.ReportWarn}}<p class="warn">{{if .Data.ReportURL}}Many phones can't open this address.{{else}}Not set yet: labels use the address this page was opened with, which many phones can't open.{{end}}</p>{{end}}
-<form method="post" action="/admin/report-address" class="inline">{{template "csrf" .CSRF}}<label>Address phones use <input name="address" value="{{.Data.ReportURL}}" placeholder="e.g. pifleet.hospital.org" maxlength="200"></label><button>Save</button></form>
+<form autocomplete="off" method="post" action="/admin/report-address" class="inline">{{template "csrf" .CSRF}}<label>Address phones use <input name="address" value="{{.Data.ReportURL}}" placeholder="e.g. pifleet.hospital.org" maxlength="200"></label><button>Save</button></form>
 </section>
 <section id="versions"><h2>Versions</h2>
 {{$n := .Data.Need}}
 <p>This master Pi runs pi-fleet {{.Data.Master}}. Employee Pis need {{$n.Min}} or newer to sync{{with $n.Next}}, and {{.}} or newer from {{$n.NextFrom.Format "2 January 2006"}}{{end}}. A Pi that is too old keeps its work and shows how to update; it syncs again once updated.</p>
-<form method="post" action="/admin/nodes/require" class="inline">{{template "csrf" .CSRF}}
+<form autocomplete="off" method="post" action="/admin/nodes/require" class="inline">{{template "csrf" .CSRF}}
   <label>Require version <input name="version" value="{{.Data.Master}}" required pattern="v[0-9]+\.[0-9]+\.[0-9]+" size="8"></label>
   <label>From <input name="from" type="date" value="{{.Data.DefaultFrom}}" required></label>
   <button>Require</button></form>
-{{if $n.Next}}<form method="post" action="/admin/nodes/require" class="inline">{{template "csrf" .CSRF}}<input type="hidden" name="clear" value="yes"><button class="danger">Cancel the requirement</button></form>{{end}}
+{{if $n.Next}}<form autocomplete="off" method="post" action="/admin/nodes/require" class="inline">{{template "csrf" .CSRF}}<input type="hidden" name="clear" value="yes"><button class="danger">Cancel the requirement</button></form>{{end}}
 <p class="hint">Use this after a security update: give employees a few days to update, then Pis that haven't can't sync until they do. A Pi updates from this master Pi's copy of the release (Update-Pi on the employee Pi).</p>
 </section>
 {{end}}

@@ -1,5 +1,5 @@
 {{define "content"}}{{$d := .Data}}
-<form method="post" action="/procedures" class="builder">{{template "csrf" .CSRF}}
+<form autocomplete="off" method="post" action="/procedures" class="builder">{{template "csrf" .CSRF}}
   {{/* First, so Enter in a field shows the builder again rather than pressing a step's button. */}}<button name="stay" value="1" hidden tabindex="-1" formnovalidate>Show again</button>
   <input type="hidden" name="count" value="{{len $d.Steps}}"><input type="hidden" name="from" value="{{$d.From}}">
   <input type="hidden" name="mode" value="{{$d.Mode}}"><input type="hidden" name="template" value="{{$d.Template}}"><input type="hidden" name="template_name" value="{{$d.TemplateName}}">

@@ -1,5 +1,5 @@
 {{define "content"}}
-<form method="get" action="/assets" class="inline"><label>Search <input name="q" value="{{.Data.Search}}" type="search"></label>
+<form autocomplete="off" method="get" action="/assets" class="inline"><label>Search <input name="q" value="{{.Data.Search}}" type="search"></label>
   <label>Site <select name="site"><option value="">every site</option>{{range .Data.Sites}}<option value="{{.ID}}"{{if eq .ID $.Data.Site}} selected{{end}}>{{.Label}}</option>{{end}}</select></label><button>Search</button></form>
 <p class="hint">Choosing a site includes its satellites (the sites inside it).</p>
 <p><a class="button" href="/assets/new">Register equipment</a>

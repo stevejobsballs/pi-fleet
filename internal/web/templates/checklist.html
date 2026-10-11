@@ -7,7 +7,7 @@
   <p><a href="/work-orders/{{$d.WO.ID}}/checklists/{{$cl.ID}}/checklist.csv">Download as filled in (spreadsheet, to print or keep)</a></p>
   {{if not $edit}}<p class="hint">{{if eq $d.WO.Status "in_progress"}}Only the person doing this work order fills in its checklists.{{else if or (eq $d.WO.Status "open") (eq $d.WO.Status "assigned")}}Start the work on the work order to fill this in.{{else}}This work order is {{label $d.WO.Status}}; its checklist can no longer be changed.{{end}}</p>{{end}}
 </div>
-<form method="post" action="/work-orders/{{$d.WO.ID}}/checklist" class="checklist" enctype="multipart/form-data">{{template "csrf" .CSRF}}<input type="hidden" name="procedure" value="{{$cl.ID}}">
+<form autocomplete="off" method="post" action="/work-orders/{{$d.WO.ID}}/checklist" class="checklist" enctype="multipart/form-data">{{template "csrf" .CSRF}}<input type="hidden" name="procedure" value="{{$cl.ID}}">
 {{range $cl.Steps}}
   {{if eq .Kind "heading"}}<h2 class="cl-heading">{{.Text}}</h2>
   {{else if eq .Kind "info"}}<p class="cl-info">{{.Text}}</p>

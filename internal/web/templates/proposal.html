@@ -13,9 +13,9 @@
 </dl>
 {{template "clsteps" $p.Steps}}
 {{if .Data.CanReview}}<section><h2>Your decision</h2>
-<form method="post" action="/checklist-proposals/{{$p.ID}}/review" class="inline">{{template "csrf" .CSRF}}<input type="hidden" name="decision" value="approve">
+<form autocomplete="off" method="post" action="/checklist-proposals/{{$p.ID}}/review" class="inline">{{template "csrf" .CSRF}}<input type="hidden" name="decision" value="approve">
   <label>Note (optional) <input name="note"></label><button>Approve and publish</button></form>
-<form method="post" action="/checklist-proposals/{{$p.ID}}/review" class="inline">{{template "csrf" .CSRF}}<input type="hidden" name="decision" value="reject">
+<form autocomplete="off" method="post" action="/checklist-proposals/{{$p.ID}}/review" class="inline">{{template "csrf" .CSRF}}<input type="hidden" name="decision" value="reject">
   <label>Reason (they see it) <input name="note" required></label><button class="danger">Reject</button></form>
 </section>{{end}}
 {{end}}
