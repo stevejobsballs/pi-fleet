@@ -21,7 +21,7 @@ import (
 
 // Wizard is one run of the installer.
 type Wizard struct {
-	UI      *UI
+	UI      Prompter
 	Sys     Sys
 	Self    string // this program's file, copied into place
 	Version string // this program's version
@@ -70,8 +70,13 @@ func (w *Wizard) Run() error {
 	u.Say("pi-fleet %s setup", w.Version)
 	u.Say("")
 	u.Say("This sets up pi-fleet on this Raspberry Pi, one step at a time. You can")
-	u.Say("stop at any question with Ctrl+C; running setup again carries on from")
-	u.Say("where it stopped.")
+	if _, web := u.(*WebUI); web {
+		u.Say("stop at any question with “Stop setup”; running setup again carries on")
+		u.Say("from where it stopped.")
+	} else {
+		u.Say("stop at any question with Ctrl+C; running setup again carries on from")
+		u.Say("where it stopped.")
+	}
 	if w.DryRun {
 		u.Say("")
 		u.Say("DRY RUN: nothing will be changed. Commands are shown instead.")
@@ -321,7 +326,7 @@ func (w *Wizard) confirmErase(d Disk) (bool, error) {
 		u.Say("This drive is small (%s); it may be a USB stick rather than a drive.", humanSize(d.Size))
 		u.Say("Make sure it isn't a stick you need, such as one holding keys or backups.")
 	}
-	a, err := u.line("Type ERASE to erase it, or just press Enter to choose again: ")
+	a, err := u.Line("Type ERASE to erase it, or just press Enter to choose again: ")
 	if err != nil {
 		return false, err
 	}
@@ -1018,7 +1023,7 @@ func (w *Wizard) activate(base string, kiosk bool) error {
 	u.Say("Waiting for a super user to approve this Pi: on the master Pi's Pis page,")
 	u.Say("they type the six words shown above and press Confirm.")
 	for status() != "active" {
-		fmt.Fprint(u.out, ".")
+		u.Progress()
 		w.Sleep(5 * time.Second)
 	}
 	u.Say(" approved.")

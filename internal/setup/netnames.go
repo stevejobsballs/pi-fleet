@@ -41,7 +41,7 @@ func (w *Wizard) askNetworkNames() ([]string, []net.IP, error) {
 	u.Say("(see docs/NETWORK.md). Employee Pis check that name against the master's")
 	u.Say("certificate, so it has to be included now.")
 	for {
-		a, err := u.line("Network names or addresses for other sites, separated by commas (or just press Enter if every Pi is on this network): ")
+		a, err := u.Line("Network names or addresses for other sites, separated by commas (or just press Enter if every Pi is on this network): ")
 		if err != nil {
 			return nil, nil, err
 		}

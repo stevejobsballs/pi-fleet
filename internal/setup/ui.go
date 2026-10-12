@@ -12,6 +12,26 @@ import (
 // ErrCancelled is returned when the user stops the installer.
 var ErrCancelled = errors.New("setup stopped; nothing more was changed. Run it again to carry on")
 
+// Prompter is how the wizard talks to the person setting up: the terminal
+// (UI) or a page in the web browser (WebUI).
+type Prompter interface {
+	Say(format string, args ...any)
+	// Step starts a numbered section.
+	Step(title string)
+	// Ask reads an answer, offering def, until check accepts it.
+	Ask(question, def string, check func(string) error) (string, error)
+	// Confirm asks a yes/no question.
+	Confirm(question string, def bool) (bool, error)
+	// Choose shows options and returns the index picked.
+	Choose(question string, options []string) (int, error)
+	// Pause waits until the person carries on.
+	Pause(prompt string) error
+	// Line reads a free answer, which may be empty.
+	Line(prompt string) (string, error)
+	// Progress shows that a wait goes on (a dot on the terminal).
+	Progress()
+}
+
 // UI asks questions on the terminal, one at a time.
 type UI struct {
 	in   *bufio.Reader
@@ -31,7 +51,8 @@ func (u *UI) Step(title string) {
 	fmt.Fprintf(u.out, "\n── Step %d: %s %s\n\n", u.step, title, strings.Repeat("─", max(3, 60-len(title))))
 }
 
-func (u *UI) line(prompt string) (string, error) {
+// Line reads a free answer, which may be empty.
+func (u *UI) Line(prompt string) (string, error) {
 	fmt.Fprint(u.out, prompt)
 	s, err := u.in.ReadString('\n')
 	if err != nil && (s == "" || !errors.Is(err, io.EOF)) {
@@ -51,7 +72,7 @@ func (u *UI) Ask(question, def string, check func(string) error) (string, error)
 		if def != "" {
 			prompt = fmt.Sprintf("%s [%s]: ", question, def)
 		}
-		a, err := u.line(prompt)
+		a, err := u.Line(prompt)
 		if err != nil {
 			return "", err
 		}
@@ -79,7 +100,7 @@ func (u *UI) Confirm(question string, def bool) (bool, error) {
 		hint = "Y/n"
 	}
 	for {
-		a, err := u.line(fmt.Sprintf("%s [%s]: ", question, hint))
+		a, err := u.Line(fmt.Sprintf("%s [%s]: ", question, hint))
 		if err != nil {
 			return false, err
 		}
@@ -102,7 +123,7 @@ func (u *UI) Choose(question string, options []string) (int, error) {
 		u.Say("  %d) %s", i+1, o)
 	}
 	for {
-		a, err := u.line(fmt.Sprintf("Choose 1-%d: ", len(options)))
+		a, err := u.Line(fmt.Sprintf("Choose 1-%d: ", len(options)))
 		if err != nil {
 			return 0, err
 		}
@@ -113,8 +134,11 @@ func (u *UI) Choose(question string, options []string) (int, error) {
 	}
 }
 
+// Progress prints a dot while a wait goes on.
+func (u *UI) Progress() { fmt.Fprint(u.out, ".") }
+
 // Pause waits for Enter.
 func (u *UI) Pause(prompt string) error {
-	_, err := u.line(prompt + " ")
+	_, err := u.Line(prompt + " ")
 	return err
 }

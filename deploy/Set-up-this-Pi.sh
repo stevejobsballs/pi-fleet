@@ -4,49 +4,54 @@
 # even when the folder is on a USB stick. Programs can't run straight from
 # most USB sticks (their FAT format can't mark a file as runnable: running
 # it gives "Permission denied"), so this copies the release onto the Pi
-# first. Put it in the folder with the release, then in a terminal:
+# first. Put it in the folder with the release, drag the folder onto the
+# Pi's desktop, allow this file to run (right-click, Properties,
+# Permissions) and double-click it: setup opens in the web browser, after
+# the desktop asks for the administrator password. From a terminal:
 #
 #     bash /media/$USER/*/<folder>/Set-up-this-Pi.sh
 #
-# (bash runs it even from a stick.) Or drag the folder onto the Pi's
-# desktop, allow this file to run (right-click, Properties, Permissions)
-# and double-click it. Any options are passed to setup, such as -dry-run.
+# (bash runs it even from a stick.) Any options are passed to setup, such
+# as -dry-run.
 set -euo pipefail
 SELF=$(readlink -f "$0")
-# Double-clicked: there is no terminal to show messages in, so open one.
-if [ ! -t 0 ] && [ -z "${PIFLEET_IN_TERMINAL:-}" ] && { [ -n "${DISPLAY:-}" ] || [ -n "${WAYLAND_DISPLAY:-}" ]; }; then
-  PIFLEET_IN_TERMINAL=1 exec x-terminal-emulator -t "pi-fleet setup" -e "$(printf '%q ' bash "$SELF" "$@")"
-fi
-# Keep the window open if something goes wrong, so the message can be read.
-trap 'status=$?; if [ $status -ne 0 ]; then echo; read -r -p "Press Enter to close this window. " _ || true; fi' EXIT
 SRC=$(dirname "$SELF")
 DEST="$HOME/pi-fleet-install"
 
+# Double-clicked: no terminal. Problems are shown in a message window, and
+# setup itself opens in the web browser after the desktop's password
+# window. Typed in a terminal, everything stays there.
+desktop=0
+if [ ! -t 0 ] && { [ -n "${DISPLAY:-}" ] || [ -n "${WAYLAND_DISPLAY:-}" ]; }; then desktop=1; fi
+tell() { # tell "message": shows it, in a window when double-clicked
+  if [ "$desktop" = 1 ] && command -v zenity >/dev/null; then
+    zenity --error --title "pi-fleet setup" --width 480 --text "$1" 2>/dev/null || true
+  elif [ "$desktop" = 1 ] && command -v xmessage >/dev/null; then
+    xmessage -center "$1" 2>/dev/null || true
+  else
+    echo "$1"
+  fi
+}
+
 if [ "$(uname -m)" != aarch64 ]; then
-  echo "This Pi runs the 32-bit version of Raspberry Pi OS ($(uname -m))."
-  echo "pi-fleet needs the 64-bit version. Put Raspberry Pi OS (64-bit) on it"
-  echo "with Raspberry Pi Imager, then run this again."
+  tell "This Pi runs the 32-bit version of Raspberry Pi OS ($(uname -m)). pi-fleet needs the 64-bit version: put Raspberry Pi OS (64-bit) on it with Raspberry Pi Imager, then try again."
   exit 1
 fi
 BIN=$(ls "$SRC"/pi-fleet_v*_linux_arm64 2>/dev/null | sort -V | tail -n 1 || true)
 if [ -z "$BIN" ]; then
-  echo "No pi-fleet release (pi-fleet_v…_linux_arm64) found next to this script in $SRC."
-  echo "Download the release's files into the same folder, then run this again."
+  tell "No pi-fleet release (pi-fleet_v…_linux_arm64) was found next to this file, in $SRC. Download the release's files into the same folder, then try again."
   exit 1
 fi
 if [ "$SRC" != "$DEST" ]; then
-  echo "Copying the release onto this Pi ($DEST)..."
+  # Programs can't run straight from most USB sticks, so copy it first.
   rm -rf "$DEST"
   mkdir -p "$DEST"
-  cp -r "$SRC"/. "$DEST"/
-  sync
-  echo "Copied. Eject the USB stick before taking it out."
+  if ! cp -r "$SRC"/. "$DEST"/ || ! sync; then
+    tell "The release couldn't be copied onto this Pi. If it's on a USB stick, take the stick out properly (eject it) on the computer you copied from, copy the files again, and try once more."
+    exit 1
+  fi
 fi
 chmod +x "$DEST/$(basename "$BIN")"
 [ -d "$DEST/tools" ] && chmod +x "$DEST"/tools/*.sh
-echo
-trap - EXIT
-# Keep the window open at the end so its last messages can be read: the
-# file manager's "Execute in Terminal" closes it as soon as setup ends.
-set -- -pause "$@"
+# Any options are passed to setup, such as -dry-run.
 exec "$DEST/$(basename "$BIN")" setup "$@"

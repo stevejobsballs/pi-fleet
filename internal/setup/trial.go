@@ -65,9 +65,9 @@ func (w *Wizard) dataDisk() (Disk, bool) {
 func (w *Wizard) trialWarning() {
 	u := w.UI
 	u.Say("")
-	u.Say(strings.Repeat("!", 72))
+	u.Say("%s", strings.Repeat("!", 72))
 	u.Say("  TRIAL INSTALLATION: the records are on a USB stick. Don't use it for")
 	u.Say("  actual work. Before real use, move them to an SSD: run setup again and")
 	u.Say("  choose \"Move the records to a different drive\".")
-	u.Say(strings.Repeat("!", 72))
+	u.Say("%s", strings.Repeat("!", 72))
 }

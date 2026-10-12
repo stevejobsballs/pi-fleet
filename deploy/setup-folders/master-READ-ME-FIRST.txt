@@ -36,9 +36,9 @@ ON THE MASTER PI
        b. Open the folder on the Desktop. Right-click Set-up-this-Pi.sh,
           choose Properties, then Permissions, and allow executing it.
        c. Double-click Set-up-this-Pi.sh and choose Execute.
-     (Or, without the desktop steps: open a terminal and type
-        bash /media/$USER/*/pi-fleet-master-setup/Set-up-this-Pi.sh )
-     It asks for this Pi's own password (the one you log into the Pi with).
+     A window asks for this Pi's own password (the one you log into the Pi
+     with). Then setup opens in the web browser: answer each question on
+     the page, with its buttons or by typing.
   3. Choose  Master Pi  and follow the steps: the drive, the Pi's name, the
      first super user (lowercase username, and a password you'll remember),
      then backups.
@@ -55,4 +55,6 @@ AFTERWARDS, in the web browser on the master
   - Kiosks: create a kiosk for each shared workshop Pi, and add its members.
   Then set up the other Pis with the pi-fleet-employee-setup folder.
 
-If anything stops with an error, the window stays open: send what it says.
+If anything stops with an error, the page says what went wrong: send what
+it says. (No desktop? Setup also runs in a terminal: type
+   bash /media/$USER/*/pi-fleet-master-setup/Set-up-this-Pi.sh )

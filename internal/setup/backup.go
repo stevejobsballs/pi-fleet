@@ -102,7 +102,7 @@ func (w *Wizard) backupDrive() error {
 	}
 	u.Say("Plug the backup drive into another USB port, leaving the data drive in.")
 	for {
-		a, err := u.line("Press Enter when the backup drive is plugged in (or type skip to set up backups later): ")
+		a, err := u.Line("Press Enter when the backup drive is plugged in (or type skip to set up backups later): ")
 		if err != nil {
 			return err
 		}

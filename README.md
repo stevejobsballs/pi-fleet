@@ -36,28 +36,24 @@ each Pi:
 3. Make the program runnable: in the File Manager right-click it,
    **Properties → Permissions**, and allow executing it. (Or in a terminal:
    `chmod +x pi-fleet_*_linux_arm64`.)
-4. Double-click it and choose **Execute** (or run `./pi-fleet_*_linux_arm64`
-   in a terminal). Setup opens in a terminal window, asks for your password
-   (administrator rights), and guides you from there.
+4. Double-click it and choose **Execute**. A window asks for the Pi's own
+   password (administrator rights), then setup opens in the web browser and
+   guides you from there, one question at a time, with buttons. (Without a
+   desktop, run `./pi-fleet_*_linux_arm64` in a terminal: setup asks there.)
 
 **Bringing the files on a USB stick?** Programs can't run straight from
 most USB sticks: their format (FAT) can't mark a file as runnable, so the
 program gives *Permission denied*, or double-clicking it does nothing or
 opens it as text, and allowing executing in Properties doesn't stick. Put
 [`deploy/Set-up-this-Pi.sh`](deploy/Set-up-this-Pi.sh) in the folder with
-the three release files, then on the Pi open a terminal (Ctrl+Alt+T) and
-type:
-
-```sh
-bash /media/$USER/*/<your folder>/Set-up-this-Pi.sh
-```
-
-It checks the Pi runs 64-bit Raspberry Pi OS, copies the release onto the
-Pi, makes it runnable and starts setup. To avoid typing, drag the folder
-onto the Pi's desktop instead, allow `Set-up-this-Pi.sh` to run
-(right-click, **Properties → Permissions**) and double-click it. Eject the stick before unplugging
+the three release files. On the Pi, drag the folder onto the desktop, allow
+`Set-up-this-Pi.sh` to run (right-click, **Properties → Permissions**) and
+double-click it. It checks the Pi runs 64-bit Raspberry Pi OS, copies the
+release onto the Pi, makes it runnable and starts setup in the web browser;
+any problem is shown in a message window. Eject the stick before unplugging
 it (File Manager, eject symbol): a stick pulled out without ejecting can
-arrive with files missing.
+arrive with files missing. (In a terminal instead:
+`bash /media/$USER/*/<your folder>/Set-up-this-Pi.sh`.)
 
 ### If setup won't start
 
