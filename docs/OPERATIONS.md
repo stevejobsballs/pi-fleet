@@ -130,6 +130,23 @@ Restart=on-failure
 WantedBy=multi-user.target
 ```
 
+### 5. Starting over, keeping the records
+
+If pi-fleet on the master isn't working right, run setup again (double-click
+the release) and choose **Start over: set pi-fleet up again on this Pi,
+keeping all its records**. It reinstalls the program and the service from
+that release and gives the records back to pi-fleet's user, and keeps
+everything on the data drive: every record and file, the keys, the backups
+and the master's certificate (so employee Pis, whose setup pinned its
+fingerprint, carry on). If the records have no super user left, it asks for
+one.
+
+To remove pi-fleet from a Pi altogether, use `tools/Reset-Pi.sh`; on a
+master it asks whether to keep the records on the data drive. When setup
+is run on a Pi with a drive holding pi-fleet records, it offers to keep
+them: by the drive's pi-fleet label, or, for a drive labelled otherwise, by
+the database at its top (the drive is then labelled as pi-fleet's).
+
 ## Employee Pi
 
 Pis at other sites need the master Pi reachable by a DNS name that is in

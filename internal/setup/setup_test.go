@@ -549,7 +549,7 @@ func TestNothingToUpdateWhenTheVersionIsInstalled(t *testing.T) {
 	}
 	// On a drive already: no update offered either.
 	sys.mounts[DataDir] = true
-	w, out = wizard(sys, "4") // stop
+	w, out = wizard(sys, "5") // stop
 	if err := w.Run(); err != nil || !strings.Contains(out.String(), "1) Move the records to a different drive") || strings.Contains(out.String(), "Update to") || sys.ran("systemctl") {
 		t.Fatalf("err %v\n%s", err, out)
 	}
@@ -828,7 +828,7 @@ func TestAnExistingStickInstallIsMarkedAsATrial(t *testing.T) {
 	sys.files[UnitPath] = []byte("ExecStart=/opt/pi-fleet/current/pi-fleet serve -data /srv/pi-fleet -listen :8443\n")
 	sys.mounts[DataDir] = true
 	outputs(sys, map[string]string{"lsblk": stickAndSSD, "/opt/pi-fleet/current/pi-fleet version": "pi-fleet v1.0.0\n"})
-	w, out := wizard(sys, "4") // stop
+	w, out := wizard(sys, "5") // stop
 	if err := w.Run(); err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
@@ -847,7 +847,7 @@ func TestMissingDataDriveIsNeverTakenForRecordsOnTheSDCard(t *testing.T) {
 	disks := strings.Replace(stickAndSSD, `"mountpoints":["/srv/pi-fleet"]`, `"mountpoints":[]`, 1)
 	outputs(sys, map[string]string{"lsblk": disks, "/opt/pi-fleet/current/pi-fleet version": "pi-fleet v1.0.0\n"})
 	sys.exists["/dev/disk/by-uuid/old-uuid"] = true
-	w, out := wizard(sys, "4") // stop
+	w, out := wizard(sys, "5") // stop
 	if err := w.Run(); err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
@@ -1121,5 +1121,76 @@ func TestKioskPiOpensPiFleetAtStartUp(t *testing.T) {
 	w2.launchers(true)
 	if _, ok := sys2.files[MenuEntryPath]; !ok || len(sys2.calls) != 0 {
 		t.Errorf("as root: %v", sys2.calls)
+	}
+}
+
+// Records on a drive without pi-fleet's label (prepared another way, or
+// relabelled): found by the database at its top, and kept on request.
+func TestNewMasterKeepsRecordsOnAnUnlabelledDrive(t *testing.T) {
+	sys := newFake()
+	disks := strings.Replace(piDisks, `"fstype":"exfat","label":"T7","uuid":"1234-ABCD","mountpoints":[null]`,
+		`"fstype":"ext4","label":"ssd","uuid":"keep-me","mountpoints":["/media/clooney/ssd"]`, 1)
+	outputs(sys, map[string]string{"lsblk": disks, "hostname": "fleet-master\n", "id pifleet": "uid=999",
+		"runuser -u pifleet -- /opt/pi-fleet/current/pi-fleet bootstrap -data /srv/pi-fleet -check": "this master Pi has a super user\n"})
+	sys.mounts["/media/clooney/ssd"] = true
+	sys.exists["/media/clooney/ssd/pi-fleet.db"] = true
+	sys.exists["/srv/pi-fleet/pi-fleet.db"] = true // the same drive, once opened there
+	sys.files["/srv/pi-fleet/tls/cert.pem"], _, _ = NewCertificate([]string{"fleet-master.local"}, nil, time.Now())
+	w, out := wizard(sys, "1", "", "", "2", "y", "", "n")
+	if err := w.Run(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	if sys.ran("wipefs") || sys.ran("mkfs") || sys.ran("runuser -u pifleet -- /opt/pi-fleet/current/pi-fleet init") {
+		t.Fatalf("changed the drive:\n%s", strings.Join(sys.calls, "\n"))
+	}
+	for _, want := range []string{"umount /media/clooney/ssd", "e2label /dev/sdb1 PIFLEET-DATA", "mount /srv/pi-fleet"} {
+		if !sys.ran(want) {
+			t.Errorf("didn't run %q:\n%s", want, strings.Join(sys.calls, "\n"))
+		}
+	}
+	if !strings.Contains(string(sys.files["/etc/fstab"]), "UUID=keep-me") || !strings.Contains(out.String(), "This drive holds pi-fleet records (found in /media/clooney/ssd)") ||
+		!strings.Contains(out.String(), "Keeping the certificate already on the drive") {
+		t.Fatalf("output:\n%s", out)
+	}
+}
+
+// Starting over on a master Pi: set up again from this release, keeping
+// the records, keys and certificate on the drive.
+func TestStartOverKeepingTheRecords(t *testing.T) {
+	sys := newFake()
+	sys.files[UnitPath] = []byte(MasterUnit(443))
+	sys.mounts[DataDir] = true
+	sys.exists[DataDir+"/pi-fleet.db"] = true
+	cert, _, _ := NewCertificate([]string{"steve.local"}, nil, time.Now())
+	sys.files[DataDir+"/tls/cert.pem"] = cert
+	fp, _ := Fingerprint(cert)
+	outputs(sys, map[string]string{"hostname": "steve\n", "id pifleet": "uid=999", "/opt/pi-fleet/current/pi-fleet version": "pi-fleet v1.0.0\n",
+		"runuser -u pifleet -- /opt/pi-fleet/current/pi-fleet bootstrap -data /srv/pi-fleet -check": "this master Pi has a super user\n"})
+	// 1 move, 2 backups, 3 network names, 4 start over, 5 stop.
+	w, out := wizard(sys, "4", "y")
+	if err := w.Run(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	for _, want := range []string{"systemctl stop pi-fleet", "install /home/pi/Downloads/pi-fleet_v1.0.0_linux_arm64 /opt/pi-fleet/releases/v1.0.0/pi-fleet",
+		"find /srv/pi-fleet -path /srv/pi-fleet/lost+found -prune -o -exec chown pifleet:pifleet {} +", "systemctl enable pi-fleet", "systemctl restart pi-fleet"} {
+		if !sys.ran(want) {
+			t.Errorf("didn't run %q:\n%s", want, strings.Join(sys.calls, "\n"))
+		}
+	}
+	if sys.ran("runuser -u pifleet -- /opt/pi-fleet/current/pi-fleet init") || sys.ran("mkfs") || sys.ran("wipefs") || string(sys.files[DataDir+"/tls/cert.pem"]) != string(cert) {
+		t.Fatalf("records or certificate not kept:\n%s", strings.Join(sys.calls, "\n"))
+	}
+	if text := out.String(); !strings.Contains(text, "Started over: pi-fleet is set up again, with all its records.") || !strings.Contains(text, fp) {
+		t.Fatalf("output:\n%s", text)
+	}
+	// Saying no changes nothing.
+	sys2 := newFake()
+	sys2.files[UnitPath] = []byte(MasterUnit(443))
+	sys2.mounts[DataDir] = true
+	sys2.exists[DataDir+"/pi-fleet.db"] = true
+	outputs(sys2, map[string]string{"/opt/pi-fleet/current/pi-fleet version": "pi-fleet v1.0.0\n"})
+	w, out = wizard(sys2, "4", "n")
+	if err := w.Run(); err != nil || sys2.ran("systemctl") {
+		t.Fatalf("%v\n%s\n%s", err, out, strings.Join(sys2.calls, "\n"))
 	}
 }

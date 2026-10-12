@@ -249,6 +249,28 @@ func (w *Wizard) dataDrive() (reused, trial bool, err error) {
 				return has, trial, nil
 			}
 		}
+		if part, at, ok := w.recordsOn(*disk); ok {
+			u.Say("")
+			u.Say("This drive holds pi-fleet records (found in %s).", at)
+			keep, err := u.Confirm("Use it, keeping its records?", true)
+			if err != nil {
+				return false, false, err
+			}
+			if keep {
+				for _, m := range part.Mounts { // the desktop opened it elsewhere
+					if err := w.Sys.Run("umount", m); err != nil {
+						return false, false, fmt.Errorf("couldn't close %s (is a program using it?): %w", m, err)
+					}
+				}
+				// Labelled as a pi-fleet drive, so it's recognised from now on.
+				w.Sys.Run("e2label", part.Path, DataLabel)
+				if err := MountData(w.Sys, part.UUID, DataDir); err != nil {
+					return false, false, err
+				}
+				u.Say("Found the master Pi's records on the drive; they will be kept.")
+				return true, trial, nil
+			}
+		}
 		if ok, err := w.confirmErase(*disk); err != nil || !ok {
 			if err != nil {
 				return false, false, err
@@ -266,6 +288,22 @@ func (w *Wizard) dataDrive() (reused, trial bool, err error) {
 		u.Say("The drive is ready and opens at %s every time the Pi starts.", DataDir)
 		return false, trial, nil
 	}
+}
+
+// recordsOn finds a master Pi's records on a drive without pi-fleet's
+// label: a partition, open somewhere, with pi-fleet's database at its top.
+func (w *Wizard) recordsOn(d Disk) (Part, string, bool) {
+	for _, p := range d.Parts {
+		if p.FSType != "ext4" || p.UUID == "" {
+			continue
+		}
+		for _, m := range p.Mounts {
+			if w.Sys.Exists(m + "/pi-fleet.db") {
+				return p, m, true
+			}
+		}
+	}
+	return Part{}, "", false
 }
 
 // pickDisk lists the drives and asks which to use; nil means look again.
@@ -612,6 +650,9 @@ func (w *Wizard) existingMaster(unit string) error {
 			return w.update(DataDir, true, fmt.Sprintf("https://127.0.0.1:%d/login", port))
 		}})
 	}
+	if onDrive {
+		choices = append(choices, choice{"Start over: set pi-fleet up again on this Pi, keeping all its records", func() error { return w.startOverKeepingRecords(port) }})
+	}
 	choices = append(choices, choice{"Stop", func() error { return nil }})
 	labels := make([]string, len(choices))
 	for i, c := range choices {
@@ -622,6 +663,59 @@ func (w *Wizard) existingMaster(unit string) error {
 		return err
 	}
 	return choices[i].do()
+}
+
+// startOverKeepingRecords sets pi-fleet up again on this master Pi (the
+// program, its service, its folders and their owner) and keeps everything
+// on the data drive: every record and file, the keys, the backups set up,
+// and the certificate, so employee Pis and phones carry on as before. For
+// when pi-fleet isn't working right, instead of removing it (Reset-Pi)
+// and setting it up again.
+func (w *Wizard) startOverKeepingRecords(port int) error {
+	u := w.UI
+	u.Step("Start over, keeping the records")
+	if !w.Sys.Exists(DataDir + "/pi-fleet.db") {
+		return fmt.Errorf("no records were found on the data drive (%s/pi-fleet.db)", DataDir)
+	}
+	u.Say("This sets pi-fleet up again on this Pi: its program, its service and")
+	u.Say("who owns its files. Everything on the data drive is kept: every record")
+	u.Say("and file, the keys, the backups and the master's certificate, so")
+	u.Say("employee Pis, phones and people carry on as before.")
+	ok, err := u.Confirm("Start over, keeping all the records?", true)
+	if err != nil || !ok {
+		return err
+	}
+	w.Sys.Run("systemctl", "stop", "pi-fleet") // it may not be running at all
+	if err := w.dependencies(true); err != nil {
+		return err
+	}
+	if err := w.program(DataDir); err != nil {
+		return err
+	}
+	if err := w.chownData(); err != nil {
+		return err
+	}
+	host := "fleet-master"
+	if out, err := w.Sys.Output("hostname"); err == nil && strings.TrimSpace(string(out)) != "" {
+		host = strings.TrimSpace(string(out))
+	}
+	fp, err := w.certificate(host, nil, nil) // keeps the one on the drive
+	if err != nil {
+		return err
+	}
+	if err := w.records(true); err != nil {
+		return err
+	}
+	if err := w.mirrorRelease(DataDir, filepath.Dir(w.Self)); err != nil {
+		return err
+	}
+	if err := w.startService(MasterUnit(port), fmt.Sprintf("https://127.0.0.1:%d/login", port)); err != nil {
+		return err
+	}
+	u.Say("")
+	u.Say("Started over: pi-fleet is set up again, with all its records.")
+	w.masterDone(host+".local", port, fp, w.Sys.Exists(BackupDir+"/.pi-fleet-backup-drive"))
+	return nil
 }
 
 // newerThanInstalled reports whether this file is a newer release than
