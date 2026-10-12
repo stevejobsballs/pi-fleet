@@ -1194,3 +1194,36 @@ func TestStartOverKeepingTheRecords(t *testing.T) {
 		t.Fatalf("%v\n%s\n%s", err, out, strings.Join(sys2.calls, "\n"))
 	}
 }
+
+// Setting up again after a setup stopped partway, or after Reset-Pi:
+// the data drive already listed for this Pi is opened and its records
+// kept, instead of being left out of the drives offered.
+func TestNewMasterOpensTheDataDriveListedBefore(t *testing.T) {
+	sys := newFake()
+	sys.files["/etc/fstab"] = []byte("proc /proc proc defaults 0 0\n# pi-fleet master Pi data drive\n" + FstabLine("0f65a1b2", DataDir) + "\n")
+	sys.exists["/dev/disk/by-uuid/0f65a1b2"] = true
+	sys.exists[DataDir+"/pi-fleet.db"] = true
+	sys.files[DataDir+"/tls/cert.pem"], _, _ = NewCertificate([]string{"steve.local"}, nil, time.Now())
+	outputs(sys, map[string]string{"lsblk": piDisks, "hostname": "steve\n", "id pifleet": "uid=999",
+		"runuser -u pifleet -- /opt/pi-fleet/current/pi-fleet bootstrap -data /srv/pi-fleet -check": "this master Pi has a super user\n"})
+	w, out := wizard(sys, "1", "", "", "n") // master, keep the name, no network names, backups later
+	if err := w.Run(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	if !sys.ran("mount /srv/pi-fleet") || sys.ran("wipefs") || sys.ran("mkfs") || sys.ran("runuser -u pifleet -- /opt/pi-fleet/current/pi-fleet init") {
+		t.Fatalf("calls:\n%s", strings.Join(sys.calls, "\n"))
+	}
+	if text := out.String(); !strings.Contains(text, "Found the data drive this Pi used before") || !strings.Contains(text, "they will be kept") || strings.Contains(text, "Which drive") {
+		t.Fatalf("output:\n%s", text)
+	}
+
+	// Listed, but not plugged in: forgotten, so a drive can be chosen.
+	sys = newFake()
+	sys.files["/etc/fstab"] = []byte("proc /proc proc defaults 0 0\n" + FstabLine("gone", DataDir) + "\n")
+	outputs(sys, map[string]string{"lsblk": piDisks})
+	w, out = wizard(sys, "")
+	w.dataDrive() // stops at the end of the answers; only the fstab matters here
+	if !strings.Contains(string(sys.files["/etc/fstab"]), "# drive lost, removed by pi-fleet setup: UUID=gone") {
+		t.Fatalf("fstab:\n%s", sys.files["/etc/fstab"])
+	}
+}

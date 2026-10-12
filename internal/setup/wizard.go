@@ -206,6 +206,27 @@ func (w *Wizard) dataDrive() (reused, trial bool, err error) {
 		u.Say("A drive is already open at %s; using it.", DataDir)
 		return w.Sys.Exists(DataDir + "/pi-fleet.db"), w.Sys.Exists(DataDir + "/" + TrialMarker), nil
 	}
+	// The data drive is already listed for this Pi (an earlier setup, one
+	// that stopped partway, or after Reset-Pi kept the records): if it's
+	// plugged in, open it rather than leave it out of the drives offered.
+	if fstab, _ := w.Sys.ReadFile("/etc/fstab"); fstabUUID(string(fstab), DataDir) != "" {
+		uuid := fstabUUID(string(fstab), DataDir)
+		if w.Sys.Exists("/dev/disk/by-uuid/" + uuid) {
+			u.Say("Found the data drive this Pi used before; opening it.")
+			if err := w.Sys.Run("mount", DataDir); err != nil {
+				return false, false, fmt.Errorf("opening the data drive: %w", err)
+			}
+			has := w.Sys.Exists(DataDir + "/pi-fleet.db")
+			if has {
+				u.Say("Found the master Pi's records on the drive; they will be kept.")
+			}
+			return has, w.Sys.Exists(DataDir + "/" + TrialMarker), nil
+		}
+		// Not plugged in: forget it, so the drive can be chosen afresh.
+		if err := w.Sys.WriteFile("/etc/fstab", []byte(commentFstab(string(fstab), DataDir)), 0o644); err != nil {
+			return false, false, err
+		}
+	}
 	u.Say("Plug the external drive into one of the Pi's blue USB 3 ports now.")
 	u.Say("A USB SSD of 250 GB or more is best. If the drive needs its own power")
 	u.Say("supply, plug that in too.")
