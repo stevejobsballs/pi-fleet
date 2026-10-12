@@ -190,6 +190,15 @@ func webSetup(ctx context.Context, c *cli, self, listen, forUser string, dry, al
 		return err
 	}
 	ui := setup.NewWebUI(token)
+	// Everything the page shows also goes to setup's log, to see later what
+	// happened (passwords are shown as dots, so they never reach it).
+	if !dry {
+		if f, err := os.OpenFile(setup.LogPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
+			defer f.Close()
+			fmt.Fprintf(f, "\n######## pi-fleet %s setup, %s\n", version, time.Now().Format(time.RFC1123))
+			ui.Log = f
+		}
+	}
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
 	defer stop()
 	go ui.Serve(ctx, ln)

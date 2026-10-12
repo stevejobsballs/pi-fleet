@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -41,8 +42,10 @@ func TestSetupInTheBrowser(t *testing.T) {
 		i, _ := u.Choose("Which drive?", []string{"USB SSD (1 TB)", "USB stick (32 GB)"})
 		out = append(out, []string{"ssd", "stick"}[i])
 		// A command the wizard runs, asking for a password.
+		in, end := u.Begin() // as a command run by setup reads
 		io.WriteString(u, "Choose a password: ")
-		pw, _ := bufio.NewReader(u.Stdin()).ReadString('\n')
+		pw, _ := bufio.NewReader(in).ReadString('\n')
+		end()
 		out = append(out, strings.TrimSpace(pw))
 		io.WriteString(u, "Password set.\n")
 		line, _ := u.Line("Other network names (or nothing): ")
@@ -264,4 +267,58 @@ func TestSetupStopsWhenItsPageCloses(t *testing.T) {
 		t.Fatal("stopped a page without its script")
 	}
 	srv.Close()
+}
+
+// Commands setup runs from the page finish when they finish: their input
+// from the page ends with them (it used to be waited for after they had
+// exited, so setup froze after the first command). A command that asks
+// gets the answer typed on the page.
+func TestCommandsFromThePageFinish(t *testing.T) {
+	u := NewWebUI(NewToken())
+	r := &Real{Out: u, In: u.Stdin()}
+	done := make(chan error, 1)
+	go func() { done <- r.Run("true") }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("a command that finished left setup waiting")
+	}
+	// A command that asks: the prompt is shown, the answer reaches it.
+	go func() { done <- r.Run("sh", "-c", `printf 'Your password: '; read a; echo "got $a"`) }()
+	var id string
+	for range 100 {
+		u.mu.Lock()
+		if u.q != nil && u.q.Kind == "input" {
+			id = strconv.Itoa(u.q.ID)
+		}
+		u.mu.Unlock()
+		if id != "" {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if id == "" {
+		t.Fatal("no prompt shown")
+	}
+	u.answer(id, "s3cret-words")
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("the asking command didn't finish")
+	}
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	var shown []string
+	for _, e := range u.entries {
+		shown = append(shown, e.Text)
+	}
+	if all := strings.Join(shown, "|"); !strings.Contains(all, "got s3cret-words") || !strings.Contains(all, "Your password: ••••••••") {
+		t.Fatalf("shown: %s", all)
+	}
 }

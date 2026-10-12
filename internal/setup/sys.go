@@ -50,6 +50,26 @@ func (r *Real) Run(name string, args ...string) error {
 	}
 	cmd := exec.Command(name, args...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = r.In, r.Out, r.Out
+	// Input from the setup page lasts only as long as the command: Wait
+	// waits for copying the input to finish, which would otherwise wait
+	// for an answer that never comes.
+	if in, ok := r.In.(interface{ Begin() (io.Reader, func()) }); ok {
+		input, end := in.Begin()
+		defer end()
+		cmd.Stdin = nil
+		w, err := cmd.StdinPipe()
+		if err != nil {
+			return err
+		}
+		if err := cmd.Start(); err != nil {
+			return fmt.Errorf("%s: %w", name, err)
+		}
+		go func() { io.Copy(w, input); w.Close() }()
+		if err := cmd.Wait(); err != nil {
+			return fmt.Errorf("%s: %w", name, err)
+		}
+		return nil
+	}
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("%s: %w", name, err)
 	}

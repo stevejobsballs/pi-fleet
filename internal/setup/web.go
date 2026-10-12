@@ -45,9 +45,10 @@ type WebUI struct {
 	// given a moment to come back (a reload says goodbye too).
 	opened, alive, bye time.Time
 
-	answers chan string    // the wizard's own questions
-	stdinR  *io.PipeReader // what commands read
-	stdinW  *io.PipeWriter
+	answers chan string // the wizard's own questions
+	input   chan string // answers to commands' prompts, for the command running
+	// Log, if set, gets everything shown, as it's shown (setup's log file).
+	Log io.Writer
 }
 
 type logEntry struct {
@@ -65,10 +66,12 @@ type question struct {
 	Secret  bool
 }
 
+// LogPath is setup's log: what each setup in the browser showed.
+const LogPath = "/var/log/pi-fleet-setup.log"
+
 // NewWebUI makes a web UI that opens with this secret token.
 func NewWebUI(token string) *WebUI {
-	r, w := io.Pipe()
-	return &WebUI{token: token, answers: make(chan string), stdinR: r, stdinW: w, closed: make(chan struct{})}
+	return &WebUI{token: token, answers: make(chan string), input: make(chan string, 8), closed: make(chan struct{})}
 }
 
 // NewToken makes a secret token for the setup page's address.
@@ -81,10 +84,47 @@ func NewToken() string {
 }
 
 // Stdin is what commands the wizard runs read their input from.
-func (u *WebUI) Stdin() io.Reader { return u.stdinR }
+//
+// Each command gets its own input (Begin, End), which ends when the
+// command does: a command's input mustn't outlive it, or waiting for the
+// command to finish would wait for input that never comes.
+func (u *WebUI) Stdin() io.Reader { return u }
+
+// Read is never used directly; commands read through Begin.
+func (u *WebUI) Read(p []byte) (int, error) { return 0, io.EOF }
+
+// Begin gives a command starting its input: the answers typed on the
+// page while it runs, until End.
+func (u *WebUI) Begin() (io.Reader, func()) {
+	done := make(chan struct{})
+	return &commandInput{u: u, done: done}, func() { close(done) }
+}
+
+type commandInput struct {
+	u    *WebUI
+	done chan struct{}
+	rest string
+}
+
+func (c *commandInput) Read(p []byte) (int, error) {
+	if c.rest == "" {
+		select {
+		case c.rest = <-c.u.input:
+		case <-c.done:
+			return 0, io.EOF
+		}
+	}
+	n := copy(p, c.rest)
+	c.rest = c.rest[n:]
+	return n, nil
+}
 
 func (u *WebUI) add(kind, text string) {
 	u.entries = append(u.entries, logEntry{kind, text})
+	if u.Log != nil {
+		prefix := map[string]string{"step": "\n== ", "answer": "> ", "out": "    "}[kind]
+		fmt.Fprintf(u.Log, "%s%s\n", prefix, text)
+	}
 }
 
 func (u *WebUI) Say(format string, args ...any) {
@@ -400,7 +440,10 @@ func (u *WebUI) answer(id, a string) {
 		u.add("answer", withAnswer(q.Text, shown))
 		u.partial = ""
 		u.mu.Unlock()
-		go u.stdinW.Write([]byte(a + "\n")) // the command reads it
+		select {
+		case u.input <- a + "\n": // the command reads it
+		default:
+		}
 		return
 	}
 	u.mu.Unlock()
