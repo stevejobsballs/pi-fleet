@@ -166,10 +166,10 @@ func TestStopSetupFromThePage(t *testing.T) {
 
 func TestPromptsReworded(t *testing.T) {
 	for in, want := range map[string]string{
-		"Plug the drive in, then press Enter.":                          "Plug the drive in, then press Carry on.",
-		"Type ERASE to erase it, or just press Enter to choose again: ": "Type ERASE to erase it, or leave it empty and press Carry on to choose again: ",
+		"Plug the drive in, then press Enter.":                          "Plug the drive in, then press Continue.",
+		"Type ERASE to erase it, or just press Enter to choose again: ": "Type ERASE to erase it, or leave it empty and press Continue to choose again: ",
 	} {
-		if got := onPage(in, "Carry on"); got != want {
+		if got := onPage(in, "Continue"); got != want {
 			t.Errorf("%q: %q", in, got)
 		}
 	}
@@ -187,4 +187,81 @@ func TestParagraphs(t *testing.T) {
 			t.Fatalf("%d: %v, want %v", i, got[i], want[i])
 		}
 	}
+}
+
+// A setup whose page was closed stops at its next question, instead of
+// waiting on in the background: the page's script says it's open, and
+// goodbye when it closes; a reload comes back in time.
+func TestSetupStopsWhenItsPageCloses(t *testing.T) {
+	defer func(a, b, c time.Duration) { NeverOpened, Silent, AfterBye = a, b, c }(NeverOpened, Silent, AfterBye)
+	NeverOpened, Silent, AfterBye = 300*time.Millisecond, 200*time.Millisecond, 100*time.Millisecond
+	start := func() (*WebUI, *http.Client, *httptest.Server, chan error) {
+		u := NewWebUI(NewToken())
+		srv := httptest.NewServer(u.Handler())
+		errc := make(chan error, 1)
+		go func() { _, err := u.Ask("Anything", "", nil); errc <- err }()
+		go u.Watch(10 * time.Millisecond)
+		jar, _ := cookiejar.New(nil)
+		return u, &http.Client{Jar: jar}, srv, errc
+	}
+	post := func(c *http.Client, srv *httptest.Server, path string) {
+		resp, err := c.Post(srv.URL+path, "text/plain", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+	}
+	stopped := func(errc chan error, within time.Duration) bool {
+		select {
+		case err := <-errc:
+			return errors.Is(err, ErrCancelled)
+		case <-time.After(within):
+			return false
+		}
+	}
+
+	// Never opened.
+	_, _, srv, errc := start()
+	if !stopped(errc, time.Second) {
+		t.Fatal("a page never opened didn't stop setup")
+	}
+	srv.Close()
+
+	// Open, alive; then a reload (goodbye, and back at once) keeps it.
+	u, c, srv, errc := start()
+	c.Get(srv.URL + "/start?t=" + u.token)
+	post(c, srv, "/alive")
+	post(c, srv, "/bye")
+	c.Get(srv.URL + "/")
+	for range 4 {
+		time.Sleep(80 * time.Millisecond)
+		post(c, srv, "/alive")
+	}
+	if stopped(errc, 10*time.Millisecond) {
+		t.Fatal("stopped while its page was open")
+	}
+	// Closed: goodbye, and nothing more.
+	post(c, srv, "/bye")
+	if !stopped(errc, time.Second) {
+		t.Fatal("a closed page didn't stop setup")
+	}
+	srv.Close()
+
+	// Gone silent (the browser itself stopped).
+	u, c, srv, errc = start()
+	c.Get(srv.URL + "/start?t=" + u.token)
+	post(c, srv, "/alive")
+	if !stopped(errc, time.Second) {
+		t.Fatal("a silent page didn't stop setup")
+	}
+	srv.Close()
+
+	// Without its script (only page views): never taken as closed while
+	// someone may be reading the question.
+	u, c, srv, errc = start()
+	c.Get(srv.URL + "/start?t=" + u.token)
+	if stopped(errc, 500*time.Millisecond) {
+		t.Fatal("stopped a page without its script")
+	}
+	srv.Close()
 }

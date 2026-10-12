@@ -9,8 +9,11 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"os/signal"
 	"os/user"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -187,9 +190,36 @@ func webSetup(ctx context.Context, c *cli, self, listen, forUser string, dry, al
 		return err
 	}
 	ui := setup.NewWebUI(token)
-	ctx, stop := context.WithCancel(ctx)
+	ctx, stop := signal.NotifyContext(ctx, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
 	defer stop()
 	go ui.Serve(ctx, ln)
+	go func() { <-ctx.Done(); ui.Close() }() // stopped: by another setup, or the Pi shutting down
+	go ui.Watch(5 * time.Second)             // its window closed
+	// pi-fleet keeps running whatever happens to setup: if setup stops it
+	// (to start over, update or move the records) and then ends early, it
+	// is started again.
+	if !dry && serviceActive() {
+		defer func() {
+			if !serviceActive() {
+				exec.Command("systemctl", "start", "pi-fleet").Run()
+			}
+		}()
+	}
+	if others := otherSetups(); len(others) > 0 && !dry {
+		ui.Say("Another pi-fleet setup is still running in the background, probably from")
+		ui.Say("a setup window closed earlier. Two at once could get in each other's way.")
+		ok, err := ui.Confirm("Stop it and continue here?", true)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			ui.Finish(setup.ErrCancelled)
+			<-ui.Closed()
+			return setup.ErrCancelled
+		}
+		stopSetups(others)
+		ui.Say("Stopped it.")
+	}
 	w := &setup.Wizard{
 		UI:       ui,
 		Sys:      &setup.Real{DryRun: dry, Out: ui, In: ui.Stdin()},
@@ -213,4 +243,52 @@ func webSetup(ctx context.Context, c *cli, self, listen, forUser string, dry, al
 	case <-time.After(30 * time.Minute):
 	}
 	return err
+}
+
+// serviceActive reports whether pi-fleet's service is running.
+func serviceActive() bool {
+	return exec.Command("systemctl", "is-active", "--quiet", "pi-fleet").Run() == nil
+}
+
+// otherSetups are the process ids of other pi-fleet setups serving a
+// page (this one and the one that started it aside).
+func otherSetups() []int {
+	self, parent := os.Getpid(), os.Getppid()
+	dirs, _ := os.ReadDir("/proc")
+	var out []int
+	for _, d := range dirs {
+		pid, err := strconv.Atoi(d.Name())
+		if err != nil || pid == self || pid == parent {
+			continue
+		}
+		b, err := os.ReadFile("/proc/" + d.Name() + "/cmdline")
+		if err != nil {
+			continue
+		}
+		args := strings.Split(strings.TrimRight(string(b), "\x00"), "\x00")
+		if len(args) >= 3 && strings.Contains(filepath.Base(args[0]), "pi-fleet") && args[1] == "setup" && slices.Contains(args, "-web") {
+			out = append(out, pid)
+		}
+	}
+	return out
+}
+
+// stopSetups asks other setups to stop, and makes them if they don't.
+func stopSetups(pids []int) {
+	for _, pid := range pids {
+		syscall.Kill(pid, syscall.SIGTERM)
+	}
+	for range 20 {
+		time.Sleep(250 * time.Millisecond)
+		alive := false
+		for _, pid := range pids {
+			alive = alive || syscall.Kill(pid, 0) == nil
+		}
+		if !alive {
+			return
+		}
+	}
+	for _, pid := range pids {
+		syscall.Kill(pid, syscall.SIGKILL)
+	}
 }

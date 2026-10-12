@@ -40,6 +40,10 @@ type WebUI struct {
 	result  string // how setup ended
 	failed  bool
 	closed  chan struct{}
+	// The page's signs of life: when it was opened, and the last time the
+	// page (its script) said it is still open; a page that said goodbye is
+	// given a moment to come back (a reload says goodbye too).
+	opened, alive, bye time.Time
 
 	answers chan string    // the wizard's own questions
 	stdinR  *io.PipeReader // what commands read
@@ -183,7 +187,7 @@ func (u *WebUI) Choose(text string, options []string) (int, error) {
 }
 
 func (u *WebUI) Pause(prompt string) error {
-	_, err := u.ask(question{Kind: "pause", Text: onPage(prompt, "Carry on")})
+	_, err := u.ask(question{Kind: "pause", Text: onPage(prompt, "Continue")})
 	return err
 }
 
@@ -308,7 +312,26 @@ func (u *WebUI) Handler() http.Handler {
 	})
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 		if u.authorised(w, r) {
+			u.seenNow(false)
 			u.page(w)
+		}
+	})
+	mux.HandleFunc("GET /setup.js", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+		io.WriteString(w, setupJS)
+	})
+	mux.HandleFunc("POST /alive", func(w http.ResponseWriter, r *http.Request) {
+		if u.authorised(w, r) && sameOrigin(r) {
+			u.seenNow(true)
+			w.WriteHeader(http.StatusNoContent)
+		}
+	})
+	mux.HandleFunc("POST /bye", func(w http.ResponseWriter, r *http.Request) {
+		if u.authorised(w, r) && sameOrigin(r) {
+			u.mu.Lock()
+			u.bye = time.Now()
+			u.mu.Unlock()
+			w.WriteHeader(http.StatusNoContent)
 		}
 	})
 	mux.HandleFunc("POST /answer", func(w http.ResponseWriter, r *http.Request) {
@@ -329,11 +352,7 @@ func (u *WebUI) Handler() http.Handler {
 			http.Redirect(w, r, "/", http.StatusSeeOther)
 			return
 		}
-		select {
-		case <-u.closed:
-		default:
-			close(u.closed)
-		}
+		u.Close()
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		fmt.Fprint(w, `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>pi-fleet setup</title><link rel="stylesheet" href="/style.css"></head><body><main><h1>pi-fleet setup</h1><p class="flash">You can close this window.</p></main></body></html>`)
 	})
@@ -343,7 +362,7 @@ func (u *WebUI) Handler() http.Handler {
 func headers(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hd := w.Header()
-		hd.Set("Content-Security-Policy", "default-src 'none'; style-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
+		hd.Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; connect-src 'self'; style-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
 		hd.Set("X-Content-Type-Options", "nosniff")
 		hd.Set("Cache-Control", "no-store")
 		hd.Set("Referrer-Policy", "same-origin")
@@ -449,6 +468,85 @@ func paragraphs(es []logEntry) []logEntry {
 	return out
 }
 
+// seenNow notes that the page is open; alive, that its script said so.
+func (u *WebUI) seenNow(alive bool) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	now := time.Now()
+	if u.opened.IsZero() {
+		u.opened = now
+	}
+	if alive {
+		u.alive = now
+	}
+	u.bye = time.Time{}
+}
+
+// How long setup waits for its page before taking it as closed.
+var (
+	// NeverOpened: the page was never opened (the browser didn't start).
+	NeverOpened = 10 * time.Minute
+	// Silent: the page's script stopped saying it's open. Generous, since
+	// browsers slow down the timers of pages in the background.
+	Silent = 3 * time.Minute
+	// AfterBye: the page said goodbye and didn't come back (a reload or a
+	// form sent comes back within moments).
+	AfterBye = 15 * time.Second
+)
+
+// abandoned reports whether the page seems to have been closed.
+func (u *WebUI) abandoned(now, started time.Time) bool {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	switch {
+	case u.opened.IsZero():
+		return now.Sub(started) > NeverOpened
+	case !u.bye.IsZero():
+		return now.Sub(u.bye) > AfterBye
+	case !u.alive.IsZero(): // only once its script has spoken
+		return now.Sub(u.alive) > Silent
+	}
+	return false
+}
+
+// Watch stops setup when its page is closed: at its next question, so
+// nothing is left half done. It returns when setup is closed.
+func (u *WebUI) Watch(every time.Duration) {
+	started := time.Now()
+	t := time.NewTicker(every)
+	defer t.Stop()
+	for {
+		select {
+		case <-u.closed:
+			return
+		case now := <-t.C:
+			if u.abandoned(now, started) {
+				u.Close()
+				return
+			}
+		}
+	}
+}
+
+// Close ends setup: its next question stops it, and the page goes.
+func (u *WebUI) Close() {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	select {
+	case <-u.closed:
+	default:
+		close(u.closed)
+	}
+}
+
+// setupJS keeps setup informed that its page is open (and says goodbye
+// when it closes), so a setup whose window was closed doesn't wait on.
+const setupJS = `"use strict";
+setInterval(() => fetch("/alive", { method: "POST" }).catch(() => {}), 5000);
+fetch("/alive", { method: "POST" }).catch(() => {});
+addEventListener("pagehide", () => navigator.sendBeacon("/bye"));
+`
+
 // Serve serves the setup page on addr (a loopback address) until ctx ends.
 func (u *WebUI) Serve(ctx context.Context, ln net.Listener) error {
 	srv := &http.Server{Handler: u.Handler(), ReadHeaderTimeout: 10 * time.Second}
@@ -470,6 +568,7 @@ var setupPage = template.Must(template.New("setup").Parse(`<!doctype html>
 {{if and (not .Q) (not .Done)}}<meta http-equiv="refresh" content="2">{{end}}
 <title>pi-fleet setup</title>
 <link rel="stylesheet" href="/style.css">
+<script src="/setup.js" defer></script>
 </head>
 <body>
 <header><span class="mark" aria-hidden="true"></span>pi-fleet setup</header>
@@ -493,7 +592,7 @@ var setupPage = template.Must(template.New("setup").Parse(`<!doctype html>
       <div class="choices">{{range $i, $o := $q.Options}}<button name="answer" value="{{$i}}" class="choice">{{$o}}</button>{{end}}</div>
     {{else if eq $q.Kind "pause"}}
       <p class="q">{{$q.Text}}</p>
-      <p class="buttons"><button name="answer" value="" autofocus>Carry on</button></p>
+      <p class="buttons"><button name="answer" value="" autofocus>Continue</button></p>
     {{else}}
       <label class="q">{{$q.Text}}
         <input name="answer" {{if $q.Secret}}type="password"{{end}} value="{{if not $q.Secret}}{{$q.Default}}{{end}}" autofocus{{if and (ne $q.Kind "line") (ne $q.Kind "input")}} required{{end}}></label>
