@@ -151,6 +151,7 @@ func (s *Server) Handler() (http.Handler, error) {
 	mux.HandleFunc("GET /display/{mode}", s.display)
 	mux.HandleFunc("POST /login", s.login)
 	mux.HandleFunc("POST /logout", s.logout)
+	mux.HandleFunc("GET /session", s.sessionCheck)
 	mux.Handle("GET /password", s.auth(domain.RoleUser, true, s.passwordPage))
 	mux.Handle("POST /password", s.auth(domain.RoleUser, true, s.changePassword))
 
@@ -298,10 +299,10 @@ func (s *Server) Handler() (http.Handler, error) {
 	return securityHeaders(mux, csp), nil
 }
 
-// baseCSP is every page's security policy: no scripts at all (DESIGN.md
-// §10). On the master Pi pages may also load pi-fleet's own script files
-// (fieldCSP), for field mode and the label page's Print button.
-const baseCSP = "default-src 'none'; style-src 'self'; img-src 'self'; font-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
+// baseCSP is every page's security policy: only pi-fleet's own script
+// files (session.js), never scripts in the page (DESIGN.md §10). On the
+// master Pi pages may also run field mode (fieldCSP).
+const baseCSP = "default-src 'none'; script-src 'self'; connect-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
 
 func securityHeaders(h http.Handler, csp string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -382,27 +383,40 @@ func (s *Server) exec(ctx context.Context, query string, args ...any) error {
 	})
 }
 
+// passwordTag stands for the password a sign-in is made with.
+func passwordTag(u domain.User) string { return hashToken("password " + u.Verifier) }
+
 func (s *Server) startSession(w http.ResponseWriter, r *http.Request, u domain.User, passwordOnly bool) error {
 	tok := randomToken()
 	now := s.now().UTC().Format(time.RFC3339)
-	if err := s.exec(r.Context(), `INSERT INTO sessions (id_hash, session_id, user_id, csrf_token, created_at, last_seen_at, password_only)
-		VALUES (?, ?, ?, ?, ?, ?, ?)`, hashToken(tok), uuid.NewString(), u.ID, randomToken(), now, now, passwordOnly); err != nil {
+	// Sign-ins that have run their course go; their pages stay signed out.
+	old := s.now().Add(-MaxSessionAge).UTC().Format(time.RFC3339)
+	idle := s.now().Add(-IdleTimeout).UTC().Format(time.RFC3339)
+	if err := s.exec(r.Context(), `DELETE FROM sessions WHERE created_at < ? OR last_seen_at < ?`, old, idle); err != nil {
+		return err
+	}
+	if err := s.exec(r.Context(), `INSERT INTO sessions (id_hash, session_id, user_id, csrf_token, created_at, last_seen_at, password_only, password_tag)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, hashToken(tok), uuid.NewString(), u.ID, randomToken(), now, now, passwordOnly, passwordTag(u)); err != nil {
 		return err
 	}
 	http.SetCookie(w, &http.Cookie{Name: cookieName, Value: tok, Path: "/", HttpOnly: true, Secure: s.Secure, SameSite: http.SameSiteStrictMode})
 	return nil
 }
 
-func (s *Server) loadSession(r *http.Request) (*session, error) {
+func (s *Server) loadSession(r *http.Request) (*session, error) { return s.session(r, true) }
+
+// session finds the request's sign-in; touch counts the request as use
+// (for the idle timeout).
+func (s *Server) session(r *http.Request, touch bool) (*session, error) {
 	c, err := r.Cookie(cookieName)
 	if err != nil {
 		return nil, nil
 	}
 	ctx := r.Context()
 	sess := &session{IDHash: hashToken(c.Value)}
-	var userID, created, lastSeen string
-	err = s.App.Store.DB().QueryRowContext(ctx, `SELECT session_id, user_id, csrf_token, created_at, last_seen_at, password_only
-		FROM sessions WHERE id_hash = ?`, sess.IDHash).Scan(&sess.SessionID, &userID, &sess.CSRF, &created, &lastSeen, &sess.PasswordOnly)
+	var userID, created, lastSeen, tag string
+	err = s.App.Store.DB().QueryRowContext(ctx, `SELECT session_id, user_id, csrf_token, created_at, last_seen_at, password_only, password_tag
+		FROM sessions WHERE id_hash = ?`, sess.IDHash).Scan(&sess.SessionID, &userID, &sess.CSRF, &created, &lastSeen, &sess.PasswordOnly, &tag)
 	if err != nil {
 		return nil, nil
 	}
@@ -423,7 +437,8 @@ func (s *Server) loadSession(r *http.Request) (*session, error) {
 	// On a Pi, central withholds the verifiers of everyone who may not
 	// sign in there (e.g. someone just removed from a kiosk): end their
 	// sessions too.
-	if sess.User.Verifier == "" {
+	// So do sign-ins made with a password since changed or reset.
+	if sess.User.Verifier == "" || subtle.ConstantTimeCompare([]byte(tag), []byte(passwordTag(sess.User))) != 1 {
 		s.exec(ctx, `DELETE FROM sessions WHERE id_hash = ?`, sess.IDHash)
 		return nil, nil
 	}
@@ -431,6 +446,9 @@ func (s *Server) loadSession(r *http.Request) (*session, error) {
 	// A password that expired mid-session restricts the session.
 	if sess.User.MustChangePassword || sess.User.PasswordExpired(now) {
 		sess.PasswordOnly = true
+	}
+	if !touch {
+		return sess, nil
 	}
 	return sess, s.exec(ctx, `UPDATE sessions SET last_seen_at = ? WHERE id_hash = ?`, now.UTC().Format(time.RFC3339), sess.IDHash)
 }
@@ -593,6 +611,21 @@ func (s *Server) display(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, back, http.StatusSeeOther)
 }
 
+// sessionCheck answers whether this browser is still signed in, for a
+// page left open (session.js), without counting as use.
+func (s *Server) sessionCheck(w http.ResponseWriter, r *http.Request) {
+	sess, err := s.session(r, false)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	if sess == nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // loginFor is the sign-in page, coming back to this page afterwards when
 // it is one to look at.
 func loginFor(r *http.Request) string {
@@ -604,7 +637,12 @@ func loginFor(r *http.Request) string {
 
 // localBack is a page to go back to, if it is on this site; else "/".
 func localBack(back string) string {
-	if !strings.HasPrefix(back, "/") || strings.HasPrefix(back, "//") || strings.HasPrefix(back, "/\\") {
+	// Browsers ignore tabs and line breaks in addresses and read a
+	// backslash as a slash, so "/<tab>/elsewhere" would leave the site.
+	if !strings.HasPrefix(back, "/") || strings.ContainsFunc(back, func(r rune) bool { return r < 0x20 || r == 0x7f || r == '\\' }) {
+		return "/"
+	}
+	if u, err := url.Parse(back); err != nil || u.Scheme != "" || u.Host != "" || strings.HasPrefix(back, "//") {
 		return "/"
 	}
 	return back

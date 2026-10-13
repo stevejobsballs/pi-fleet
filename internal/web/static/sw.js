@@ -18,6 +18,9 @@ const PAGES = "pifleet-pages-v1";   // saved pages of someone's work
 const STATIC = "pifleet-static-v1"; // stylesheets, fonts, field.js
 const DB = "pifleet-field";
 const QUEUE = "queue";
+// Saved pages open for as long as a sign-in can last (12 hours): a phone
+// left behind doesn't show someone's work for longer.
+const KEEP_MS = 12 * 60 * 60 * 1000;
 
 // What may be kept offline: forms that add to the work order's record.
 const QUEUEABLE = [
@@ -100,6 +103,11 @@ async function page(req, url) {
     return r;
   } catch (err) {
     const saved = await cache.match(url.pathname);
+    if (saved && Date.now() - Number(saved.headers.get("X-Field-Saved-Ms") || 0) > KEEP_MS) {
+      await caches.delete(PAGES);
+      return notice("Saved pages have expired",
+        "You're offline, and the pages saved on this device were more than 12 hours old, so they have been removed. Sign in again on the network and press “Take my work with me”.");
+    }
     if (saved) return offlineCopy(saved);
     return notice("Not on this device",
       "You're offline, and this page wasn't saved on this device. Pages of your own work are saved when you press “Take my work with me” on My work.");
@@ -113,6 +121,7 @@ async function offlineCopy(saved) {
     `<main><p class="flash warn field-offline" role="status">You're offline. This is the copy saved on this device${at ? " at " + at : ""}. What you save is kept here and sent when you're back on the network.</p>`);
   const headers = new Headers(saved.headers); // keeps its security policy
   headers.delete("X-Field-Saved-At");
+  headers.delete("X-Field-Saved-Ms");
   return new Response(html, { headers });
 }
 
@@ -170,6 +179,7 @@ async function take() {
     if (!p.ok) continue;
     const headers = new Headers(p.headers);
     headers.set("X-Field-Saved-At", at);
+    headers.set("X-Field-Saved-Ms", String(Date.now()));
     await pages.put(path, new Response(await p.blob(), { headers }));
     saved++;
   }

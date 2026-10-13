@@ -182,7 +182,8 @@ report a problem without signing in. For that:
   your institution's certificate authority instead (see below).
 - **What's exposed:** the report page shows only the equipment's tag,
   model and location, and the status page only a report's progress. It
-  never shows who reported what. Reports are limited to 5 per address in
+  never shows who reported what, and a status page opens only with the key
+  in the link given to the person who reported it. Reports are limited to 5 per address in
   10 minutes and 120 in all, and the page refuses text that looks like
   patient information. Don't make it reachable from outside the hospital.
 

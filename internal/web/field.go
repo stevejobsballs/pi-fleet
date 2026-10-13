@@ -76,7 +76,7 @@ func (s *Server) fieldManifest(w http.ResponseWriter, r *http.Request, sess *ses
 			m.Pages = append(m.Pages, "/assets/"+wo.AssetID)
 		}
 	}
-	m.Static = []string{"/static/style.css", "/static/large.css", "/static/field.js"}
+	m.Static = []string{"/static/style.css", "/static/large.css", "/static/field.js", "/static/session.js"}
 	fonts, _ := fs.Glob(assets, "static/fonts/*")
 	for _, f := range fonts {
 		m.Static = append(m.Static, "/"+f)

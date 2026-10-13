@@ -72,9 +72,10 @@ func TestQRLabels(t *testing.T) {
 	if c, _, _ := e.browser().get("/assets/" + pump + "/label"); c != http.StatusSeeOther {
 		t.Fatalf("label page without signing in: %d", c)
 	}
-	// Every other page runs no script but field mode's.
-	if _, _, page = b.get("/assets/" + pump); strings.Count(page, "<script") != 1 || !strings.Contains(page, `<script src="/static/field.js" defer></script>`) {
-		t.Fatal("scripts on the equipment page other than field mode's")
+	// Every other page runs no script but field mode's and the sign-in's.
+	if _, _, page = b.get("/assets/" + pump); strings.Count(page, "<script") != 2 || !strings.Contains(page, `<script src="/static/field.js" defer></script>`) ||
+		!strings.Contains(page, `<script src="/static/session.js"></script>`) {
+		t.Fatal("scripts on the equipment page other than field mode's and the sign-in's")
 	}
 
 	// Opened by this Pi's own address, labels warn that phones can't open
@@ -120,7 +121,17 @@ func TestReportAProblemByQRCode(t *testing.T) {
 	if c, page := nurse.post("/r/BX-0042", missing); c != http.StatusUnprocessableEntity || !strings.Contains(page, "Not sent:") || !strings.Contains(page, ">won&#39;t start</textarea>") {
 		t.Fatalf("no phone: %d\n%s", c, page)
 	}
-	code, page := nurse.post("/r/BX-0042", form)
+	report := func() (int, string) { // the status page's address, as sent there
+		t.Helper()
+		resp, err := nurse.c.PostForm(e.srv.URL+"/r/BX-0042", form)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp.StatusCode, resp.Header.Get("Location")
+	}
+	code, first := report()
+	_, _, page = nurse.get(first)
 	if code != http.StatusSeeOther || !strings.Contains(page, "Your reference is <strong>R-00001</strong>") || !strings.Contains(page, "Received: waiting") {
 		t.Fatalf("sent: %d\n%s", code, page)
 	}
@@ -145,22 +156,28 @@ func TestReportAProblemByQRCode(t *testing.T) {
 		!strings.Contains(page, "Reported R-00001") {
 		t.Fatalf("converted:\n%s", page)
 	}
-	if _, _, page = nurse.get("/r/status/R-00001"); !strings.Contains(page, "Being worked on: work order NYC-WO-") {
+	if _, _, page = nurse.get(first); !strings.Contains(page, "Being worked on: work order NYC-WO-") {
 		t.Fatalf("status after converting:\n%s", page)
 	}
 	if c, _, _ := nurse.get("/r/status/" + id); c != http.StatusNotFound {
 		t.Fatalf("status by internal id: %d", c)
+	}
+	// Other reports' pages can't be read by trying numbers.
+	for _, p := range []string{"/r/status/R-00001", "/r/status/R-00001?k=", "/r/status/R-00001?k=AAAAAAAAAAAAAAAAAAAA"} {
+		if c, _, page := nurse.get(p); c != http.StatusNotFound || strings.Contains(page, "BX-0042") {
+			t.Fatalf("%s without its key: %d", p, c)
+		}
 	}
 	if c, _, _ := nurse.get("/requests"); c != http.StatusSeeOther {
 		t.Fatalf("requests page without signing in: %d", c)
 	}
 
 	// A second report, closed with a reason the nurse sees.
-	nurse.post("/r/BX-0042", form)
+	_, second := report()
 	_, _, page = tech.get("/requests")
 	id = regexp.MustCompile(`/requests/([0-9a-f-]{36})/close`).FindStringSubmatch(page)[1]
 	tech.post("/requests/"+id+"/close", url.Values{"reason": {"Same as R-00001"}})
-	if _, _, page = nurse.get("/r/status/R-00002"); !strings.Contains(page, "Closed: Same as R-00001") {
+	if _, _, page = nurse.get(second); !strings.Contains(page, "Closed: Same as R-00001") {
 		t.Fatalf("closed status:\n%s", page)
 	}
 

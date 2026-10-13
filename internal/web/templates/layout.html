@@ -6,6 +6,7 @@
 <title>{{.Title}} · pi-fleet</title>
 <link rel="stylesheet" href="/static/style.css">
 {{if .Large}}<link rel="stylesheet" href="/static/large.css">{{end}}
+{{if .User.ID}}<script src="/static/session.js"></script>{{end}}
 {{if .Field}}<script src="/static/field.js" defer></script>{{end}}
 </head>
 <body{{if .Field}} data-user="{{.User.ID}}"{{end}}>

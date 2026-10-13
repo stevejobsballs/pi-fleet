@@ -76,6 +76,9 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 		s.exec(r.Context(), `DELETE FROM sessions WHERE id_hash = ?`, hashToken(c.Value))
 	}
 	http.SetCookie(w, &http.Cookie{Name: cookieName, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: s.Secure, SameSite: http.SameSiteStrictMode})
+	// The browser forgets the pages it showed, so Back and Forward can't
+	// show them again once signed out.
+	w.Header().Set("Clear-Site-Data", `"cache"`)
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
 
@@ -109,7 +112,15 @@ func (s *Server) changePassword(w http.ResponseWriter, r *http.Request, sess *se
 		}
 		return s.render(w, r, sess, "password", "Change password", passwordData{Forced: sess.PasswordOnly, First: sess.FirstPassword, Error: msg})
 	}
-	if err := s.exec(r.Context(), `UPDATE sessions SET password_only = 0 WHERE id_hash = ?`, sess.IDHash); err != nil {
+	// This sign-in carries on with the new password; every other one ends.
+	u, err := domain.GetUser(r.Context(), s.App.Store.DB(), sess.User.ID)
+	if err != nil {
+		return err
+	}
+	if err := s.exec(r.Context(), `UPDATE sessions SET password_only = 0, password_tag = ? WHERE id_hash = ?`, passwordTag(u), sess.IDHash); err != nil {
+		return err
+	}
+	if err := s.exec(r.Context(), `DELETE FROM sessions WHERE user_id = ? AND id_hash != ?`, u.ID, sess.IDHash); err != nil {
 		return err
 	}
 	return s.done(w, r, sess, "/", "Password changed. It expires in 31 days.")

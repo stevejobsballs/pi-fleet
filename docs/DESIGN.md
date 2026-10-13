@@ -1214,14 +1214,14 @@ need a manual update. This is documented and rehearsed.
 ## 10. Web interface
 
 - **Server-rendered HTML; scripts only from pi-fleet's own files.** Every
-  page works without JavaScript. Employee Pis' pages run none: their
-  Content Security Policy is `default-src 'none'; style-src 'self';
-  form-action 'self'; frame-ancestors 'none'`. On the master Pi the policy
-  also allows `script-src 'self'; worker-src 'self'; connect-src 'self'`,
-  for two script files and nothing inline, so injected script still can't
-  run even if escaping failed: the label page's Print button, and
-  **field mode** (`static/field.js`, `/sw.js`). `html/template` escapes all
-  output.
+  page works without JavaScript. The Content Security Policy is
+  `default-src 'none'; script-src 'self'; connect-src 'self'; style-src
+  'self'; form-action 'self'; frame-ancestors 'none'`: script files from
+  pi-fleet itself and nothing inline, so injected script still can't run
+  even if escaping failed. Signed-in pages load `static/session.js` (below);
+  on the master Pi the policy also allows `worker-src 'self'` for the label
+  page's Print button and **field mode** (`static/field.js`, `/sw.js`).
+  `html/template` escapes all output.
 - **Field mode.** Phones and tablets use the master Pi directly. *Take my
   work with me* (My work) keeps the pages of the person's open work on the
   device (`/field/manifest` lists them). Offline, those pages open from the
@@ -1237,9 +1237,22 @@ need a manual update. This is documented and rehearsed.
 - **Sessions:** random 256-bit token in an `HttpOnly; SameSite=Strict`
   cookie (`Secure` on central), stored hashed. 15-minute idle timeout and
   12-hour maximum. Each session has its own id, which is recorded on every
-  event it produces.
+  event it produces. A session is tied to the password it was made with: a
+  change or reset ends every other session of that person (on employee Pis
+  once the new password arrives by sync).
+- **Signing out, and pages left open.** Pages are sent `Cache-Control:
+  no-store`; signing out also sends `Clear-Site-Data: "cache"`. Browsers
+  may still keep a page in their back/forward memory, so `session.js` hides
+  a page brought back that way and asks the Pi for it again (signed out,
+  that is the sign-in page). It also asks `/session` every minute and when
+  the page is shown again (an answer that doesn't count as use) and goes to
+  the sign-in page once the session has ended. After signing in, only pages
+  on the same site are opened (`next` must be a plain path: no tabs, line
+  breaks or backslashes, which browsers would read as another site).
+  Field mode's saved pages open offline for at most 12 hours (the longest a
+  session lasts) and are removed on signing out.
 - **CSRF:** a per-session token on every form, plus refusal of
-  cross-origin POSTs by `Origin`/`Referer`.
+  cross-origin POSTs by `Sec-Fetch-Site`, `Origin` or `Referer`.
 - A session whose password is a one-time password or has expired can only
   change the password. Locked or disabled accounts lose their sessions
   immediately.

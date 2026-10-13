@@ -3,6 +3,10 @@ package web
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"image"
@@ -19,6 +23,7 @@ import (
 
 	"pi-fleet/internal/domain"
 	"pi-fleet/internal/fleetsync"
+	"pi-fleet/internal/store"
 )
 
 // QR labels and problem reports. Every piece of equipment has a QR label
@@ -279,15 +284,62 @@ func (s *Server) reportSubmit(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	http.Redirect(w, r, "/r/status/"+number, http.StatusSeeOther)
+	link, err := s.statusLink(r.Context(), number)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	http.Redirect(w, r, link, http.StatusSeeOther)
 }
+
+// statusLink is the address of a report's status page, for the person
+// who reported it: its number with a key only this master can make, so
+// that other reports' pages can't be read by trying numbers.
+func (s *Server) statusLink(ctx context.Context, number string) (string, error) {
+	k, err := s.statusKey(ctx, number)
+	if err != nil {
+		return "", err
+	}
+	return "/r/status/" + url.PathEscape(number) + "?k=" + k, nil
+}
+
+func (s *Server) statusKey(ctx context.Context, number string) (string, error) {
+	secret, err := s.App.Store.Config(ctx, configStatusSecret)
+	if errors.Is(err, store.ErrNotFound) || err == nil && secret == "" {
+		// Made once: the first report's (two at once agree on one).
+		if err := s.exec(ctx, `INSERT INTO node_config (key, value) VALUES (?, ?) ON CONFLICT (key) DO NOTHING`, configStatusSecret, randomToken()); err != nil {
+			return "", err
+		}
+		secret, err = s.App.Store.Config(ctx, configStatusSecret)
+	}
+	if err != nil {
+		return "", err
+	}
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(number))
+	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil)[:15]), nil
+}
+
+// configStatusSecret keys reports' status links (statusLink).
+const configStatusSecret = "report_status_secret"
 
 // reportStatus tells the person who reported a problem what became of it.
 // It shows nothing about who reported it.
 func (s *Server) reportStatus(w http.ResponseWriter, r *http.Request) {
-	q, err := domain.GetRequest(r.Context(), s.App.Store.DB(), r.PathValue("number"))
-	if err == nil && !strings.HasPrefix(r.PathValue("number"), "R-") {
+	number := r.PathValue("number")
+	q, err := domain.GetRequest(r.Context(), s.App.Store.DB(), number)
+	if err == nil && !strings.HasPrefix(number, "R-") {
 		err = domain.ErrNotFound // only by its number, never its internal id
+	}
+	if err == nil {
+		want, kerr := s.statusKey(r.Context(), number)
+		if kerr != nil {
+			s.fail(w, r, kerr)
+			return
+		}
+		if subtle.ConstantTimeCompare([]byte(r.URL.Query().Get("k")), []byte(want)) != 1 {
+			err = domain.ErrNotFound // a number alone shows nothing
+		}
 	}
 	if err != nil {
 		s.fail(w, r, err)

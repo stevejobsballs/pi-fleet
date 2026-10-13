@@ -1,6 +1,6 @@
 {{define "content"}}{{end}}
 {{define "print"}}<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><title>{{.Title}} · record</title><link rel="stylesheet" href="/static/print.css"></head>
+<html lang="en"><head><meta charset="utf-8"><title>{{.Title}} · record</title><link rel="stylesheet" href="/static/print.css"><script src="/static/session.js"></script></head>
 <body>
 <header><h1>{{if .WO}}Work order {{.WO.WO.Number}}{{else}}Equipment {{.Asset.Asset.Tag}}{{end}}</h1>
 <p>Electronic record copy produced by pi-fleet. {{if not .Complete}}<strong>Partial: produced on an employee Pi, which holds only its own records.</strong>{{end}}</p></header>
