@@ -248,6 +248,12 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, sess *session, n
 			p.Notices = s.Notices(r.Context())
 		}
 		p.Field = s.Role == "central" && !p.User.MustChangePassword
+		if s.Standby != nil && p.IsSuper() {
+			if st := s.Standby.Status(r.Context()); st.Paired && !st.Seen.IsZero() && s.now().Sub(st.Seen) > 10*time.Minute {
+				p.Notices = append(p.Notices, "The standby Pi last copied this master's records "+agoWords(s.now().Sub(st.Seen))+
+					". Check it's switched on and on the network (Admin › Pis).")
+			}
+		}
 		if s.SiteCert != nil && p.IsSuper() {
 			if info, ok := s.SiteCert.Site(); ok {
 				switch days := int(info.NotAfter.Sub(s.now()).Hours() / 24); {

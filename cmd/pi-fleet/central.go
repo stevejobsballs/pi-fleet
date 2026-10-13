@@ -24,6 +24,7 @@ import (
 	"pi-fleet/internal/fleetsync"
 	"pi-fleet/internal/setup"
 	"pi-fleet/internal/sitecert"
+	"pi-fleet/internal/standby"
 	"pi-fleet/internal/web"
 )
 
@@ -315,8 +316,10 @@ func cmdServe(ctx context.Context, args []string, c *cli) error {
 	if certs != nil {
 		siteCerts = certs
 	}
+	// A standby Pi's copy of this master (pairing, records, files).
+	standbySrv := &standby.Server{Store: a.Store, DataDir: n.dir, Blobs: n.blobs()}
 	_, trialErr := os.Stat(filepath.Join(*data, setup.TrialMarker))
-	ui, err := (&web.Server{App: a, Role: "central", Secure: true, PHIPatterns: web.DefaultPHIPatterns, CertFingerprint: fingerprint, Trial: trialErr == nil, Version: version, SiteCert: siteCerts,
+	ui, err := (&web.Server{App: a, Role: "central", Secure: true, PHIPatterns: web.DefaultPHIPatterns, CertFingerprint: fingerprint, Trial: trialErr == nil, Version: version, SiteCert: siteCerts, Standby: standbySrv,
 		Notices: func(ctx context.Context) []string {
 			return backupNotices(ctx, n, a, time.Now())
 		}}).Handler()
@@ -328,6 +331,7 @@ func cmdServe(ctx context.Context, args []string, c *cli) error {
 	if err != nil {
 		return err
 	}
+	mux.Handle("/v1/standby/", standbySrv.Handler())
 	mux.Handle("/v1/", (&fleetsync.Server{App: a, CentralKey: n.keys.Event, Fleet: (&web.FleetAPI{App: a}).Handler(), Blobs: n.blobs(), CA: ca}).Handler())
 	if *releases != "" {
 		// Releases are verified by each Pi against its compiled-in keys,

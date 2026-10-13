@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"pi-fleet/internal/sitecert"
+	"pi-fleet/internal/standby"
 	"strconv"
 	"strings"
 	"time"
@@ -311,6 +312,11 @@ type nodesData struct {
 	CertCovers  bool
 	CertDays    int // until it expires
 	PisOutdated int // active Pis too old to tell certificates apart
+	// The standby Pi, if this master can have one.
+	HasStandby bool
+	Standby    standby.Status
+	StandbyAgo string // since its last contact, in words
+	StandbyOld bool   // not heard from for a while
 }
 
 func (s *Server) nodeList(w http.ResponseWriter, r *http.Request, sess *session) error {
@@ -349,6 +355,13 @@ func (s *Server) nodeList(w http.ResponseWriter, r *http.Request, sess *session)
 			}
 		}
 	}
+	if s.Standby != nil {
+		d.HasStandby, d.Standby = true, s.Standby.Status(ctx)
+		if !d.Standby.Seen.IsZero() {
+			ago := s.now().Sub(d.Standby.Seen)
+			d.StandbyAgo, d.StandbyOld = agoWords(ago), ago > 2*time.Minute
+		}
+	}
 	return s.render(w, r, sess, "nodes", "Pis", d)
 }
 
@@ -371,6 +384,45 @@ func (s *Server) reportAddress(w http.ResponseWriter, r *http.Request, sess *ses
 		msg += " Many phones can't open this address; a name from your IT department works better."
 	}
 	return s.done(w, r, sess, "/admin/nodes#phones", msg)
+}
+
+// agoWords says how long ago, roughly, in words.
+func agoWords(d time.Duration) string {
+	switch {
+	case d < 10*time.Second:
+		return "just now"
+	case d < time.Minute:
+		return fmt.Sprintf("%d seconds ago", int(d.Seconds()))
+	case d < 2*time.Minute:
+		return "a minute ago"
+	case d < time.Hour:
+		return fmt.Sprintf("%d minutes ago", int(d.Minutes()))
+	case d < 2*time.Hour:
+		return "an hour ago"
+	case d < 48*time.Hour:
+		return fmt.Sprintf("%d hours ago", int(d.Hours()))
+	}
+	return fmt.Sprintf("%d days ago", int(d.Hours()/24))
+}
+
+// standbyCode makes a one-time code for pairing a standby Pi.
+func (s *Server) standbyCode(w http.ResponseWriter, r *http.Request, sess *session) error {
+	code, until, err := s.Standby.NewCode(r.Context())
+	if err != nil {
+		return err
+	}
+	log.Printf("web: %s made a standby pairing code", sess.User.Username)
+	return s.done(w, r, sess, "/admin/nodes#standby", "Pairing code: "+code+" (works once, until "+until.Local().Format("15:04")+
+		"). On the standby Pi, run setup, choose Standby Pi, and type it when asked.")
+}
+
+// standbyUnpair stops the standby Pi copying this master.
+func (s *Server) standbyUnpair(w http.ResponseWriter, r *http.Request, sess *session) error {
+	if err := s.Standby.Unpair(r.Context()); err != nil {
+		return err
+	}
+	log.Printf("web: %s unpaired the standby Pi", sess.User.Username)
+	return s.done(w, r, sess, "/admin/nodes#standby", "Unpaired: the standby Pi no longer gets a copy. To pair one again, make a new pairing code.")
 }
 
 // certificateInstall installs the hospital's certificate for browsers and

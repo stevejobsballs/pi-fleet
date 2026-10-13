@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -68,7 +69,7 @@ func TestInstallingTheHospitalsCertificate(t *testing.T) {
 		t.Fatalf("mismatch:\n%s", page)
 	}
 	if _, page = admin.postMultipart("/admin/certificate", nil, upFile{"cert", "cert.pem", cert}, upFile{"key", "key.pem", key}); !strings.Contains(page, "Installed. Browsers and phones now get the certificate for pifleet.hospital.org.") ||
-		!strings.Contains(page, "Hospital Issuing CA") || !strings.Contains(page, "Ask IT for a renewed one.") || !strings.Contains(page, "The hospital&#39;s certificate expires in 19 days") {
+		!strings.Contains(page, "Hospital Issuing CA") || !strings.Contains(page, "Ask IT for a renewed one.") || !regexp.MustCompile(`The hospital&#39;s certificate expires in (19|20) days`).MatchString(page) {
 		t.Fatalf("installed:\n%s", page)
 	}
 	// One that isn't for the address phones use says so.

@@ -1249,3 +1249,91 @@ func TestMasterGetsAnIcon(t *testing.T) {
 		t.Fatalf("other port:\n%s", sys.files[LauncherPath])
 	}
 }
+
+// A standby Pi: its own drive, the master found by its fingerprint,
+// paired with the code from the master's Pis page, then copying.
+func TestNewStandby(t *testing.T) {
+	sys := newFake()
+	outputs(sys, map[string]string{"lsblk": piDisks, "hostname": "raspberrypi\n", "blkid": "new-uuid\n", "id pifleet": "uid=999"})
+	cert, _, _ := NewCertificate([]string{"steve.local"}, nil, time.Now())
+	sys.files[DataDir+"/"+standbyStatus] = []byte(`{"last_ok":"2026-10-07T12:00:05Z","at":40,"head":40}`)
+	w, out := wizard(sys,
+		"4",          // standby Pi
+		"",           // name: fleet-standby
+		"",           // drive plugged in
+		"2", "ERASE", // the SSD
+		"steve.local", "y", // the master, its fingerprint matches
+		"ABCD-EFGH-JKMN", // pairing code
+	)
+	w.Fetch = func(hp string) ([]byte, error) { return cert, nil }
+	if err := w.Run(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	for _, want := range []string{
+		"hostnamectl set-hostname fleet-standby",
+		"mkfs.ext4 -q -F -L PIFLEET-DATA -m 1 /dev/sdb1",
+		"runuser -u pifleet -- /opt/pi-fleet/current/pi-fleet standby-pair -data /srv/pi-fleet -master https://steve.local -ca /etc/pi-fleet/master.pem -code ABCD-EFGH-JKMN",
+		"systemctl enable pi-fleet",
+	} {
+		if !sys.ran(want) {
+			t.Errorf("didn't run %q:\n%s", want, strings.Join(sys.calls, "\n"))
+		}
+	}
+	if unit := string(sys.files[UnitPath]); !strings.Contains(unit, "pi-fleet standby -data /srv/pi-fleet") || !strings.Contains(unit, "RequiresMountsFor=/srv/pi-fleet") {
+		t.Fatalf("unit:\n%s", unit)
+	}
+	if !strings.Contains(out.String(), "This Pi is now the standby for the master Pi at https://steve.local") || sys.ran("runuser -u pifleet -- /opt/pi-fleet/current/pi-fleet init") {
+		t.Fatalf("output:\n%s", out)
+	}
+}
+
+// Taking over: refused while the master answers; then, with TAKE OVER
+// typed, the standby takes the master's name and serves its records with
+// its certificate.
+func TestStandbyTakesOver(t *testing.T) {
+	standbyPi := func() *fakeSys {
+		sys := newFake()
+		sys.files[UnitPath] = []byte(StandbyUnit())
+		sys.files[DataDir+"/"+standbyLink] = []byte(`{"master":"https://steve.local","ca":"x","token":"t"}`)
+		sys.files[DataDir+"/"+standbyStatus] = []byte(`{"last_ok":"2026-10-07T11:59:58Z","at":40,"head":40}`)
+		sys.mounts[DataDir] = true
+		cert, _, _ := NewCertificate([]string{"steve.local"}, nil, time.Now())
+		sys.files[DataDir+"/tls/cert.pem"] = cert
+		outputs(sys, map[string]string{"/opt/pi-fleet/current/pi-fleet version": "pi-fleet v1.0.0\n"})
+		return sys
+	}
+	// The master still answers: nothing happens.
+	sys := standbyPi()
+	w, out := wizard(sys, "1")
+	w.Fetch = func(string) ([]byte, error) { return []byte("cert"), nil }
+	if err := w.Run(); err != nil || sys.ran("systemctl") || !strings.Contains(out.String(), "is still answering") ||
+		!strings.Contains(out.String(), "This Pi is the standby for the master Pi at https://steve.local") {
+		t.Fatalf("%v\n%s\n%s", err, out, strings.Join(sys.calls, "\n"))
+	}
+	// Not typed: nothing happens.
+	sys = standbyPi()
+	w, out = wizard(sys, "1", "take over")
+	w.Fetch = func(string) ([]byte, error) { return nil, errors.New("no route to host") }
+	if err := w.Run(); err != nil || sys.ran("systemctl") {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	// The master has failed: take over.
+	sys = standbyPi()
+	w, out = wizard(sys, "1", "TAKE OVER")
+	w.Fetch = func(string) ([]byte, error) { return nil, errors.New("no route to host") }
+	if err := w.Run(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	for _, want := range []string{"systemctl stop pi-fleet", "hostnamectl set-hostname steve", "rm -f /srv/pi-fleet/standby.json", "systemctl enable pi-fleet", "systemctl restart pi-fleet"} {
+		if !sys.ran(want) {
+			t.Errorf("didn't run %q:\n%s", want, strings.Join(sys.calls, "\n"))
+		}
+	}
+	if unit := string(sys.files[UnitPath]); !strings.Contains(unit, " serve -data /srv/pi-fleet -listen :443") {
+		t.Fatalf("unit:\n%s", unit)
+	}
+	fp, _ := Fingerprint(sys.files[DataDir+"/tls/cert.pem"])
+	if text := out.String(); !strings.Contains(text, fp) || !strings.Contains(text, "https://steve.local") || !strings.Contains(text, "Don't switch the old master back on") {
+		t.Fatalf("output:\n%s", text)
+	}
+}

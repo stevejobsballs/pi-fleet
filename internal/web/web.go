@@ -34,6 +34,7 @@ import (
 	"pi-fleet/internal/domain"
 	"pi-fleet/internal/password"
 	"pi-fleet/internal/sitecert"
+	"pi-fleet/internal/standby"
 	"pi-fleet/internal/store"
 )
 
@@ -72,6 +73,9 @@ type Server struct {
 	// CertFingerprint is the master Pi's HTTPS certificate fingerprint,
 	// shown on the Pis page so a new Pi's setup can be checked against it.
 	CertFingerprint string
+	// Standby pairs and reports on the master's standby Pi (nil on
+	// employee Pis).
+	Standby StandbyPairing
 	// SiteCert is the master Pi's certificate chooser, for installing the
 	// hospital's own certificate (nil on employee Pis).
 	SiteCert SiteCerts
@@ -104,6 +108,13 @@ type Server struct {
 	flash  map[string]string
 
 	reports reportLimiter // the report page, where no one signs in
+}
+
+// StandbyPairing pairs a standby Pi and says how it is doing.
+type StandbyPairing interface {
+	NewCode(ctx context.Context) (string, time.Time, error)
+	Unpair(ctx context.Context) error
+	Status(ctx context.Context) standby.Status
 }
 
 // SiteCerts installs and describes the certificate browsers get.
@@ -269,6 +280,10 @@ func (s *Server) Handler() (http.Handler, error) {
 		mux.Handle("POST /admin/nodes/require", super(s.nodeRequire))
 		mux.Handle("POST /admin/report-address", super(s.reportAddress))
 		mux.Handle("POST /admin/certificate", super(s.certificateInstall))
+		if s.Standby != nil {
+			mux.Handle("POST /admin/standby/code", super(s.standbyCode))
+			mux.Handle("POST /admin/standby/unpair", super(s.standbyUnpair))
+		}
 		mux.Handle("POST /admin/certificate/remove", super(s.certificateRemove))
 		mux.Handle("GET /admin/kiosks", super(s.kioskList))
 		mux.Handle("POST /admin/kiosks", super(s.kioskCreate))

@@ -37,6 +37,19 @@
   <button>{{if $d.HasCert}}Replace the certificate{{else}}Install the certificate{{end}}</button></form>
 {{if $d.HasCert}}<form autocomplete="off" method="post" action="/admin/certificate/remove" class="inline">{{template "csrf" .CSRF}}<button class="danger">Stop using it</button></form>{{end}}
 </section>{{end}}
+{{if .Data.HasStandby}}{{$d := .Data}}<section id="standby"><h2>Standby Pi</h2>
+<p>A standby Pi keeps a live copy of this master's records, files and keys, a few seconds behind. If this master fails, the standby takes its place (run setup on the standby and choose to take over): employee Pis, phones and QR labels carry on, with every record up to its last copy.</p>
+{{if $d.Standby.Paired}}
+  {{if $d.StandbyAgo}}<p class="{{if $d.StandbyOld}}warn{{else}}flash{{end}}">{{if $d.StandbyOld}}The standby was last in touch {{$d.StandbyAgo}}. Check it's switched on and on the network.{{else}}The standby is {{if $d.Standby.Behind}}catching up ({{$d.Standby.Behind}} records behind){{else}}up to date{{end}}: last in touch {{$d.StandbyAgo}}.{{end}}</p>
+  {{else}}<p class="warn">A standby is paired, but hasn't been in touch since this master started. Check it's switched on and on the network.</p>{{end}}
+  <details><summary>Unpair the standby</summary>
+  <form autocomplete="off" method="post" action="/admin/standby/unpair" class="inline">{{template "csrf" .CSRF}}<p class="hint">It stops getting a copy. Its records stay on it, but can't take over any more.</p><button class="danger">Unpair</button></form></details>
+{{else}}
+  <ol><li>Set the standby Pi up like any other: on it, run setup and choose <strong>Standby Pi</strong>. It needs its own external drive.</li>
+    <li>When it asks for a pairing code, make one here and type it there. The code works once, for an hour.</li></ol>
+  <form autocomplete="off" method="post" action="/admin/standby/code">{{template "csrf" .CSRF}}<button>Make a pairing code</button></form>
+{{end}}
+</section>{{end}}
 <section id="versions"><h2>Versions</h2>
 {{$n := .Data.Need}}
 <p>This master Pi runs pi-fleet {{.Data.Master}}. Employee Pis need {{$n.Min}} or newer to sync{{with $n.Next}}, and {{.}} or newer from {{$n.NextFrom.Format "2 January 2006"}}{{end}}. A Pi that is too old keeps its work and shows how to update; it syncs again once updated.</p>

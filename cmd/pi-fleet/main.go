@@ -104,6 +104,7 @@ func run(ctx context.Context, args []string, stdin io.Reader, out io.Writer) err
 		"backup-keygen": cmdBackupKeygen, "backup-config": cmdBackupConfig, "backup-now": cmdBackupNow, "backups": cmdBackups,
 		"offsite-register": cmdOffsiteRegister, "offsite-write": cmdOffsiteWrite, "offsite-confirm": cmdOffsiteConfirm, "restore": cmdRestore,
 		"selfcheck": cmdSelfcheck, "verify-export": cmdVerifyExport, "node-unquarantine": cmdNodeUnquarantine, "update": cmdUpdate, "release-keygen": cmdReleaseKeygen, "release-sign": cmdReleaseSign, "activate": cmdActivate, "activation-status": cmdActivationStatus, "sync": cmdSync, "setup": cmdSetup, "set-master": cmdSetMaster,
+		"standby": cmdStandby, "standby-pair": cmdStandbyPair,
 	}
 	c := &cli{stdin: stdin, out: out}
 	switch cmd := args[0]; cmd {

@@ -1114,6 +1114,19 @@ copy is confirmed (§8.2), every record newer than the off-site disk is still
 held by some node. **Expected loss: none** for data that reached central or is
 still on a surviving node.
 
+**G. Master Pi fails, with a standby Pi.** A standby Pi (paired once with a
+one-time code from the master's Pis page) keeps a live copy on its own
+external drive: a snapshot to start from, then the master's events in the
+master's own order, each verified (signatures and chain) as it is stored, plus
+the settings, attachments, keys and certificate. Each round it checks that the
+master still has the same event at the copy's position, and refuses a master
+that is behind it or different rather than mixing records. Taking over is
+manual: setup on the standby refuses while the master still answers, asks for
+"TAKE OVER" to be typed, then gives the standby the master's name and starts it
+as the master with the same records and certificate. Loss is what the master
+recorded after the standby's last copy (seconds); employee Pis re-push what
+they hold as in D.3. The old master must not be switched back on as it is.
+
 **F. Every restore** ends with `verify --full` and a `system.restore_completed`
 event recording the source, restore point, and verification result.
 

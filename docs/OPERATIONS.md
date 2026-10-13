@@ -147,6 +147,24 @@ is run on a Pi with a drive holding pi-fleet records, it offers to keep
 them: by the drive's pi-fleet label, or, for a drive labelled otherwise, by
 the database at its top (the drive is then labelled as pi-fleet's).
 
+### Standby Pi (optional)
+
+A second Pi with its own external drive can keep a live copy of the master,
+ready to take over if the master fails. On it, run setup and choose
+**Standby Pi**; when asked, type a pairing code made on the master's
+Admin › Pis page (it works once, for an hour). It runs `pi-fleet standby`
+(service `pi-fleet`), copying what's new every few seconds into
+`/srv/pi-fleet` on its drive; the master's Pis page shows how it is doing, and
+super users see a notice on every page if it stops copying for 10 minutes.
+
+If the master fails: switch the master off (or unplug its network cable),
+then run setup on the standby and choose **Take over as the master**. Setup
+refuses while the master still answers. The standby takes the master's name
+(for a `.local` name; otherwise point the DNS name at it) and serves the same
+records with the same certificate. Don't switch the old master back on as it
+is: reset it and set it up as the new standby, and set up backups on the new
+master.
+
 ## Employee Pi
 
 Pis at other sites need the master Pi reachable by a DNS name that is in

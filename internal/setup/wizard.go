@@ -90,6 +90,8 @@ func (w *Wizard) Run() error {
 			return w.existingMaster(string(unit))
 		case strings.Contains(string(unit), " run "):
 			return w.existingNode()
+		case strings.Contains(string(unit), " standby "):
+			return w.existingStandby()
 		}
 	}
 	u.Say("")
@@ -97,12 +99,16 @@ func (w *Wizard) Run() error {
 		"Master Pi: the central Pi that keeps every record for your institution (choose this for the first Pi)",
 		"Employee Pi: one person's Pi, which works offline and syncs with the master Pi",
 		"Kiosk Pi: a shared Pi in a workshop, used by a group of people",
+		"Standby Pi: a live copy of the master, ready to take over if it fails",
 	})
 	if err != nil {
 		return err
 	}
-	if role == 0 {
+	switch role {
+	case 0:
 		return w.newMaster()
+	case 3:
+		return w.newStandby()
 	}
 	return w.newNode(role == 2)
 }
@@ -1235,6 +1241,20 @@ func (w *Wizard) dependencies(master bool) error {
 
 var hostRE = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
 
+// setHostname renames this Pi on the network.
+func (w *Wizard) setHostname(name string) error {
+	if err := w.Sys.Run("hostnamectl", "set-hostname", name); err != nil {
+		return err
+	}
+	if hosts, err := w.Sys.ReadFile("/etc/hosts"); err == nil {
+		if err := w.Sys.WriteFile("/etc/hosts", []byte(UpdateHosts(string(hosts), name)), 0o644); err != nil {
+			return err
+		}
+	}
+	w.Sys.Run("systemctl", "restart", "avahi-daemon") // announce the new name
+	return nil
+}
+
 // hostname gives the Pi its own name on the network.
 func (w *Wizard) hostname(suggest string) (string, error) {
 	u := w.UI
@@ -1257,15 +1277,9 @@ func (w *Wizard) hostname(suggest string) (string, error) {
 	if name == current {
 		return name, nil
 	}
-	if err := w.Sys.Run("hostnamectl", "set-hostname", name); err != nil {
+	if err := w.setHostname(name); err != nil {
 		return "", err
 	}
-	if hosts, err := w.Sys.ReadFile("/etc/hosts"); err == nil {
-		if err := w.Sys.WriteFile("/etc/hosts", []byte(UpdateHosts(string(hosts), name)), 0o644); err != nil {
-			return "", err
-		}
-	}
-	w.Sys.Run("systemctl", "restart", "avahi-daemon") // announce the new name
 	u.Say("This Pi is now called %s (%s.local on the network).", name, name)
 	return name, nil
 }
@@ -1355,7 +1369,7 @@ func (w *Wizard) restart(healthURL string) error {
 	if err := w.Sys.Run("systemctl", "restart", "pi-fleet"); err != nil {
 		return err
 	}
-	if w.DryRun {
+	if w.DryRun || healthURL == "" { // a standby serves no page to check
 		return nil
 	}
 	var err error

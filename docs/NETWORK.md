@@ -39,6 +39,12 @@ that traffic.
   services or the vendor. The Pis need internet access only while being
   installed, if the operating system is missing a package (see below).
 
+- **Standby Pi (optional):** a standby keeps a live copy of the master. It
+  connects to the master like an employee Pi (outbound, HTTPS, the master's
+  port), every few seconds. If it takes over, it takes the master's name; if
+  the master's name is a DNS name rather than `.local`, point that name at
+  the standby's address then.
+
 ## Security, for your risk assessment
 
 - **Encryption:** TLS 1.2 or newer. The master Pi uses its own **self-signed
