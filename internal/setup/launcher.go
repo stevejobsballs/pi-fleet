@@ -1,6 +1,7 @@
 package setup
 
 import (
+	"fmt"
 	"path"
 	"strings"
 )
@@ -14,15 +15,16 @@ const (
 	MenuEntryPath = "/usr/share/applications/pi-fleet.desktop"
 )
 
-// launcherScript opens pi-fleet in a browser once it answers. With
-// --kiosk it fills the screen (Alt+F4 closes it).
-const launcherScript = `#!/bin/bash
+// launcherScript opens pi-fleet at url in a browser once it answers on
+// this Pi's port. With --kiosk it fills the screen (Alt+F4 closes it).
+func launcherScript(url string, port int) string {
+	return fmt.Sprintf(`#!/bin/bash
 # Opens pi-fleet in the web browser (written by pi-fleet setup).
 # With --kiosk: full screen, for a shared kiosk Pi; Alt+F4 closes it.
-url=http://127.0.0.1:8080/
+url=%s
 # At start-up, wait until pi-fleet answers (up to 2 minutes).
 for _ in $(seq 1 60); do
-  (exec 3<>/dev/tcp/127.0.0.1/8080) 2>/dev/null && break
+  (exec 3<>/dev/tcp/127.0.0.1/%d) 2>/dev/null && break
   sleep 2
 done
 kiosk=0
@@ -38,7 +40,8 @@ for b in chromium chromium-browser firefox; do
   exec "$b" --new-window "$url"
 done
 exec xdg-open "$url"
-`
+`, url, port)
+}
 
 func desktopEntry(kiosk bool) string {
 	exec, comment := LauncherPath, "Equipment and maintenance records"
@@ -49,13 +52,30 @@ func desktopEntry(kiosk bool) string {
 		"\nIcon=web-browser\nTerminal=false\nCategories=Office;\n"
 }
 
-// launchers installs the menu entry and the desktop icon, and on a kiosk
-// Pi opens pi-fleet at start-up. Failing here doesn't stop setup: pi-fleet
-// still works by typing its address.
+// launchers installs, on an employee or kiosk Pi, the menu entry and the
+// desktop icon, and on a kiosk Pi opens pi-fleet at start-up.
 func (w *Wizard) launchers(kiosk bool) {
+	w.launchersFor("http://127.0.0.1:8080/", 8080, kiosk)
+}
+
+// masterLaunchers installs the master Pi's menu entry and desktop icon,
+// opening its own address (name, and port when not 443).
+func (w *Wizard) masterLaunchers(name string, port int) {
+	url := "https://" + name + "/"
+	if port != 443 {
+		url = fmt.Sprintf("https://%s:%d/", name, port)
+	}
+	w.launchersFor(url, port, false)
+}
+
+// launchersFor installs the menu entry and the desktop icon opening url,
+// once pi-fleet answers on port, and on a kiosk Pi opens it at start-up.
+// Failing here doesn't stop setup: pi-fleet still works by typing its
+// address.
+func (w *Wizard) launchersFor(url string, port int, kiosk bool) {
 	u := w.UI
-	if err := w.Sys.WriteFile(LauncherPath, []byte(launcherScript), 0o755); err != nil {
-		u.Say("Couldn't add the pi-fleet icon (%v). Open http://127.0.0.1:8080 in the web browser instead.", err)
+	if err := w.Sys.WriteFile(LauncherPath, []byte(launcherScript(url, port)), 0o755); err != nil {
+		u.Say("Couldn't add the pi-fleet icon (%v). Open %s in the web browser instead.", err, url)
 		return
 	}
 	if err := w.Sys.WriteFile(MenuEntryPath, []byte(desktopEntry(false)), 0o644); err != nil {

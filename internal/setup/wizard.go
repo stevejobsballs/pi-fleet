@@ -590,6 +590,7 @@ func (w *Wizard) masterDone(name string, port int, fingerprint string, backups b
 		addr += ":" + strconv.Itoa(port)
 	}
 	u.Step("Done")
+	w.masterLaunchers(name, port)
 	u.Say("The master Pi is running. Open this address in a web browser on any")
 	u.Say("computer on the same network:")
 	u.Say("")
@@ -673,6 +674,16 @@ func (w *Wizard) existingMaster(unit string) error {
 	}
 	if onDrive {
 		choices = append(choices, choice{"Start over: set pi-fleet up again on this Pi, keeping all its records", func() error { return w.startOverKeepingRecords(port) }})
+	}
+	if !w.Sys.Exists(LauncherPath) {
+		choices = append(choices, choice{"Add a pi-fleet icon to the desktop (set up before there was one)", func() error {
+			host := "fleet-master"
+			if out, err := w.Sys.Output("hostname"); err == nil && strings.TrimSpace(string(out)) != "" {
+				host = strings.TrimSpace(string(out))
+			}
+			w.masterLaunchers(host+".local", port)
+			return nil
+		}})
 	}
 	choices = append(choices, choice{"Stop", func() error { return nil }})
 	labels := make([]string, len(choices))

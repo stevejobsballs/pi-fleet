@@ -1227,3 +1227,25 @@ func TestNewMasterOpensTheDataDriveListedBefore(t *testing.T) {
 		t.Fatalf("fstab:\n%s", sys.files["/etc/fstab"])
 	}
 }
+
+// The master Pi gets a pi-fleet icon too, opening its own address once
+// pi-fleet answers on its port.
+func TestMasterGetsAnIcon(t *testing.T) {
+	sys := newFake()
+	sys.exists["/home/biomed/Desktop"] = true
+	outputs(sys, map[string]string{"getent passwd biomed": "biomed:x:1000:1000::/home/biomed:/bin/bash\n"})
+	w, out := wizard(sys)
+	w.SudoUser = "biomed"
+	w.masterDone("steve.local", 443, "AB CD", true)
+	script := string(sys.files[LauncherPath])
+	if !strings.Contains(script, "url=https://steve.local/\n") || !strings.Contains(script, "/dev/tcp/127.0.0.1/443") {
+		t.Fatalf("launcher:\n%s", script)
+	}
+	if !strings.Contains(string(sys.files["/home/biomed/Desktop/pi-fleet.desktop"]), "Exec=/opt/pi-fleet/open-pi-fleet\n") || !strings.Contains(out.String(), "Added a pi-fleet icon to the desktop") {
+		t.Fatalf("icon:\n%s\n%s", sys.files["/home/biomed/Desktop/pi-fleet.desktop"], out)
+	}
+	w.masterLaunchers("steve.local", 8443)
+	if !strings.Contains(string(sys.files[LauncherPath]), "url=https://steve.local:8443/\n") {
+		t.Fatalf("other port:\n%s", sys.files[LauncherPath])
+	}
+}
