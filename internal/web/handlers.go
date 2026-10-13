@@ -655,6 +655,14 @@ type woData struct {
 	Labor            []domain.LaborEntry
 	LaborTotal       int
 	Today            string
+	// Time: the entries as shown, labour and travel totals, the person's
+	// clock (if running, here or elsewhere), others' clocks here, and
+	// whether a clock can be started on this work order.
+	Time                     []timeRow
+	LabourTotal, TravelTotal int
+	Clock                    *clockView
+	OtherClocks              []clockView
+	CanClock                 bool
 	// The test equipment used, and (for the person doing the work) the
 	// test equipment that can be added.
 	TestEquipment []domain.TestEquipmentUse
@@ -714,6 +722,23 @@ func (s *Server) loadWorkOrder(r *http.Request, sess *session, id string) (woDat
 	if d.Labor, d.LaborTotal, err = domain.Labor(ctx, q, wo.ID); err != nil {
 		return d, err
 	}
+	d.Time, d.LabourTotal, d.TravelTotal = s.timeRows(d.Labor, sess)
+	if c, ok, err := domain.RunningClock(ctx, q, sess.User.ID); err != nil {
+		return d, err
+	} else if ok {
+		v := s.clockView(c, wo.ID)
+		d.Clock = &v
+	}
+	others, err := domain.WorkOrderClocks(ctx, q, wo.ID)
+	if err != nil {
+		return d, err
+	}
+	for _, c := range others {
+		if c.UserID != sess.User.ID {
+			d.OtherClocks = append(d.OtherClocks, s.clockView(c, wo.ID))
+		}
+	}
+	d.CanClock = wo.Status != domain.WOClosed && wo.Status != domain.WOCancelled
 	for _, c := range d.Checklists {
 		for _, st := range c.Steps {
 			d.CalPoints = d.CalPoints || st.Kind == domain.StepCalibration

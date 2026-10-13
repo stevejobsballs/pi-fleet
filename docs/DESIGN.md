@@ -387,7 +387,7 @@ erDiagram
 | `calibration_record` | A (under lease) | wo_id, asset_id, procedure_version_id, environmental conditions, as_found / as_left result, adjusted, overall pass/fail, standards_used[] (asset id, its cal record id, due date at time of use), certificate attachment | Using an out-of-date standard → warning/block per policy. **Central recomputes pass/fail.** |
 | `cal_point` | A | parameter, unit, nominal, tolerance (abs / % / limits), as_found, as_left, uncertainty?, pass/fail (computed and stored) | |
 | `signature` | A | §7.3 | |
-| `labor_entry` | Ledger | wo_id, user, minutes, date, note | Users log their own time; reversed (with a reason) by themselves or mid-tier. Not part of the signed record. |
+| `labor_entry` | Ledger | wo_id, user, kind (labour or travel), minutes, date, note, started/ended (clock) | Users record their own time, with the work clock (Start work: labour or travel; Stop work) or typed in; corrected, or reversed with a reason, by themselves or mid-tier. A running clock (`labor_clocks`, one per person) becomes the entry when stopped; starting another stops it first, and putting work on hold or completing it stops it. Not part of the signed record. |
 | `meter_reading` | Ledger | asset_id, meter (e.g. hours, cycles), value (decimal), read_at, reset, total (derived) | Readings never go down unless marked as a meter reset or replacement. Usage totals are recomputed in reading-time order, so readings made offline on different Pis in any order give the same totals. A reading higher than a later one is applied but flagged `meter_inconsistent`. Readings are voided with a reason. |
 | `part` | C | part_no, description, unit, compatible models | |
 | `stock_location` | C (shared stockrooms) / A (an employee's personal van or kit, owned by their node) | | |
@@ -417,7 +417,7 @@ history.
   `workorder.step_recorded`
 - `model.defined`, `model.changed`
 - `part.created`, `stock_location.created`, `stock.txn_recorded`, `stock.txn_reversed`, `meter.read`, `meter.voided`, `labor.logged`,
-  `labor.reversed`
+  `labor.reversed`, `labor.clock_started`, `labor.clock_stopped` (the time is between the two events' wall times), `labor.corrected`
 - `attachment.added`, `attachment.detached`
 - `user.created`, `user.role_changed`,
   `user.password_changed` (new salt-bound verifier only, never plaintext),

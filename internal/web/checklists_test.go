@@ -65,7 +65,7 @@ func TestChecklistAndLabourThroughTheUI(t *testing.T) {
 	}
 	tess.post(wo+"/labor", url.Values{"time": {"1:30"}, "date": {"2026-10-06"}, "note": {"PM"}})
 	_, page = tess.post(wo+"/labor", url.Values{"time": {"0.25h"}, "date": {"2026-10-06"}})
-	if !strings.Contains(page, "(1:45 total)") {
+	if !strings.Contains(page, "Labour <strong>1:45</strong>") {
 		t.Fatalf("labour total:\n%s", page)
 	}
 
@@ -74,7 +74,7 @@ func TestChecklistAndLabourThroughTheUI(t *testing.T) {
 		t.Fatalf("sign:\n%s", page)
 	}
 	_, _, print := tess.get(wo + "/print")
-	for _, want := range []string{"Checklist: Infusion pump PM v1", "120 µA pass", "Labour (1:45 total)", "Battery runtime</td><td>not recorded"} {
+	for _, want := range []string{"Checklist: Infusion pump PM v1", "120 µA pass", "Time (labour 1:45, travel 0:00)", "Battery runtime</td><td>not recorded"} {
 		if !strings.Contains(print, want) {
 			t.Errorf("printable record lacks %q", want)
 		}

@@ -31,8 +31,8 @@ As found: <strong>{{.AsFound}}</strong> · As left: <strong>{{.AsLeft}}</strong>
 {{if .WO.WorkDone}}<p class="pre">{{.WO.WorkDone}}</p>{{else}}<p>Not described.</p>{{end}}
 <h2>Test equipment used</h2>
 {{range .TestEquipment}}<p>{{.Tag}} · {{.Equipment}}{{with .Serial}} · serial {{.}}{{end}} · {{if .Due}}calibration due {{.Due}}{{if .Overdue}} (OVERDUE when used){{end}}{{else}}no calibration schedule{{end}}</p>{{else}}<p>None listed.</p>{{end}}
-<h2>Labour ({{hhmm .LaborTotal}} total)</h2>
-{{range .Labor}}<p>{{.Date}} · {{.User}} · {{hhmm .Minutes}}{{if .Note}} · {{.Note}}{{end}}{{if eq .Status "reversed"}} · reversed: {{.ReverseReason}}{{end}}</p>{{else}}<p>None.</p>{{end}}
+<h2>Time (labour {{hhmm .LabourTotal}}, travel {{hhmm .TravelTotal}})</h2>
+{{range .Time}}<p>{{.Date}} · {{timeKind .Kind}}{{if .From}} {{.From}}–{{.To}}{{end}} · {{.User}} · {{.Time}}{{if .Note}} · {{.Note}}{{end}}{{if eq .Status "reversed"}} · removed: {{.ReverseReason}}{{end}}</p>{{else}}<p>None.</p>{{end}}
 <h2>Files</h2>
 {{range .Attachments}}<p>{{.Filename}} ({{.MIME}}, {{kib .Size}}) added by {{.AddedBy}} {{when .AddedAt}}{{if ne .Status "attached"}} · {{.Status}}: {{.DetachReason}}{{end}}<br><small>sha256 {{.SHA256}}</small></p>{{else}}<p>None.</p>{{end}}
 <h2>Electronic signatures</h2>

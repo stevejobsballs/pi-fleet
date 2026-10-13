@@ -21,6 +21,8 @@
   --silver: #d5dae0; --silver-edge: #b8bfc7;
   --accent: #a11552; --accent-hover: #7e0f40; --on-accent: #fff;
   --good: #3a6e17; --warn: #94560a; --bad: #b3261e; --tint: #f7e9f0;
+  /* Time: labour leaf green, travel blue; text on them. */
+  --travel: #2a6496; --on-good: #fff; --on-bad: #fff; --good-bg: #e8f2df; --travel-bg: #e3edf6;
   --bar: #1c1f24; --bar-fg: #e4e7eb; --bar-muted: #a9b0b8;
   /* Work order priority: stat (urgent) rose, high amber; routine plain. */
   --stat-bg: #fde8e6; --stat-edge: #c0392b; --stat-tag: #b3261e; --stat-on: #fff;
@@ -36,6 +38,7 @@
     --silver: #2a2f35; --silver-edge: #3b424a;
     --accent: #f06aa3; --accent-hover: #f592bd; --on-accent: #121417;
     --good: #8cc85a; --warn: #e3a23b; --bad: #ef6f66; --tint: #2b1a23;
+    --travel: #7fb6e6; --on-good: #121417; --on-bad: #121417; --good-bg: #1b2615; --travel-bg: #16212c;
     --bar: #16181c;
     --stat-bg: #3a201f; --stat-edge: #f28b82; --stat-tag: #f28b82; --stat-on: #121417;
     --high-bg: #352b14; --high-edge: #e8b04f; --high-tag: #e8b04f; --high-on: #121417;
@@ -357,3 +360,86 @@ form.field-kept { outline: 3px dashed var(--accent); outline-offset: 4px; }
 ol.phone-steps { text-align: left; margin: 0; padding-left: 1.4rem; }
 ol.phone-steps li { margin: .3rem 0; }
 .qr-pop .hint { word-break: break-all; }
+
+/* Time on a work order: the time card (Start work, the running clock,
+   Stop work), the strip on every page while a clock runs, and the time
+   lines. Sizes in em, so larger text makes them larger too. */
+.icon { width: 1.25em; height: 1.25em; vertical-align: -.25em; flex: none; }
+.timecard { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 1em 1.1em; margin: 0 0 1em; }
+.timecard.running { background: var(--good-bg); border-color: var(--good); box-shadow: inset .4em 0 0 var(--good); }
+.timecard.running.travel { background: var(--travel-bg); border-color: var(--travel); box-shadow: inset .4em 0 0 var(--travel); }
+.timecard .hint { margin: .6em 0 0; }
+.clock-start > summary { list-style: none; }
+.clock-start > summary::-webkit-details-marker { display: none; }
+summary.go, .time-add > summary, .tl-edit > summary { text-decoration: none; }
+summary.go { display: inline-flex; align-items: center; gap: .5em; cursor: pointer; font: 700 1.2em/1.2 var(--font); padding: .75em 1.6em;
+  border-radius: 999px; background: var(--good); color: var(--on-good); border: 2px solid var(--good); user-select: none; }
+summary.go:hover { filter: brightness(1.1); }
+.clock-start[open] > summary.go { background: var(--panel); color: var(--fg); border-color: var(--line-strong); }
+.kind-choice { display: grid; grid-template-columns: repeat(auto-fit, minmax(14em, 1fr)); gap: .8em; margin-top: .9em; }
+.kind-choice .ask { grid-column: 1 / -1; margin: 0; font-weight: 700; font-size: 1.1em; }
+button.kind { display: flex; align-items: center; gap: .9em; text-align: left; min-height: 4.6em; padding: .9em 1.2em; font-size: 1.15em;
+  border-radius: 12px; background: var(--panel); color: var(--fg); border: 2px solid var(--line-strong); }
+button.kind .icon { width: 2.1em; height: 2.1em; color: var(--good); }
+button.kind.travel .icon { color: var(--travel); }
+button.kind small { display: block; font-weight: 400; font-size: .8em; color: var(--muted); margin-top: .15em; }
+button.kind.labor:hover { background: var(--good-bg); border-color: var(--good); color: var(--fg); }
+button.kind.travel:hover { background: var(--travel-bg); border-color: var(--travel); color: var(--fg); }
+.clock-face { display: flex; flex-wrap: wrap; align-items: center; gap: .4em 1em; }
+.clock-kind { display: inline-flex; align-items: center; gap: .4em; font-weight: 700; font-size: 1.15em; }
+.elapsed { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.elapsed.big { font-weight: 700; font-size: 2.6em; line-height: 1; letter-spacing: .02em; }
+.clock-since { color: var(--muted); }
+.pulse { --p: var(--good); display: inline-block; width: .8em; height: .8em; border-radius: 50%; background: var(--p); flex: none; animation: pulse 1.8s ease-out infinite; }
+.travel .pulse { --p: var(--travel); }
+@keyframes pulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--p) 55%, transparent); } 75%, 100% { box-shadow: 0 0 0 .7em transparent; } }
+@media (prefers-reduced-motion: reduce) { .pulse { animation: none; } }
+.clock-buttons { display: flex; flex-wrap: wrap; gap: .8em; margin-top: 1em; }
+button.stop { display: inline-flex; align-items: center; gap: .5em; font-size: 1.2em; padding: .75em 1.6em; border-radius: 999px;
+  background: var(--bad); border-color: var(--bad); color: var(--on-bad); }
+button.stop:hover { background: var(--bad); border-color: var(--fg); color: var(--on-bad); filter: brightness(1.1); }
+button.switch { display: inline-flex; align-items: center; gap: .5em; font-size: 1.05em; padding: .75em 1.3em; border-radius: 999px;
+  background: var(--panel); color: var(--fg); border-color: var(--line-strong); }
+button.switch:hover { background: var(--tint); color: var(--fg); border-color: var(--fg); }
+.other-clock { display: flex; flex-wrap: wrap; align-items: center; gap: .5em; margin: .6em 0 0; color: var(--muted); }
+.timer-strip { display: flex; flex-wrap: wrap; align-items: center; gap: .4em 1em; padding: .45em 1em; background: var(--good-bg); border-bottom: 2px solid var(--good); }
+.timer-strip .elapsed { font-weight: 700; }
+.timer-strip form { margin: 0 0 0 auto; }
+.timer-strip button.stop { font-size: .95em; padding: .4em 1em; }
+.time-totals { display: flex; flex-wrap: wrap; gap: .6em; margin: 0 0 .8em; }
+.tt { display: inline-flex; align-items: center; gap: .45em; padding: .35em .9em; border-radius: 999px; background: var(--silver); }
+.tt.labour .icon { color: var(--good); }
+.tt.travel .icon { color: var(--travel); }
+ul.time-lines { list-style: none; padding: 0; margin: 0 0 1em; display: grid; gap: .55em; }
+.time-line { display: grid; grid-template-columns: 8em 1fr auto; grid-template-areas: "kind when time" "kind who time" "note note note" "do do do";
+  column-gap: 1em; align-items: center; background: var(--panel); border: 1px solid var(--line); border-left: .35em solid var(--good); border-radius: 8px; padding: .55em .9em; }
+.time-line.travel { border-left-color: var(--travel); }
+.time-line.old { opacity: .65; }
+.time-line.old .tl-time { text-decoration: line-through; }
+.tl-kind { grid-area: kind; display: inline-flex; align-items: center; gap: .4em; font-weight: 700; }
+.time-line.labor .tl-kind .icon { color: var(--good); }
+.time-line.travel .tl-kind .icon { color: var(--travel); }
+.tl-when { grid-area: when; }
+.tl-who { grid-area: who; color: var(--muted); }
+.tl-time { grid-area: time; font: 700 1.4em/1 var(--mono); font-variant-numeric: tabular-nums; }
+.tl-note { grid-area: note; margin-top: .25em; }
+.tl-do { grid-area: do; display: flex; flex-wrap: wrap; gap: .4em 1.2em; margin-top: .3em; }
+.tl-edit > summary { cursor: pointer; color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+.time-form { display: flex; flex-wrap: wrap; gap: .6em; align-items: end; margin-top: .5em; }
+.time-form .wide { flex: 1 1 14em; }
+.time-form .wide input { width: 100%; }
+.time-add > summary { display: inline-block; cursor: pointer; font-weight: 700; padding: .5em 1em; border-radius: 999px; border: 1px solid var(--line-strong); background: var(--panel); }
+.time-add[open] > summary { margin-bottom: .3em; }
+fieldset.kindpick { display: flex; flex-wrap: wrap; gap: .5em; border: 0; padding: 0; margin: 0; background: none; }
+fieldset.kindpick legend { font-size: 13px; font-weight: 700; color: var(--muted); padding: 0; margin-bottom: .25em; }
+label.pill { display: inline-flex; align-items: center; gap: .4em; padding: .45em .9em; border: 2px solid var(--line-strong); border-radius: 999px; cursor: pointer; font-weight: 700; background: var(--panel); }
+label.pill input { accent-color: var(--good); margin: 0; }
+label.pill:has(input:checked) { border-color: var(--good); background: var(--good-bg); }
+label.pill:has(input[value="travel"]:checked) { border-color: var(--travel); background: var(--travel-bg); }
+label.pill:has(input[value="travel"]) input { accent-color: var(--travel); }
+label.pill:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (max-width: 34em) {
+  .time-line { grid-template-columns: 1fr auto; grid-template-areas: "kind time" "when when" "who who" "note note" "do do"; }
+  .elapsed.big { font-size: 2.2em; }
+  .timer-strip form { margin-left: 0; }
+}

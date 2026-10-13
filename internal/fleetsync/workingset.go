@@ -56,7 +56,7 @@ var snapshotTables = []string{
 	"assets", "pm_schedules", "work_orders", "wo_leases",
 	"calibration_records", "cal_points", "cal_standards", "signatures", "attachments",
 	"parts", "stock_locations", "stock_levels", "flag_resolutions",
-	"procedures", "procedure_proposals", "checklist_results", "work_order_checklists", "labor_entries", "meter_readings",
+	"procedures", "procedure_proposals", "checklist_results", "work_order_checklists", "labor_entries", "labor_clocks", "meter_readings",
 	"checklist_standards", "wo_test_equipment",
 }
 
@@ -179,6 +179,7 @@ func BuildSnapshot(ctx context.Context, db *sql.DB, centralNodeID string, node d
 		{"checklist_standards", in("wo_id"), []any{workOrders}},
 		{"wo_test_equipment", in("wo_id"), []any{workOrders}},
 		{"labor_entries", in("wo_id"), []any{workOrders}},
+		{"labor_clocks", in("wo_id"), []any{workOrders}},
 		// Recent readings of included equipment; the oldest carries
 		// central's running total, so new readings on the Pi add up right.
 		{"meter_readings", `id IN (SELECT id FROM (SELECT id, row_number() OVER (PARTITION BY asset_id, meter

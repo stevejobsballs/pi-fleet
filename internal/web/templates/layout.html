@@ -6,7 +6,7 @@
 <title>{{.Title}} · pi-fleet</title>
 <link rel="stylesheet" href="/static/style.css">
 {{if .Large}}<link rel="stylesheet" href="/static/large.css">{{end}}
-{{if .User.ID}}<script src="/static/session.js"></script>{{end}}
+{{if .User.ID}}<script src="/static/session.js"></script><script src="/static/clock.js" defer></script>{{end}}
 {{if .Field}}<script src="/static/field.js" defer></script>{{end}}
 </head>
 <body{{if .Field}} data-user="{{.User.ID}}"{{end}}>
@@ -30,6 +30,12 @@
   {{if eq .Clock "unverified"}}<span class="warn">Clock not verified: signatures will be flagged</span>{{end}}
 </div>
 {{end}}
+{{with .Timer}}<div class="timer-strip" role="status">
+  <span class="pulse" aria-hidden="true"></span>
+  <a href="/work-orders/{{.WorkOrderID}}#time"><strong>{{timeKind .Kind}}</strong> on {{.Number}}</a>
+  <span class="elapsed" data-since="{{rfc3339 .Started}}">{{.Elapsed}}</span>
+  <form autocomplete="off" method="post" action="/clock/stop"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="back" value="{{$.Here}}"><button class="stop">{{template "icon-stop"}}Stop work</button></form>
+</div>{{end}}
 {{with .Sync}}{{if .UpdateNeeded}}<p class="trial" role="alert"><strong>This Pi needs updating.</strong> The master Pi needs pi-fleet {{.UpdateNeeded}} or newer before this Pi can sync again. Your work is kept here meanwhile. Double-click Update-Pi, or run the newest pi-fleet release's setup on this Pi.</p>{{else if .UpdateDue}}<p class="trial" role="status">Please update this Pi to pi-fleet {{.UpdateDue}} before {{.UpdateBy.Format "2 January 2006"}}; after that it can't sync until it is updated.</p>{{end}}{{end}}
 {{if .Trial}}<p class="trial" role="alert"><strong>Trial installation.</strong> The records are on a USB stick, which is only for testing: don't use it for actual work. Before real use, move them to an SSD by running setup on the master Pi.</p>{{end}}
 {{if .Insecure}}<p class="insecure" role="alert">This Pi is serving its web interface without HTTPS. Passwords and records can be read by others on this network. Ask a super user to enable HTTPS.</p>{{end}}
@@ -131,3 +137,9 @@
 {{define "clwhere"}}{{range $i, $m := .}}{{if $i}}; {{end}}{{$m.Manufacturer}} {{if $m.Model}}{{$m.Model}}{{else}}(every model){{end}}{{else}}any equipment{{end}}{{end}}
 
 {{define "prio"}}{{if eq . "urgent"}}<span class="prio-tag stat">Stat</span>{{else if eq . "high"}}<span class="prio-tag high">High</span>{{else}}{{priorityLabel .}}{{end}}{{end}}
+{{/* Icons, drawn in the page (nothing to fetch), in the text's colour. */}}
+{{define "icon-wrench"}}<svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>{{end}}
+{{define "icon-car"}}<svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><path d="M9 17h6"/><circle cx="17" cy="17" r="2"/></svg>{{end}}
+{{define "icon-play"}}<svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M7 4.5v15a1 1 0 0 0 1.5.86l12.5-7.5a1 1 0 0 0 0-1.72L8.5 3.64A1 1 0 0 0 7 4.5z"/></svg>{{end}}
+{{define "icon-stop"}}<svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2.5"/></svg>{{end}}
+{{define "icon-kind"}}{{if eq . "travel"}}{{template "icon-car"}}{{else}}{{template "icon-wrench"}}{{end}}{{end}}

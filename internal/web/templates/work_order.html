@@ -1,6 +1,7 @@
 {{define "content"}}
 {{$d := .Data}}{{$w := .Data.WO}}
-<nav class="wo-tabs" aria-label="Parts of this work order"><a href="#details">Details</a><a href="#checklist">Checklists</a><a href="#work-done">Work done</a><a href="#test-equipment">Test equipment</a><a href="#labour">Time</a><a href="#files">Files</a><a href="#signatures">Signatures</a></nav>
+<nav class="wo-tabs" aria-label="Parts of this work order"><a href="#details">Details</a><a href="#checklist">Checklists</a><a href="#work-done">Work done</a><a href="#test-equipment">Test equipment</a><a href="#time">Time</a><a href="#files">Files</a><a href="#signatures">Signatures</a></nav>
+{{if or $d.CanClock (and $d.Clock $d.Clock.Here)}}{{template "timecard" $}}{{end}}
 <dl class="facts" id="details">
   <dt>Equipment</dt><dd><a href="/assets/{{$d.Asset.ID}}">{{$d.Asset.Tag}}</a> · {{$d.Asset.Manufacturer}} {{$d.Asset.Model}} · serial {{$d.Asset.Serial}}</dd>
   <dt>Type</dt><dd>{{$w.Type}}</dd>
@@ -24,7 +25,7 @@
     <button>{{if $w.AssignedTo}}Reassign{{else}}Assign{{end}}</button></form>
   {{end}}
   {{if $d.Holder}}
-    {{if eq $w.Status "assigned"}}{{template "status" (dict3 $w.ID "in_progress" "Start work" $.CSRF)}}{{end}}
+    {{if eq $w.Status "assigned"}}{{template "status" (dict3 $w.ID "in_progress" "Start without the clock" $.CSRF)}}{{end}}
     {{if eq $w.Status "in_progress"}}{{template "status" (dict3 $w.ID "on_hold" "Put on hold" $.CSRF)}}{{end}}
     {{if eq $w.Status "on_hold"}}{{template "status" (dict3 $w.ID "in_progress" "Resume" $.CSRF)}}{{end}}
   {{end}}
@@ -111,17 +112,41 @@
   {{end}}
 </section>
 
-<section id="labour">
-  <h2>Labour <small>({{hhmm $d.LaborTotal}} total)</small></h2>
-  {{if $d.Labor}}<table><thead><tr><th>Date</th><th>Who</th><th>Time</th><th>Note</th><th></th></tr></thead><tbody>
-  {{range $d.Labor}}<tr class="{{if eq .Status "reversed"}}old{{end}}"><td>{{.Date}}</td><td>{{.User}}</td><td>{{hhmm .Minutes}}</td>
-    <td>{{.Note}}{{if eq .Status "reversed"}} <span class="warn">reversed: {{.ReverseReason}}</span>{{end}}</td>
-    <td>{{if and (eq .Status "logged") (or $.IsMid (eq .UserID $.User.ID))}}<details><summary>Reverse</summary><form autocomplete="off" method="post" action="/labor/{{.ID}}/reverse">{{template "csrf" $.CSRF}}<label>Reason <input name="reason" required></label><button class="danger">Reverse</button></form></details>{{end}}</td></tr>{{end}}
-  </tbody></table>{{end}}
-  {{if ne $w.Status "cancelled"}}<form autocomplete="off" method="post" action="/work-orders/{{$w.ID}}/labor" class="inline">{{template "csrf" .CSRF}}
+<section id="time">
+  <h2>Time</h2>
+  <p class="time-totals"><span class="tt labour">{{template "icon-wrench"}}Labour <strong>{{hhmm $d.LabourTotal}}</strong></span>
+    <span class="tt travel">{{template "icon-car"}}Travel <strong>{{hhmm $d.TravelTotal}}</strong></span></p>
+  {{if $d.Time}}<ul class="time-lines">
+  {{range $d.Time}}<li class="time-line {{.Kind}}{{if eq .Status "reversed"}} old{{end}}">
+    <span class="tl-kind">{{template "icon-kind" .Kind}}<span>{{timeKind .Kind}}</span></span>
+    <span class="tl-when">{{.Date}}{{if .From}} · {{.From}}–{{.To}}{{else}} · typed in{{end}}</span>
+    <span class="tl-who">{{.User}}</span>
+    <strong class="tl-time">{{.Time}}</strong>
+    {{if .Note}}<span class="tl-note">{{.Note}}</span>{{end}}
+    {{if eq .Status "reversed"}}<span class="tl-note warn">Removed: {{.ReverseReason}}</span>{{end}}
+    {{if and .Mine (eq .Status "logged")}}<span class="tl-do">
+      <details class="tl-edit"><summary>Edit</summary>
+        <form autocomplete="off" method="post" action="/labor/{{.ID}}/edit" class="time-form">{{template "csrf" $.CSRF}}
+          {{template "kindpick" (dict3 .ID .Kind "" "")}}
+          <label>Time <input name="time" value="{{.Time}}" size="6" required inputmode="text"></label>
+          <label>Day <input name="date" type="date" value="{{.Date}}" required></label>
+          <label class="wide">Note <input name="note" value="{{.Note}}"></label>
+          <button>Save</button></form>
+      </details>
+      <details class="tl-edit"><summary>Remove</summary>
+        <form autocomplete="off" method="post" action="/labor/{{.ID}}/reverse" class="time-form">{{template "csrf" $.CSRF}}<label class="wide">Why <input name="reason" required></label><button class="danger">Remove this time</button></form>
+      </details></span>{{end}}
+  </li>{{end}}
+  </ul>{{else}}<p class="hint">No time recorded yet. Press <strong>Start work</strong> at the top, or add it by hand below.</p>{{end}}
+  {{if ne $w.Status "cancelled"}}
+  <details class="time-add"{{if not $d.Time}} open{{end}}><summary>Add time by hand</summary>
+  <form autocomplete="off" method="post" action="/work-orders/{{$w.ID}}/labor" class="time-form">{{template "csrf" .CSRF}}
+    {{template "kindpick" (dict3 "new" "labor" "" "")}}
     <label>Time <input name="time" placeholder="e.g. 45, 1:30 or 1.5h" size="10" required></label>
-    <label>Date <input name="date" type="date" value="{{$d.Today}}" required></label>
-    <label>Note <input name="note"></label><button>Log my time</button></form>{{end}}
+    <label>Day <input name="date" type="date" value="{{$d.Today}}" required></label>
+    <label class="wide">Note <input name="note"></label>
+    <button>Add time</button></form>
+  </details>{{end}}
 </section>
 
 <section id="files">
@@ -175,3 +200,43 @@
   {{if eq $c.Status "valid"}}<details><summary>Void</summary><form autocomplete="off" method="post" action="/calibrations/{{$c.ID}}/void">{{template "csrf" .B}}<label>Reason <input name="reason" required></label><button class="danger">Void calibration</button></form></details>{{end}}
 </article>
 {{end}}
+
+{{/* The time card: Start work (Labour or Travel), the running clock, Stop work. */}}
+{{define "timecard"}}{{$d := .Data}}{{$w := $d.WO}}{{$c := $d.Clock}}
+<section class="timecard{{if and $c $c.Here}} running {{$c.Kind}}{{end}}" aria-label="Your time on this work">
+{{if and $c $c.Here}}
+  <div class="clock-face">
+    <span class="pulse" aria-hidden="true"></span>
+    <span class="clock-kind">{{template "icon-kind" $c.Kind}}{{timeKind $c.Kind}}</span>
+    <span class="elapsed big" data-since="{{rfc3339 $c.Started}}">{{$c.Elapsed}}</span>
+    <span class="clock-since">since {{$c.Since}}</span>
+  </div>
+  {{if $c.Long}}<p class="warn">This clock has been running for over 10 hours. Still working? If not, stop it and correct the time below.</p>{{end}}
+  <div class="clock-buttons">
+    <form autocomplete="off" method="post" action="/clock/stop">{{template "csrf" .CSRF}}<input type="hidden" name="back" value="/work-orders/{{$w.ID}}"><button class="stop">{{template "icon-stop"}}Stop work</button></form>
+    <form autocomplete="off" method="post" action="/work-orders/{{$w.ID}}/clock/start">{{template "csrf" .CSRF}}
+      {{if eq $c.Kind "travel"}}<button name="kind" value="labor" class="switch">{{template "icon-wrench"}}Arrived: switch to labour</button>
+      {{else}}<button name="kind" value="travel" class="switch">{{template "icon-car"}}Switch to travel</button>{{end}}</form>
+  </div>
+{{else}}
+  {{with $c}}<p class="hint">Your clock is running for {{lower (timeKind .Kind)}} on <a href="/work-orders/{{.WorkOrderID}}">{{.Number}}</a> ({{.Elapsed}}). Starting here stops that one and records its time.</p>{{end}}
+  <details class="clock-start">
+    <summary class="go">{{template "icon-play"}}Start work</summary>
+    <form autocomplete="off" method="post" action="/work-orders/{{$w.ID}}/clock/start" class="kind-choice">{{template "csrf" .CSRF}}
+      <p class="ask">What are you doing?</p>
+      <button name="kind" value="labor" class="kind labor">{{template "icon-wrench"}}<span>Labour<small>Working on the equipment</small></span></button>
+      <button name="kind" value="travel" class="kind travel">{{template "icon-car"}}<span>Travel<small>On the way there or back</small></span></button>
+    </form>
+  </details>
+  <p class="hint">The clock records your time below when you stop it. Prefer to type it? <a href="#time">Add time by hand</a>.</p>
+{{end}}
+{{range $d.OtherClocks}}<p class="other-clock"><span class="pulse" aria-hidden="true"></span>{{.Name}}: {{lower (timeKind .Kind)}} since {{.Since}} (<span class="elapsed" data-since="{{rfc3339 .Started}}">{{.Elapsed}}</span>)
+  {{if $.IsMid}}<form autocomplete="off" method="post" action="/work-orders/{{$w.ID}}/clock/stop-other" class="inline">{{template "csrf" $.CSRF}}<input type="hidden" name="user" value="{{.UserID}}"><button class="link">Stop their clock</button></form>{{end}}</p>{{end}}
+</section>
+{{end}}
+
+{{/* Labour or Travel, as two big choices. */}}
+{{define "kindpick"}}<fieldset class="kindpick"><legend>Kind</legend>
+  <label class="pill"><input type="radio" name="kind" value="labor"{{if ne .B "travel"}} checked{{end}}>{{template "icon-wrench"}}Labour</label>
+  <label class="pill"><input type="radio" name="kind" value="travel"{{if eq .B "travel"}} checked{{end}}>{{template "icon-car"}}Travel</label>
+</fieldset>{{end}}

@@ -28,11 +28,12 @@ type page struct {
 	Notices    []string
 	Insecure   bool
 	Trial      bool
-	Large      bool   // larger text and buttons (the default; compact is chosen per browser)
-	Here       string // this page's path and query, to come back to
-	Path       string // the page's URL path, to mark the current menu item
-	FindQ      string // what was searched for, kept in the search box
-	Field      bool   // field mode's script (signed-in pages on the master Pi)
+	Large      bool       // larger text and buttons (the default; compact is chosen per browser)
+	Here       string     // this page's path and query, to come back to
+	Path       string     // the page's URL path, to mark the current menu item
+	FindQ      string     // what was searched for, kept in the search box
+	Field      bool       // field mode's script (signed-in pages on the master Pi)
+	Timer      *clockView // the person's running clock, shown on every page but its work order's
 	Data       any
 	// BackHref and BackLabel: a Back link at the top left, to the screen
 	// this one was opened from (pages whose data has a BackLink).
@@ -151,6 +152,9 @@ var funcs = template.FuncMap{
 		return map[string]string{"urgent": "stat", "high": "high", "normal": "routine", "low": "low"}[p]
 	},
 	"kindLabel": func(k string) string { return kindLabels[k] },
+	"timeKind":  kindName,
+	"lower":     strings.ToLower,
+	"rfc3339":   func(t time.Time) string { return t.UTC().Format(time.RFC3339) },
 	"inputless": domain.Inputless,
 	"lines":     func(s string) []string { return strings.Split(s, "\n") },
 	// qrpop is what the QR label pop-up (layout.html) needs.
@@ -248,6 +252,10 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, sess *session, n
 			p.Notices = s.Notices(r.Context())
 		}
 		p.Field = s.Role == "central" && !p.User.MustChangePassword
+		if c, ok, err := domain.RunningClock(r.Context(), s.App.Store.DB(), sess.User.ID); err == nil && ok && p.Path != "/work-orders/"+c.WorkOrderID {
+			v := s.clockView(c, "")
+			p.Timer = &v
+		}
 		if s.Standby != nil && p.IsSuper() {
 			if st := s.Standby.Status(r.Context()); st.Paired && !st.Seen.IsZero() && s.now().Sub(st.Seen) > 10*time.Minute {
 				p.Notices = append(p.Notices, "The standby Pi last copied this master's records "+agoWords(s.now().Sub(st.Seen))+

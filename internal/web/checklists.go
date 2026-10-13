@@ -907,23 +907,6 @@ func (s *Server) addStepPhoto(r *http.Request, sess *session, woID, procID strin
 	return err
 }
 
-func (s *Server) laborLog(w http.ResponseWriter, r *http.Request, sess *session) error {
-	id := r.PathValue("id")
-	back := "/work-orders/" + id
-	minutes, err := parseDuration(r.PostFormValue("time"))
-	if err != nil {
-		return s.done(w, r, sess, back, "Not saved: "+err.Error())
-	}
-	note := strings.TrimSpace(r.PostFormValue("note"))
-	if err := s.phiCheck(r, note); err != nil {
-		return s.failed(w, r, sess, back, err)
-	}
-	if _, err := s.App.LogLabor(r.Context(), s.actor(sess), id, minutes, r.PostFormValue("date"), note); err != nil {
-		return s.failed(w, r, sess, back, err)
-	}
-	return s.done(w, r, sess, back+"#labour", "Time logged.")
-}
-
 // parseDuration accepts minutes ("45"), hours and minutes ("1:30") or
 // decimal hours ("1.5h").
 func parseDuration(s string) (int, error) {

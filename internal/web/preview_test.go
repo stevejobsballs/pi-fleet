@@ -29,6 +29,14 @@ func TestPreview(t *testing.T) {
 		snapshotPages(t, e, snap)
 		return
 	}
+	// From here the time is the real time, as on a Pi (work clocks tick,
+	// sign-ins end when idle); the sample records are from a few days ago.
+	go func() {
+		for {
+			e.now = time.Now()
+			time.Sleep(200 * time.Millisecond)
+		}
+	}()
 	// Plain HTTP on this computer only, so no certificate is needed.
 	s := &Server{App: e.app, Role: "central", Now: func() time.Time { return e.now }, PHIPatterns: DefaultPHIPatterns}
 	h, err := s.Handler()

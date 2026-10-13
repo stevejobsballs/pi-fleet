@@ -170,6 +170,7 @@ type LaborLogged struct {
 	Minutes     int    `json:"minutes"`
 	Date        string `json:"date"` // YYYY-MM-DD
 	Note        string `json:"note,omitempty"`
+	Kind        string `json:"kind,omitempty"` // labor (also when empty) or travel
 }
 
 type LaborReversed struct {
@@ -895,8 +896,15 @@ func (ap *applier) laborLogged(p *LaborLogged) error {
 	if w.Status == WOCancelled {
 		return invalid("%s is cancelled", w.Number)
 	}
-	if p.Minutes < 1 || p.Minutes > 24*60 {
+	if p.Minutes < 1 || p.Minutes > MaxLaborMinutes {
 		return invalid("minutes must be between 1 and 1440")
+	}
+	kind := p.Kind
+	if kind == "" {
+		kind = LaborKindLabor
+	}
+	if !validKind(kind) {
+		return invalid("kind must be labor or travel")
 	}
 	d, err := time.Parse(dateLayout, p.Date)
 	if err != nil {
@@ -905,8 +913,8 @@ func (ap *applier) laborLogged(p *LaborLogged) error {
 	if d.After(ap.e.WallTime.Add(24 * time.Hour)) {
 		return invalid("time can't be logged for a future date")
 	}
-	return ap.exec(`INSERT INTO labor_entries (id, wo_id, user_id, minutes, work_date, note, status, reverse_reason, last_event_id)
-		VALUES (?, ?, ?, ?, ?, ?, 'logged', '', ?)`, ap.e.EntityID, w.ID, ap.actor.id, p.Minutes, p.Date, p.Note, ap.e.EventID)
+	return ap.exec(`INSERT INTO labor_entries (id, wo_id, user_id, minutes, work_date, note, status, reverse_reason, last_event_id, kind)
+		VALUES (?, ?, ?, ?, ?, ?, 'logged', '', ?, ?)`, ap.e.EntityID, w.ID, ap.actor.id, p.Minutes, p.Date, p.Note, ap.e.EventID, kind)
 }
 
 func (ap *applier) laborReversed(p *LaborReversed) error {
@@ -1185,13 +1193,16 @@ func ChecklistsFor(ctx context.Context, q Querier, manufacturer, model string) (
 type LaborEntry struct {
 	ID, User, Date, Note, Status, ReverseReason, UserID string
 	Minutes                                             int
+	Kind                                                string    // labor or travel
+	Started, Ended                                      time.Time // zero when typed in
 }
 
 // Labor returns a work order's labour entries and the total of those not
 // reversed.
 func Labor(ctx context.Context, q Querier, woID string) ([]LaborEntry, int, error) {
 	rows, err := q.QueryContext(ctx, `SELECT l.id, coalesce(u.legal_name, l.user_id), l.user_id, l.work_date, l.note, l.status,
-		l.reverse_reason, l.minutes FROM labor_entries l LEFT JOIN users u ON u.id = l.user_id WHERE l.wo_id = ? ORDER BY l.work_date, l.id`, woID)
+		l.reverse_reason, l.minutes, l.kind, l.started_at, l.ended_at FROM labor_entries l LEFT JOIN users u ON u.id = l.user_id
+		WHERE l.wo_id = ? ORDER BY l.work_date, coalesce(nullif(l.started_at, ''), '~'), l.id`, woID)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -1200,9 +1211,12 @@ func Labor(ctx context.Context, q Querier, woID string) ([]LaborEntry, int, erro
 	total := 0
 	for rows.Next() {
 		var e LaborEntry
-		if err := rows.Scan(&e.ID, &e.User, &e.UserID, &e.Date, &e.Note, &e.Status, &e.ReverseReason, &e.Minutes); err != nil {
+		var started, ended string
+		if err := rows.Scan(&e.ID, &e.User, &e.UserID, &e.Date, &e.Note, &e.Status, &e.ReverseReason, &e.Minutes, &e.Kind, &started, &ended); err != nil {
 			return nil, 0, err
 		}
+		e.Started, _ = time.Parse(time.RFC3339, started)
+		e.Ended, _ = time.Parse(time.RFC3339, ended)
 		if e.Status == "logged" {
 			total += e.Minutes
 		}

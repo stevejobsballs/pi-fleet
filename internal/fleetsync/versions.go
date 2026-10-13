@@ -28,8 +28,10 @@ import (
 // offering sitecert.SyncALPN, so a master showing browsers the hospital's
 // certificate still gives the Pi pi-fleet's own; v0.16.0 work orders'
 // work done (work_orders.work_done) and test equipment used
-// (wo_test_equipment).
-const MinNodeVersion = "v0.16.0"
+// (wo_test_equipment); v0.20.0 labour or travel time and the work clock
+// (labor_entries.kind, started_at, ended_at, the labor_clocks table, and
+// the labor.clock_started, labor.clock_stopped and labor.corrected events).
+const MinNodeVersion = "v0.20.0"
 
 const (
 	// On the master Pi: a newer version a super user requires, and when.

@@ -519,6 +519,16 @@ func (a *App) ChangeWorkOrderStatus(ctx context.Context, actor Actor, woID, to, 
 		if w.AssignedTo == actor.UserID {
 			lease = w.LeaseID
 		}
+		// Putting work on hold or finishing it stops the person's clock on it.
+		if to != domain.WOInProgress {
+			if c, ok, err := domain.RunningClock(ctx, tx, actor.UserID); err != nil {
+				return err
+			} else if ok && c.WorkOrderID == woID {
+				if _, err := a.stopClock(ctx, tx, actor, actor.UserID, ""); err != nil {
+					return err
+				}
+			}
+		}
 		return a.emit(ctx, tx, actor, domain.TypeWorkOrderStatusChanged, domain.EntityWorkOrder, woID, w.Version, lease,
 			domain.WorkOrderStatusChanged{From: w.Status, To: to, Reason: reason})
 	})

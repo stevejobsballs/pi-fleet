@@ -960,19 +960,19 @@ func TestTooOldPiCannotSync(t *testing.T) {
 func TestRequiredVersionWithGracePeriod(t *testing.T) {
 	f := newFleet(t)
 	tess := f.enrol("tess", domain.RoleUser)
-	tess.client.Version = "v0.16.0"
-	if err := RequireVersion(f.ctx, f.app.Store, "v0.17.0", f.now, "v0.16.2"); err == nil {
+	tess.client.Version = "v0.20.0"
+	if err := RequireVersion(f.ctx, f.app.Store, "v0.21.0", f.now, "v0.20.2"); err == nil {
 		t.Fatal("required a version newer than the master")
 	}
-	if err := RequireVersion(f.ctx, f.app.Store, "latest", f.now, "v0.16.2"); err == nil {
+	if err := RequireVersion(f.ctx, f.app.Store, "latest", f.now, "v0.20.2"); err == nil {
 		t.Fatal("accepted a bad version")
 	}
 	from := f.now.Add(7 * 24 * time.Hour)
-	f.must(RequireVersion(f.ctx, f.app.Store, "v0.16.2", from, "v0.16.2"))
+	f.must(RequireVersion(f.ctx, f.app.Store, "v0.20.2", from, "v0.20.2"))
 
 	// During the grace period: syncs, and is told the date.
 	tess.sync()
-	if v, _ := tess.app.Store.Config(f.ctx, ConfigUpdateDue); v != "v0.16.2 "+from.UTC().Format(time.RFC3339) {
+	if v, _ := tess.app.Store.Config(f.ctx, ConfigUpdateDue); v != "v0.20.2 "+from.UTC().Format(time.RFC3339) {
 		t.Fatalf("update_due = %q", v)
 	}
 	// After it: blocked until updated.
@@ -980,13 +980,13 @@ func TestRequiredVersionWithGracePeriod(t *testing.T) {
 	if _, err := tess.client.Sync(f.ctx); !errors.Is(err, ErrTooOld) {
 		t.Fatalf("err = %v", err)
 	}
-	if !NodeRequirement(f.ctx, f.app.Store, f.now).Outdated("v0.16.0") {
+	if !NodeRequirement(f.ctx, f.app.Store, f.now).Outdated("v0.20.0") {
 		t.Fatal("not shown as outdated")
 	}
-	tess.client.Version = "v0.16.2"
+	tess.client.Version = "v0.20.2"
 	tess.sync()
 	// Cleared: back to the built-in minimum.
-	f.must(RequireVersion(f.ctx, f.app.Store, "", time.Time{}, "v0.16.2"))
+	f.must(RequireVersion(f.ctx, f.app.Store, "", time.Time{}, "v0.20.2"))
 	if r := NodeRequirement(f.ctx, f.app.Store, f.now); r.Min != MinNodeVersion || r.Next != "" {
 		t.Fatalf("requirement = %+v", r)
 	}
