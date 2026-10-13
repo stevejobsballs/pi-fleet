@@ -27,7 +27,7 @@ func TestWorkDoneAndTestEquipmentThroughTheUI(t *testing.T) {
 	tess.post(wo+"/status", url.Values{"to": {"in_progress"}})
 
 	_, _, page = tess.get(wo)
-	if !strings.Contains(page, `<a href="#work-done">Work done</a><a href="#test-equipment">Test equipment</a>`) || !strings.Contains(page, `name="work_done"`) ||
+	if !strings.Contains(page, `<a href="#work-done" class="step"><span>Work done</span></a><a href="#test-equipment" class="step"><span>Test equipment</span></a>`) || !strings.Contains(page, `name="work_done"`) ||
 		!strings.Contains(page, `<option value="`+ida+`">IDA-1 · Fluke IDA-5 · no calibration schedule</option>`) {
 		t.Fatalf("work order page:\n%s", page)
 	}

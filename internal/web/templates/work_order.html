@@ -1,45 +1,70 @@
 {{define "content"}}
 {{$d := .Data}}{{$w := .Data.WO}}
-<nav class="wo-tabs" aria-label="Parts of this work order"><a href="#details">Details</a><a href="#checklist">Checklists</a><a href="#work-done">Work done</a><a href="#test-equipment">Test equipment</a><a href="#time">Time</a><a href="#files">Files</a><a href="#signatures">Signatures</a></nav>
-{{if or $d.CanClock (and $d.Clock $d.Clock.Here)}}{{template "timecard" $}}{{end}}
-<dl class="facts" id="details">
-  <dt>Equipment</dt><dd><a href="/assets/{{$d.Asset.ID}}">{{$d.Asset.Tag}}</a> · {{$d.Asset.Manufacturer}} {{$d.Asset.Model}} · serial {{$d.Asset.Serial}}</dd>
-  <dt>Type</dt><dd>{{$w.Type}}</dd>
-  <dt>Status</dt><dd><strong>{{label $w.Status}}</strong></dd>
-  <dt>Priority</dt><dd>{{template "prio" $w.Priority}}</dd>
-  <dt>Assigned to</dt><dd>{{if $d.Assignee}}<a href="/people/{{$d.WO.AssignedTo}}">{{$d.Assignee}}</a>{{else}}nobody{{end}}</dd>
-  <dt>Due</dt><dd>{{if $w.DueAt}}{{$w.DueAt}}{{else}}not set{{end}}</dd>
-  <dt>Title</dt><dd>{{$w.Title}}</dd>
-  <dt>Problem</dt><dd class="pre">{{$w.Problem}}</dd>
-</dl>
+<header class="job-head">
+  <p class="job-chips"><span class="chip st-{{$w.Status}}">{{label $w.Status}}</span>{{if or (eq $w.Priority "urgent") (eq $w.Priority "high")}}{{template "prio" $w.Priority}}{{end}}
+    <span class="chip plain">{{label $w.Type}}</span>{{with $w.DueAt}}<span class="chip plain">Due {{.}}</span>{{end}}</p>
+  <p class="wo-title">{{$w.Title}}</p>
+  {{with $w.Problem}}<p class="job-problem pre">{{.}}</p>{{end}}
+</header>
 
-<p class="records"><a href="/work-orders/{{$w.ID}}/audit">Audit trail</a> · <a href="/work-orders/{{$w.ID}}/print">Printable record</a> · <a href="/work-orders/{{$w.ID}}/export.json">Download signed JSON</a></p>
-<section class="actions">
-  {{if and (eq $w.Status "open") (not $d.Holder)}}
-  <form autocomplete="off" method="post" action="/work-orders/{{$w.ID}}/claim" class="act">{{template "csrf" .CSRF}}<h3>Take on this work</h3><button>Claim this work</button></form>
-  {{end}}
-  {{if and .IsMid (ne $w.Status "closed") (ne $w.Status "cancelled") (ne $w.Status "completed") (ne $w.Status "reviewed")}}
-  <form autocomplete="off" method="post" action="/work-orders/{{$w.ID}}/assign" class="act">{{template "csrf" .CSRF}}
-    <h3>Who does it</h3>
-    <label>Assign to <select name="assignee">{{range $d.Users}}<option value="{{.ID}}">{{.Label}}</option>{{end}}</select></label>
-    <button>{{if $w.AssignedTo}}Reassign{{else}}Assign{{end}}</button></form>
-  {{end}}
-  {{if $d.Holder}}
-    {{if eq $w.Status "assigned"}}{{template "status" (dict3 $w.ID "in_progress" "Start without the clock" $.CSRF)}}{{end}}
-    {{if eq $w.Status "in_progress"}}{{template "status" (dict3 $w.ID "on_hold" "Put on hold" $.CSRF)}}{{end}}
-    {{if eq $w.Status "on_hold"}}{{template "status" (dict3 $w.ID "in_progress" "Resume" $.CSRF)}}{{end}}
-  {{end}}
-  {{if and .IsMid (or (eq $w.Status "completed") (eq $w.Status "reviewed"))}}
-  <form autocomplete="off" method="post" action="/work-orders/{{$w.ID}}/status" class="act">{{template "csrf" .CSRF}}
-    <h3>Reopen this work order</h3>
-    <input type="hidden" name="to" value="in_progress"><label>Why it needs reopening <input name="reason" required></label>{{template "nophi"}}<button>Reopen</button></form>
-  {{end}}
+<div class="job">
+<aside class="job-side" aria-label="About this work">
+  {{if or $d.CanClock (and $d.Clock $d.Clock.Here)}}{{template "timecard" $}}{{end}}
+
+  <section class="side-card side-equipment" id="details" aria-labelledby="eq-h">
+    <h2 id="eq-h">Equipment</h2>
+    <p class="eq-name"><a href="/assets/{{$d.Asset.ID}}">{{$d.Asset.Tag}}</a> <span class="chip st-{{$d.Asset.Status}}">{{label $d.Asset.Status}}</span></p>
+    <p>{{$d.Asset.Manufacturer}} {{$d.Asset.Model}}{{with $d.Asset.Serial}}<br><span class="hint">Serial</span> {{.}}{{end}}</p>
+    <h3>Where</h3>
+    <p>{{$d.Place}}{{with $d.Where}}{{if or .Building .Floor .Room}}<br>{{with .Building}}{{.}}{{end}}{{with .Floor}}{{if $d.Where.Building}}, {{end}}floor {{.}}{{end}}{{with .Room}}{{if or $d.Where.Building $d.Where.Floor}}, {{end}}room {{.}}{{end}}{{end}}{{with .Department}}<br>{{.}}{{end}}{{end}}</p>
+    {{with $d.Where.Directions}}<p class="hint">{{.}}</p>{{end}}
+    {{if or $d.Where.Contact $d.Where.Phone}}<p class="contact">{{with $d.Where.Contact}}Ask {{.}}{{end}}{{with $d.Where.Phone}}<a class="button secondary call" href="tel:{{.}}">Call {{.}}</a>{{end}}</p>{{end}}
+    <p><a href="/assets/{{$d.Asset.ID}}#files">Manuals and files ({{$d.AssetFiles}})</a> · <a href="/assets/{{$d.Asset.ID}}">Equipment page</a></p>
+  </section>
+
+  <section class="side-card side-work" aria-labelledby="who-h">
+    <h2 id="who-h">The work</h2>
+    <p>Assigned to {{if $d.Assignee}}<a href="/people/{{$w.AssignedTo}}">{{$d.Assignee}}</a>{{else}}nobody yet{{end}}</p>
+    {{if and (eq $w.Status "open") (not $d.Holder)}}
+    <form autocomplete="off" method="post" action="/work-orders/{{$w.ID}}/claim">{{template "csrf" .CSRF}}<button>Claim this work</button></form>
+    {{end}}
+    {{if $d.Holder}}
+      {{if eq $w.Status "assigned"}}<form autocomplete="off" method="post" action="/work-orders/{{$w.ID}}/status">{{template "csrf" .CSRF}}<input type="hidden" name="to" value="in_progress"><button class="secondary">Start without the clock</button></form>{{end}}
+      {{if eq $w.Status "in_progress"}}<details class="hold"><summary>Put on hold</summary>
+        <form autocomplete="off" method="post" action="/work-orders/{{$w.ID}}/status" class="hold-form">{{template "csrf" .CSRF}}<input type="hidden" name="to" value="on_hold">
+          <fieldset class="reasons"><legend>Why?</legend>{{range $d.HoldReasons}}<label class="pill"><input type="radio" name="reason" value="{{.}}" required>{{.}}</label>{{end}}<label class="pill"><input type="radio" name="reason" value="" required>Other</label></fieldset>
+          <label>More detail (optional) <input name="detail"></label>
+          <button>Put on hold</button></form></details>{{end}}
+      {{if eq $w.Status "on_hold"}}<form autocomplete="off" method="post" action="/work-orders/{{$w.ID}}/status">{{template "csrf" .CSRF}}<input type="hidden" name="to" value="in_progress"><button>Resume the work</button></form>{{end}}
+    {{end}}
+  </section>
+
+  <section class="side-card side-history" aria-labelledby="hist-h">
+    <h2 id="hist-h">Recent work on it</h2>
+    {{if $d.History}}<ul class="history">{{range $d.History}}<li><a href="/work-orders/{{.ID}}">{{.Number}}</a> <span class="hint">{{if .OpenedAt}}{{slice .OpenedAt 0 10}}{{end}} · {{label .Status}}</span><br>{{.Title}}</li>{{end}}</ul>
+    <p><a href="/assets/{{$d.Asset.ID}}#history">All its history</a></p>
+    {{else}}<p class="hint">No other work on this equipment yet.</p>{{end}}
+  </section>
+
   {{if and .IsMid (ne $w.Status "closed") (ne $w.Status "cancelled")}}
-  <form autocomplete="off" method="post" action="/work-orders/{{$w.ID}}/status" class="act">{{template "csrf" .CSRF}}
-    <h3>Cancel this work order</h3>
-    <input type="hidden" name="to" value="cancelled"><label>Why it is cancelled <input name="reason" required></label>{{template "nophi"}}<button class="danger">Cancel work order</button></form>
-  {{end}}
-</section>
+  <details class="side-card manage"><summary>Manage this work order</summary>
+    {{if and (ne $w.Status "completed") (ne $w.Status "reviewed")}}
+    <form autocomplete="off" method="post" action="/work-orders/{{$w.ID}}/assign">{{template "csrf" .CSRF}}
+      <label>{{if $w.AssignedTo}}Reassign to{{else}}Assign to{{end}} <select name="assignee">{{range $d.Users}}<option value="{{.ID}}">{{.Label}}</option>{{end}}</select></label>
+      <button>{{if $w.AssignedTo}}Reassign{{else}}Assign{{end}}</button></form>{{end}}
+    {{if or (eq $w.Status "completed") (eq $w.Status "reviewed")}}
+    <form autocomplete="off" method="post" action="/work-orders/{{$w.ID}}/status">{{template "csrf" .CSRF}}
+      <input type="hidden" name="to" value="in_progress"><label>Why it needs reopening <input name="reason" required></label>{{template "nophi"}}<button>Reopen</button></form>{{end}}
+    <form autocomplete="off" method="post" action="/work-orders/{{$w.ID}}/status">{{template "csrf" .CSRF}}
+      <input type="hidden" name="to" value="cancelled"><label>Why it is cancelled <input name="reason" required></label>{{template "nophi"}}<button class="danger">Cancel work order</button></form>
+  </details>{{end}}
+
+  <p class="records">The record: <a href="/work-orders/{{$w.ID}}/audit">audit trail</a> · <a href="/work-orders/{{$w.ID}}/print">printable</a> · <a href="/work-orders/{{$w.ID}}/export.json">signed JSON</a></p>
+</aside>
+
+<div class="job-main">
+<nav class="job-steps" aria-label="Steps of the work">{{with $d.Clock}}{{if .Here}}<a href="#clock" class="step running {{.Kind}}"><span class="pulse" aria-hidden="true"></span><span class="elapsed" data-since="{{rfc3339 .Started}}">{{.Elapsed}}</span></a>{{end}}{{end}}
+  {{range $d.Steps}}<a href="#{{.ID}}" class="step{{if .Done}} done{{end}}{{if .Need}} need{{end}}">{{if .Done}}{{template "icon-check"}}{{else if .Need}}<span class="mark" aria-hidden="true">!</span>{{end}}<span>{{.Label}}</span>{{with .Badge}}<span class="badge">{{.}}</span>{{end}}</a>{{end}}</nav>
 
 {{if or (and (eq $w.Type "calibration") (not $d.CalPoints)) $d.Calibrations}}
 <section id="calibration">
@@ -71,19 +96,20 @@
 <section id="checklist">
   <h2>Checklists</h2>
   {{$edit := and $d.Holder (eq $w.Status "in_progress")}}
-  {{if $d.ChangeChecklists}}{{if $d.AddChoices}}<form autocomplete="off" method="post" action="/work-orders/{{$w.ID}}/checklists" class="inline add-checklist">{{template "csrf" .CSRF}}
-    <label>Add a checklist <select name="procedure" required><option value="" selected disabled>Choose a checklist</option>{{range $d.AddChoices}}<optgroup label="{{.Label}}">{{range .Items}}<option value="{{.ID}}">{{.Label}}</option>{{end}}</optgroup>{{end}}</select></label>
-    <button>Add checklist</button></form>{{end}}{{end}}
-  {{range $d.Checklists}}{{$total := 0}}{{$done := 0}}
+  {{range $d.Checklists}}
   <div class="cl-card">
     <a class="cl-open" href="/work-orders/{{$w.ID}}/checklists/{{.ID}}">
       <span class="cl-name">{{.Name}} <span class="hint">v{{.Version}}</span></span>
-      <span class="hint">{{.Answered}} of {{.Total}} answered{{with .Reference}} · follows {{.}}{{end}}{{with .AddedBy}} · added by {{.}}{{end}}</span>
-      <span class="button">{{if $edit}}Open and fill in{{else}}Open{{end}}</span>
+      <span class="cl-progress">{{if .Total}}<progress value="{{.Answered}}" max="{{.Total}}" aria-hidden="true"></progress>{{end}}<span class="hint">{{.Answered}} of {{.Total}} answered{{with .Reference}} · follows {{.}}{{end}}{{with .AddedBy}} · added by {{.}}{{end}}</span></span>
+      <span class="button">{{if $edit}}{{if eq .Answered 0}}Start{{else if lt .Answered .Total}}Carry on{{else}}Open{{end}}{{else}}Open{{end}}</span>
     </a>
     {{if and $d.ChangeChecklists (eq .Answered 0)}}<form autocomplete="off" method="post" action="/work-orders/{{$w.ID}}/checklists/remove" class="inline">{{template "csrf" $.CSRF}}<input type="hidden" name="procedure" value="{{.ID}}"><button class="link">Remove this checklist</button></form>{{end}}
   </div>
-  {{else}}<p>No checklist yet.{{if $d.ChangeChecklists}} Add one above: those made for this equipment are listed first.{{end}}</p>{{end}}
+  {{else}}<p>No checklist yet.{{if $d.ChangeChecklists}} Add one below: those made for this equipment are listed first.{{end}}</p>{{end}}
+  {{if $d.ChangeChecklists}}{{if $d.AddChoices}}<details class="add-more"{{if not $d.Checklists}} open{{end}}><summary>Add a checklist</summary>
+  <form autocomplete="off" method="post" action="/work-orders/{{$w.ID}}/checklists" class="inline add-checklist">{{template "csrf" .CSRF}}
+    <label>Checklist <select name="procedure" required><option value="" selected disabled>Choose a checklist</option>{{range $d.AddChoices}}<optgroup label="{{.Label}}">{{range .Items}}<option value="{{.ID}}">{{.Label}}</option>{{end}}</optgroup>{{end}}</select></label>
+    <button>Add checklist</button></form></details>{{end}}{{end}}
 </section>
 
 <section id="work-done">
@@ -112,6 +138,20 @@
   {{end}}
 </section>
 
+<section id="parts">
+  <h2>Parts used{{with $d.PartsUsed}} <span class="count">{{.}}</span>{{end}}</h2>
+  {{if $d.Parts}}<ul class="part-lines">{{range $d.Parts}}
+    <li class="part-line {{.Kind}}"><strong class="pl-qty">{{if eq .Kind "return"}}−{{end}}{{.Qty}}</strong>
+      <span class="pl-what">{{.PartNo}} · {{.Description}}<br><span class="hint">{{if eq .Kind "return"}}put back into{{else}}from{{end}} {{.Location}}</span></span>
+      {{if and $d.CanParts (eq .Kind "issue")}}<form autocomplete="off" method="post" action="/work-orders/{{$w.ID}}/parts/return" class="inline">{{template "csrf" $.CSRF}}<input type="hidden" name="part" value="{{.PartID}}"><input type="hidden" name="location" value="{{.LocationID}}"><input type="hidden" name="quantity" value="{{.Qty}}"><button class="link">Put back</button></form>{{end}}</li>{{end}}
+  </ul>{{else}}<p class="hint">No parts used.</p>{{end}}
+  {{if $d.CanParts}}{{if $d.PartChoices}}<form autocomplete="off" method="post" action="/work-orders/{{$w.ID}}/parts" class="time-form">{{template "csrf" .CSRF}}
+    <label class="wide">Part <select name="part" required><option value="" selected disabled>Choose a part in stock (your own stock first)</option>{{range $d.PartChoices}}<option value="{{.Value}}">{{.Label}}</option>{{end}}</select></label>
+    <label>How many <input name="quantity" type="number" min="1" value="1" required inputmode="numeric" class="qty"></label>
+    <button>Use part</button></form>
+  {{else}}<p class="hint">No parts are in stock. Parts are added on Equipment › Parts and stock.</p>{{end}}{{end}}
+</section>
+
 <section id="time">
   <h2>Time</h2>
   <p class="time-totals"><span class="tt labour">{{template "icon-wrench"}}Labour <strong>{{hhmm $d.LabourTotal}}</strong></span>
@@ -137,7 +177,7 @@
         <form autocomplete="off" method="post" action="/labor/{{.ID}}/reverse" class="time-form">{{template "csrf" $.CSRF}}<label class="wide">Why <input name="reason" required></label><button class="danger">Remove this time</button></form>
       </details></span>{{end}}
   </li>{{end}}
-  </ul>{{else}}<p class="hint">No time recorded yet. Press <strong>Start work</strong> at the top, or add it by hand below.</p>{{end}}
+  </ul>{{else}}<p class="hint">No time recorded yet. Press <strong>Start work</strong>, or add it by hand below.</p>{{end}}
   {{if ne $w.Status "cancelled"}}
   <details class="time-add"{{if not $d.Time}} open{{end}}><summary>Add time by hand</summary>
   <form autocomplete="off" method="post" action="/work-orders/{{$w.ID}}/labor" class="time-form">{{template "csrf" .CSRF}}
@@ -150,12 +190,26 @@
 </section>
 
 <section id="files">
-  <h2>Files</h2>
+  <h2>Files and photos</h2>
   {{template "attachments" (files $d.Attachments .CSRF $d.CanAttach .IsMid (printf "/work-orders/%s/attachments" $w.ID))}}
 </section>
 
-<section id="signatures">
-  <h2>Signatures</h2>
+<section id="finish">
+  <h2>Finish</h2>
+  {{if $d.Ready}}<div class="ready{{if $d.NotReady}} not-ready{{end}}">
+    <h3>{{if $d.NotReady}}Before you can finish{{else if $d.Todo}}Nearly ready: worth doing first{{else}}Ready to finish{{end}}</h3>
+    <ul class="ready-list">{{range $d.Ready}}<li class="r-{{.State}}">{{if eq .State "ok"}}{{template "icon-check"}}{{else}}<span class="mark" aria-hidden="true">{{if eq .State "need"}}!{{else}}·{{end}}</span>{{end}}<a href="{{.Href}}">{{.Text}}</a>{{if eq .State "todo"}} <span class="hint">(recommended)</span>{{end}}</li>{{end}}</ul>
+  </div>
+  <div class="eq-status" id="equipment-status">
+    <h3>The equipment after this work</h3>
+    <p>{{$d.Asset.Tag}} is <span class="chip st-{{$d.Asset.Status}}">{{label $d.Asset.Status}}</span></p>
+    {{if eq $d.Asset.Status "in_service"}}<details><summary>Take it out of service</summary>
+      <form autocomplete="off" method="post" action="/assets/{{$d.Asset.ID}}/status" class="time-form">{{template "csrf" .CSRF}}<input type="hidden" name="version" value="{{$d.Asset.Version}}"><input type="hidden" name="back" value="/work-orders/{{$w.ID}}#finish"><input type="hidden" name="status" value="out_of_service">
+        <label class="wide">Why <input name="reason" required placeholder="e.g. failed electrical safety, waiting for a part"></label><button class="danger">Take out of service</button></form></details>
+    {{else if eq $d.Asset.Status "out_of_service"}}<form autocomplete="off" method="post" action="/assets/{{$d.Asset.ID}}/status">{{template "csrf" .CSRF}}<input type="hidden" name="version" value="{{$d.Asset.Version}}"><input type="hidden" name="back" value="/work-orders/{{$w.ID}}#finish"><input type="hidden" name="status" value="in_service"><button>Put it back in service</button></form>{{end}}
+  </div>{{end}}
+
+  <h3>Signatures</h3>
   {{if $d.Signatures}}
   <ul class="sigs">{{range $d.Signatures}}
     <li class="{{if or .Stale (eq .Status "withdrawn")}}old{{end}}">
@@ -171,19 +225,20 @@
 
   {{with $d.SignAs}}
   <form autocomplete="off" method="post" action="/work-orders/{{$w.ID}}/sign" class="sign narrow">{{template "csrf" $.CSRF}}
-    <h3>Sign as {{.}}</h3>
+    <h3>{{if eq . "performed"}}Sign and finish the work{{else}}Sign as {{.}}{{end}}</h3>
     <p>By signing you state: <strong>“{{meaningText .}}”</strong></p>
     <p class="hint">Your signature is linked to the record as it is now (content {{printf "%.12s" $d.ContentHash}}). Any later change makes it stale.</p>
     <input type="hidden" name="meaning" value="{{.}}">
     <label>{{$.User.LegalName}}, re-enter your password <input name="password" type="password" autocomplete="current-password" required></label>
     {{if eq $.Clock "unverified"}}<label class="check warn"><input type="checkbox" name="ack_clock" value="yes"> This Pi's clock hasn't been verified against the master Pi. I understand the signing time may be inaccurate and this will be recorded.</label>{{end}}
-    <button>Sign</button>
+    <button>{{if eq . "performed"}}Sign: the work is done{{else}}Sign{{end}}</button>
   </form>
   {{end}}
 </section>
+</div>
+</div>
 {{end}}
 
-{{define "status"}}<form autocomplete="off" method="post" action="/work-orders/{{.A}}/status" class="act"><input type="hidden" name="csrf" value="{{.D}}"><input type="hidden" name="to" value="{{.B}}"><h3>Progress</h3><button>{{.C}}</button></form>{{end}}
 
 {{define "calrecord"}}{{$c := .A}}
 <article class="cal {{if eq $c.Status "voided"}}old{{end}}">
@@ -203,7 +258,7 @@
 
 {{/* The time card: Start work (Labour or Travel), the running clock, Stop work. */}}
 {{define "timecard"}}{{$d := .Data}}{{$w := $d.WO}}{{$c := $d.Clock}}
-<section class="timecard{{if and $c $c.Here}} running {{$c.Kind}}{{end}}" aria-label="Your time on this work">
+<section class="timecard{{if and $c $c.Here}} running {{$c.Kind}}{{end}}" id="clock" aria-label="Your time on this work">
 {{if and $c $c.Here}}
   <div class="clock-face">
     <span class="pulse" aria-hidden="true"></span>
@@ -228,7 +283,7 @@
       <button name="kind" value="travel" class="kind travel">{{template "icon-car"}}<span>Travel<small>On the way there or back</small></span></button>
     </form>
   </details>
-  <p class="hint">The clock records your time below when you stop it. Prefer to type it? <a href="#time">Add time by hand</a>.</p>
+  <p class="hint">Records your time when you stop it. Or <a href="#time">add time by hand</a>.</p>
 {{end}}
 {{range $d.OtherClocks}}<p class="other-clock"><span class="pulse" aria-hidden="true"></span>{{.Name}}: {{lower (timeKind .Kind)}} since {{.Since}} (<span class="elapsed" data-since="{{rfc3339 .Started}}">{{.Elapsed}}</span>)
   {{if $.IsMid}}<form autocomplete="off" method="post" action="/work-orders/{{$w.ID}}/clock/stop-other" class="inline">{{template "csrf" $.CSRF}}<input type="hidden" name="user" value="{{.UserID}}"><button class="link">Stop their clock</button></form>{{end}}</p>{{end}}

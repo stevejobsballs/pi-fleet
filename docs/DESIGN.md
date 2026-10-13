@@ -1234,6 +1234,20 @@ need a manual update. This is documented and rehearsed.
   listed. The master applies it as if just submitted: events carry the time
   they reach it. Service workers need a certificate the device trusts, so
   field mode works once the hospital's certificate is installed (§10.1).
+- **The work order is a job sheet.** At the top: status, priority, type, due
+  date, title and the problem. On a computer, two columns: the work (with a
+  step bar that stays in view: checklists, work done, test equipment,
+  parts, time, files, finish, each marked done or needing attention) and,
+  also staying in view, the work clock, the equipment and where it is (with
+  the location's contact and a phone link), the work's status (claim,
+  start without the clock, hold with a reason, resume), its recent history
+  and, for mid-tier users, assign, reopen and cancel. On a phone one
+  column, clock first. Parts used are issued from stock on the work order
+  (and put back as returns). *Finish* lists what is missing before signing
+  (required checklist answers and critical failures, which stop completion;
+  work done, time and test equipment, recommended), lets the equipment be
+  taken out of or put back into service, and signing as performed
+  completes the work and stops the signer's clock on it.
 - **Sessions:** random 256-bit token in an `HttpOnly; SameSite=Strict`
   cookie (`Secure` on central), stored hashed. 15-minute idle timeout and
   12-hour maximum. Each session has its own id, which is recorded on every

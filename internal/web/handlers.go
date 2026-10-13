@@ -557,6 +557,9 @@ func formInt(r *http.Request, name string) int64 {
 func (s *Server) assetStatus(w http.ResponseWriter, r *http.Request, sess *session) error {
 	id := r.PathValue("id")
 	back := "/assets/" + id
+	if b := r.PostFormValue("back"); strings.HasPrefix(b, "/work-orders/") {
+		back = localBack(b) // changed while finishing a work order
+	}
 	reason := strings.TrimSpace(r.PostFormValue("reason"))
 	if err := s.phiCheck(r, reason); err != nil {
 		return s.failed(w, r, sess, back, err)
@@ -675,6 +678,21 @@ type woData struct {
 	// SignAs is the meaning the current user may sign with now, if any.
 	SignAs    string
 	Performer bool
+	// The job sheet (jobsheet.go): where the equipment is, its recent
+	// history, parts used, the step bar and what's missing to finish.
+	Place       string
+	Where       domain.LocationDetails
+	History     []woRow
+	AssetFiles  int
+	Parts       []partUse
+	PartsUsed   int
+	PartChoices []partChoice
+	CanParts    bool
+	HoldReasons []string
+	Steps       []woStep
+	Ready       []readyItem
+	NotReady    bool // something stops completion
+	Todo        bool // something recommended is left
 }
 
 func (s *Server) workOrderView(w http.ResponseWriter, r *http.Request, sess *session) error {
@@ -783,7 +801,7 @@ func (s *Server) loadWorkOrder(r *http.Request, sess *session, id string) (woDat
 	}
 	d.Rows, _ = strconv.Atoi(r.URL.Query().Get("rows"))
 	d.Rows = min(max(d.Rows, 4), 50)
-	return d, nil
+	return d, s.jobSheet(ctx, q, &d, sess)
 }
 
 func (s *Server) workOrderClaim(w http.ResponseWriter, r *http.Request, sess *session) error {
@@ -806,13 +824,20 @@ func (s *Server) workOrderStatus(w http.ResponseWriter, r *http.Request, sess *s
 	id := r.PathValue("id")
 	back := "/work-orders/" + id
 	reason := strings.TrimSpace(r.PostFormValue("reason"))
+	if detail := strings.TrimSpace(r.PostFormValue("detail")); detail != "" { // a hold's reason, then more detail
+		reason = strings.TrimPrefix(reason+": "+detail, ": ")
+	}
 	if err := s.phiCheck(r, reason); err != nil {
 		return s.failed(w, r, sess, back, err)
 	}
 	if err := s.App.ChangeWorkOrderStatus(r.Context(), s.actor(sess), id, r.PostFormValue("to"), reason); err != nil {
 		return s.failed(w, r, sess, back, err)
 	}
-	return s.done(w, r, sess, back, "Status changed.")
+	msg := map[string]string{domain.WOOnHold: "On hold. Resume the work when you can carry on.", domain.WOInProgress: "In progress."}[r.PostFormValue("to")]
+	if msg == "" {
+		msg = "Status changed."
+	}
+	return s.done(w, r, sess, back, msg)
 }
 
 func (s *Server) workOrderSign(w http.ResponseWriter, r *http.Request, sess *session) error {

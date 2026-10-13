@@ -394,7 +394,7 @@ func TestCalibrationWorkOrderThroughTheUI(t *testing.T) {
 		t.Fatalf("clock acknowledgement not demanded:\n%s", page)
 	}
 	_, page = tess.post(wo+"/sign", url.Values{"meaning": {"performed"}, "password": {"brass-kettle-orchard-7"}, "ack_clock": {"yes"}})
-	if !strings.Contains(page, "Signed.") || !strings.Contains(page, "<strong>completed</strong>") {
+	if !strings.Contains(page, "Signed.") || !strings.Contains(page, `<span class="chip st-completed">completed</span>`) {
 		t.Fatalf("performed signature:\n%s", page)
 	}
 
@@ -406,7 +406,7 @@ func TestCalibrationWorkOrderThroughTheUI(t *testing.T) {
 	mona.get(wo)
 	mona.post(wo+"/sign", url.Values{"meaning": {"reviewed"}, "password": {"brass-kettle-orchard-7"}, "ack_clock": {"yes"}})
 	_, page = mona.post(wo+"/sign", url.Values{"meaning": {"approved"}, "password": {"brass-kettle-orchard-7"}, "ack_clock": {"yes"}})
-	if !strings.Contains(page, "<strong>closed</strong>") {
+	if !strings.Contains(page, `<span class="chip st-closed">closed</span>`) {
 		t.Fatalf("not closed:\n%s", page)
 	}
 	// Signature manifestation: name, meaning, time, statement (§11.50).

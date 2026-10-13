@@ -341,7 +341,7 @@ func TestChecklistPageDuringAVisit(t *testing.T) {
 
 	// The work order shows a card that opens the checklist page.
 	_, _, page := tess.get("/work-orders/" + wo)
-	if !strings.Contains(page, `<a class="cl-open" href="/work-orders/`+wo+`/checklists/`+proc+`">`) || !strings.Contains(page, "Open and fill in") {
+	if !strings.Contains(page, `<a class="cl-open" href="/work-orders/`+wo+`/checklists/`+proc+`">`) || !strings.Contains(page, `<span class="button">Start</span>`) {
 		t.Fatalf("card:\n%s", page)
 	}
 	_, _, page = tess.get("/work-orders/" + wo + "/checklists/" + proc)

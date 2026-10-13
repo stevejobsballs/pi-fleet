@@ -226,6 +226,8 @@ func (s *Server) Handler() (http.Handler, error) {
 	mux.Handle("POST /work-orders/{id}/clock/stop-other", mid(s.clockStopOther))
 	mux.Handle("POST /clock/stop", user(s.clockStop))
 	mux.Handle("POST /labor/{id}/edit", user(s.laborEdit))
+	mux.Handle("POST /work-orders/{id}/parts", user(s.partsUse))
+	mux.Handle("POST /work-orders/{id}/parts/return", user(s.partsReturn))
 	mux.Handle("POST /work-orders/{id}/work-done", user(s.workOrderWorkDone))
 	mux.Handle("POST /work-orders/{id}/test-equipment", user(s.workOrderTestEquipmentAdd))
 	mux.Handle("POST /work-orders/{id}/test-equipment/remove", user(s.workOrderTestEquipmentRemove))

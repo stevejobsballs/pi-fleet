@@ -28,7 +28,7 @@
   <button>Set {{if eq (len .) 1}}it{{else}}them{{end}} up</button></form>{{end}}
   <p class="buttons"><a class="button" href="/work-orders/new?asset={{$a.ID}}">New work order</a>{{if $.IsMid}}<a class="button secondary" href="/schedules?asset={{$a.ID}}#new">Add a schedule</a>{{end}}</p>
 </section>{{end}}
-<section><h2>Service history</h2>{{template "worows" .Data.WorkOrders}}</section>
+<section id="history"><h2>Service history</h2>{{template "worows" .Data.WorkOrders}}</section>
 <section><h2>Calibration history</h2>
 {{if .Data.Calibrations}}<table><thead><tr><th>Date</th><th>Work order</th><th>By</th><th>As found</th><th>As left</th><th>Status</th></tr></thead><tbody>
 {{range .Data.Calibrations}}<tr><td>{{when .PerformedAt}}</td><td>{{.WorkOrder}}</td><td>{{.PerformedBy}}</td><td class="r-{{.AsFound}}">{{.AsFound}}</td><td class="r-{{.AsLeft}}">{{.AsLeft}}</td><td>{{.Status}}</td></tr>{{end}}

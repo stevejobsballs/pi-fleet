@@ -65,6 +65,15 @@ func (a *App) Sign(ctx context.Context, actor Actor, woID, meaning, pw string, a
 		}); err != nil {
 			return err
 		}
+		if meaning == domain.MeaningPerformed { // finished: the signer's clock on it stops
+			if c, ok, err := domain.RunningClock(ctx, tx, actor.UserID); err != nil {
+				return err
+			} else if ok && c.WorkOrderID == woID {
+				if _, err := a.stopClock(ctx, tx, actor, actor.UserID, ""); err != nil {
+					return err
+				}
+			}
+		}
 		to := map[string]string{domain.MeaningPerformed: domain.WOCompleted, domain.MeaningReviewed: domain.WOReviewed, domain.MeaningApproved: domain.WOClosed}[meaning]
 		return a.emit(ctx, tx, actor, domain.TypeWorkOrderStatusChanged, domain.EntityWorkOrder, woID, w.Version, lease,
 			domain.WorkOrderStatusChanged{From: w.Status, To: to})
