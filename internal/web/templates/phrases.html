@@ -1,0 +1,9 @@
+{{define "content"}}{{$d := .Data}}
+<p>Quick phrases are offered under <strong>Work done</strong> on a work order: a tap adds one to the description, which can then be changed as needed.</p>
+{{if $d.CanEdit}}<form autocomplete="off" method="post" action="/phrases" class="narrow">{{template "csrf" .CSRF}}
+  <label>One phrase per line <textarea name="phrases" rows="14" maxlength="12000">{{$d.Phrases}}</textarea></label>
+  <p class="hint">Up to 40 phrases. Empty the box and save to go back to the usual ones. Never include patient information.</p>
+  <button>Save the phrases</button></form>
+{{else}}<ul>{{range lines $d.Phrases}}<li>{{.}}</li>{{end}}</ul>
+<p class="hint">A mid-tier or super user can change them.</p>{{end}}
+{{end}}

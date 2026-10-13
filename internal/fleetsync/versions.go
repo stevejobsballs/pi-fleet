@@ -30,8 +30,10 @@ import (
 // work done (work_orders.work_done) and test equipment used
 // (wo_test_equipment); v0.20.0 labour or travel time and the work clock
 // (labor_entries.kind, started_at, ended_at, the labor_clocks table, and
-// the labor.clock_started, labor.clock_stopped and labor.corrected events).
-const MinNodeVersion = "v0.20.0"
+// the labor.clock_started, labor.clock_stopped and labor.corrected events);
+// v0.22.0 follow-up work orders and the handover (work_orders.follow_up_of
+// and handover_*, the follow_up_of payload field, workorder.handed_over).
+const MinNodeVersion = "v0.22.0"
 
 const (
 	// On the master Pi: a newer version a super user requires, and when.

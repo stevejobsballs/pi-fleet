@@ -532,3 +532,19 @@ fieldset.reasons { display: flex; flex-wrap: wrap; gap: .4em; border: 0; padding
 fieldset.reasons legend { font-weight: 700; margin-bottom: .3em; padding: 0; }
 .hold-form { display: flex; flex-direction: column; align-items: flex-start; gap: .6em; }
 @media (max-width: 40em) { .job-steps { flex-wrap: nowrap; margin-right: -.75rem; padding-right: .75rem; } }
+/* Follow-ups, repeated repairs, quick phrases, the camera button, the
+   handover. */
+.follow-of { margin: .3em 0; }
+.repeat-alert { display: flex; gap: .6em; align-items: flex-start; max-width: 60em; margin: .6em 0 0; padding: .6em .95em;
+  background: var(--high-bg); border: 1px solid var(--high-edge); border-radius: 8px; }
+.repeat-alert .icon { color: var(--high-tag); width: 1.5em; height: 1.5em; margin-top: .1em; }
+.phrases { display: flex; flex-wrap: wrap; gap: .45em; margin: .4em 0 .8em; }
+.phrases .hint { flex-basis: 100%; margin: 0; }
+button.phrase { font-weight: 400; text-align: left; padding: .45em .85em; border-radius: 999px; background: var(--panel); color: var(--fg); border: 1px solid var(--line-strong); }
+button.phrase:hover { background: var(--good-bg); border-color: var(--good); color: var(--fg); }
+button.phrase.used { background: var(--good-bg); border-color: var(--good); }
+label.button.camera { display: inline-flex; align-items: center; gap: .5em; position: relative; cursor: pointer; font-size: 1.1em; padding: .7em 1.3em; border-radius: 999px; }
+label.button.camera input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
+form.camera-form { margin-bottom: .8em; }
+@media (pointer: fine) { form.camera-form { display: none; } }
+.follow > summary { margin-top: .6em; }

@@ -235,6 +235,9 @@ type WorkOrderOpened struct {
 	ScheduleID string `json:"schedule_id,omitempty"`
 	// ProcedureID is the checklist version to follow, if any.
 	ProcedureID string `json:"procedure_id,omitempty"`
+	// FollowUpOf is the work order (on the same equipment) this one
+	// follows up, if any.
+	FollowUpOf string `json:"follow_up_of,omitempty"`
 }
 
 // WorkOrderAssigned grants a new lease to the assignee and ends any

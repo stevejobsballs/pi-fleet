@@ -5,10 +5,13 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
+	"pi-fleet/internal/app"
 	"pi-fleet/internal/domain"
 )
 
@@ -42,6 +45,13 @@ type partUse struct {
 type partChoice struct {
 	Value, Label string // Value: part id|location id
 }
+
+// RepeatWindow and RepeatAlert: a work order warns when its equipment had
+// at least RepeatAlert other repair jobs within RepeatWindow.
+const (
+	RepeatWindow = 90 * 24 * time.Hour
+	RepeatAlert  = 2
+)
 
 // HoldReasons are the usual reasons for putting work on hold.
 var HoldReasons = []string{"Waiting for parts", "Waiting for the vendor", "Equipment in use", "Needs another visit"}
@@ -102,7 +112,19 @@ func (s *Server) jobSheet(ctx context.Context, q domain.Querier, d *woData, sess
 			return err
 		}
 	}
-	d.HoldReasons = HoldReasons
+	d.HoldReasons, d.FollowUpReasons = HoldReasons, FollowUpReasons
+	if d.Links, err = domain.GetWorkOrderLinks(ctx, q, wo.ID); err != nil {
+		return err
+	}
+	// Repeated repairs: a sign of a deeper fault, or of misuse.
+	if d.Repairs, err = domain.RecentRepairs(ctx, q, wo.AssetID, wo.ID, s.now().Add(-RepeatWindow)); err != nil {
+		return err
+	}
+	d.CanFollowUp = wo.Status != domain.WOCancelled && (d.Performer || isMid)
+	d.CanHandover = (d.Performer || isMid) && (wo.Status == domain.WOInProgress || wo.Status == domain.WOCompleted || wo.Status == domain.WOReviewed)
+	if d.EditWork {
+		d.Phrases = s.phrases(ctx)
+	}
 
 	// The step bar.
 	answered, total, missing := 0, 0, 0
@@ -168,6 +190,9 @@ func (s *Server) jobSheet(ctx context.Context, q domain.Querier, d *woData, sess
 	}
 	if wo.Type == "calibration" && !d.CalPoints && len(d.Calibrations) == 0 {
 		d.Ready = append(d.Ready, readyItem{State: "need", Href: "#checklist", Text: "Calibration work needs readings: add a checklist with calibration points"})
+	}
+	if wo.Type == "corrective" && d.Links.Handover.Name == "" {
+		d.Ready = append(d.Ready, readyItem{State: "todo", Href: "#handover", Text: "Hand the equipment back and record who received it"})
 	}
 	if wo.WorkDone == "" {
 		d.Ready = append(d.Ready, readyItem{State: "todo", Href: "#work-done", Text: "Describe the work done"})
@@ -242,4 +267,127 @@ func (s *Server) partsReturn(w http.ResponseWriter, r *http.Request, sess *sessi
 		return s.failed(w, r, sess, back, err)
 	}
 	return s.done(w, r, sess, back, "Put back into stock.")
+}
+
+// FollowUpReasons are the usual reasons for a follow-up job.
+var FollowUpReasons = []string{"Another visit", "Order a part", "Vendor repair"}
+
+// workOrderFollowUp opens a follow-up job on the same equipment, linked to
+// this one, assigned to the person opening it if they ask.
+func (s *Server) workOrderFollowUp(w http.ResponseWriter, r *http.Request, sess *session) error {
+	ctx := r.Context()
+	id := r.PathValue("id")
+	back := "/work-orders/" + id
+	prev, err := domain.GetWorkOrder(ctx, s.App.Store.DB(), id)
+	if err != nil {
+		return err
+	}
+	reason, detail := strings.TrimSpace(r.PostFormValue("reason")), strings.TrimSpace(r.PostFormValue("detail"))
+	if reason == "" && detail == "" {
+		return s.done(w, r, sess, back, "Not opened: say what the follow-up is for.")
+	}
+	if err := s.phiCheck(r, detail); err != nil {
+		return s.failed(w, r, sess, back, err)
+	}
+	title := strings.TrimPrefix(reason+": "+detail, ": ")
+	title = strings.TrimSuffix(title, ": ")
+	priority := r.PostFormValue("priority")
+	if priority == "" {
+		priority = "normal"
+	}
+	newID, number, err := s.App.OpenWorkOrder(ctx, s.actor(sess), app.NewWorkOrder{Type: "corrective", AssetID: prev.AssetID, Priority: priority,
+		Title: title, Problem: strings.TrimSpace("Follow-up of " + prev.Number + " (" + prev.Title + "). " + detail), FollowUpOf: prev.ID})
+	if err != nil {
+		return s.failed(w, r, sess, back, err)
+	}
+	msg := "Opened follow-up " + number + "."
+	if r.PostFormValue("mine") == "yes" {
+		if _, err := s.App.ClaimWorkOrder(ctx, s.actor(sess), newID); err != nil {
+			msg += " It couldn't be assigned to you: " + message(err)
+		} else {
+			msg += " It's assigned to you."
+		}
+	}
+	return s.done(w, r, sess, "/work-orders/"+newID, msg)
+}
+
+// workOrderHandover records who in the department received the equipment.
+func (s *Server) workOrderHandover(w http.ResponseWriter, r *http.Request, sess *session) error {
+	id := r.PathValue("id")
+	back := "/work-orders/" + id + "#finish"
+	name, note := strings.TrimSpace(r.PostFormValue("name")), strings.TrimSpace(r.PostFormValue("note"))
+	if err := s.phiCheck(r, note); err != nil {
+		return s.failed(w, r, sess, back, err)
+	}
+	if err := s.App.RecordHandover(r.Context(), s.actor(sess), id, name, note); err != nil {
+		return s.failed(w, r, sess, back, err)
+	}
+	return s.done(w, r, sess, back, "Handover recorded: received by "+name+".")
+}
+
+// Quick phrases for describing the work done: tapped to add to the text.
+// Mid-tier users change the list (Work › Quick phrases).
+const configPhrases = "work_phrases"
+
+// DefaultPhrases are the quick phrases until a mid-tier user changes them.
+var DefaultPhrases = []string{
+	"Performed preventive maintenance to the manufacturer's procedure.",
+	"Electrical safety test performed: passed.",
+	"Performance verified with the test equipment listed: within tolerance.",
+	"Cleaned and inspected: no damage found.",
+	"Replaced the battery.",
+	"Updated the software.",
+	"No fault found: worked normally through a full test cycle.",
+	"Returned to the department and shown to the staff.",
+	"Taken out of service until repaired.",
+}
+
+func (s *Server) phrases(ctx context.Context) []string {
+	v, err := s.App.Store.Config(ctx, configPhrases)
+	if err != nil || strings.TrimSpace(v) == "" {
+		return DefaultPhrases
+	}
+	var out []string
+	for _, l := range strings.Split(v, "\n") {
+		if l = strings.TrimSpace(l); l != "" {
+			out = append(out, l)
+		}
+	}
+	return out
+}
+
+type phrasesData struct {
+	Phrases string
+	CanEdit bool
+}
+
+func (s *Server) phrasesPage(w http.ResponseWriter, r *http.Request, sess *session) error {
+	return s.render(w, r, sess, "phrases", "Quick phrases", phrasesData{Phrases: strings.Join(s.phrases(r.Context()), "\n"),
+		CanEdit: roleRank[sess.User.Role] >= roleRank[domain.RoleMidTier]})
+}
+
+func (s *Server) phrasesSave(w http.ResponseWriter, r *http.Request, sess *session) error {
+	var lines []string
+	for _, l := range strings.Split(r.PostFormValue("phrases"), "\n") {
+		if l = strings.TrimSpace(l); l != "" {
+			if len(l) > 300 {
+				return s.done(w, r, sess, "/phrases", "Not saved: each phrase can be at most 300 characters.")
+			}
+			lines = append(lines, l)
+		}
+	}
+	if len(lines) > 40 {
+		return s.done(w, r, sess, "/phrases", "Not saved: at most 40 phrases.")
+	}
+	if err := s.phiCheck(r, strings.Join(lines, "\n")); err != nil {
+		return s.failed(w, r, sess, "/phrases", err)
+	}
+	if err := s.App.Store.SetConfig(r.Context(), configPhrases, strings.Join(lines, "\n")); err != nil {
+		return err
+	}
+	log.Printf("web: %s changed the quick phrases", sess.User.Username)
+	if len(lines) == 0 {
+		return s.done(w, r, sess, "/phrases", "Back to the usual phrases.")
+	}
+	return s.done(w, r, sess, "/phrases", fmt.Sprintf("Saved %d quick phrase%s.", len(lines), plural(len(lines))))
 }

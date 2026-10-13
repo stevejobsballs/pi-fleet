@@ -1248,6 +1248,16 @@ need a manual update. This is documented and rehearsed.
   work done, time and test equipment, recommended), lets the equipment be
   taken out of or put back into service, and signing as performed
   completes the work and stops the signer's clock on it.
+  Also on the job sheet: a **follow-up** job in one step (same equipment,
+  linked both ways: `follow_up_of`), a **repeated-repairs** warning when
+  the equipment had two or more other repair jobs in 90 days, **quick
+  phrases** under Work done (a tap adds one; mid-tier users edit the list,
+  `/phrases`, kept in `node_config`), a **Take a photo** button on touch
+  screens (`capture="environment"`), and the **handover**
+  (`workorder.handed_over`): the person in the department receiving the
+  equipment types their name on the technician's device. The handover is
+  an acknowledgement recorded by the technician, not an electronic
+  signature: the receiver has no account.
 - **Sessions:** random 256-bit token in an `HttpOnly; SameSite=Strict`
   cookie (`Secure` on central), stored hashed. 15-minute idle timeout and
   12-hour maximum. Each session has its own id, which is recorded on every

@@ -4,7 +4,9 @@
   <p class="job-chips"><span class="chip st-{{$w.Status}}">{{label $w.Status}}</span>{{if or (eq $w.Priority "urgent") (eq $w.Priority "high")}}{{template "prio" $w.Priority}}{{end}}
     <span class="chip plain">{{label $w.Type}}</span>{{with $w.DueAt}}<span class="chip plain">Due {{.}}</span>{{end}}</p>
   <p class="wo-title">{{$w.Title}}</p>
+  {{with $d.Links.FollowUpOf.ID}}<p class="follow-of">Follow-up of <a href="/work-orders/{{.}}">{{$d.Links.FollowUpOf.Number}}</a> · {{$d.Links.FollowUpOf.Title}}</p>{{end}}
   {{with $w.Problem}}<p class="job-problem pre">{{.}}</p>{{end}}
+  {{if ge $d.Repairs 2}}<p class="repeat-alert" role="note">{{template "icon-alert"}}<span><strong>Repeated repairs:</strong> this equipment has had {{$d.Repairs}} other repair jobs in the last 90 days. Look for a common cause (<a href="/assets/{{$d.Asset.ID}}#history">see its history</a>).</span></p>{{end}}
 </header>
 
 <div class="job">
@@ -37,6 +39,14 @@
           <button>Put on hold</button></form></details>{{end}}
       {{if eq $w.Status "on_hold"}}<form autocomplete="off" method="post" action="/work-orders/{{$w.ID}}/status">{{template "csrf" .CSRF}}<input type="hidden" name="to" value="in_progress"><button>Resume the work</button></form>{{end}}
     {{end}}
+    {{with $d.Links.FollowUps}}<h3>Follow-ups</h3><ul class="history">{{range .}}<li><a href="/work-orders/{{.ID}}">{{.Number}}</a> <span class="hint">{{label .Status}}</span><br>{{.Title}}</li>{{end}}</ul>{{end}}
+    {{if $d.CanFollowUp}}<details class="follow"><summary>Needs more work later? Open a follow-up</summary>
+      <form autocomplete="off" method="post" action="/work-orders/{{$w.ID}}/follow-up" class="hold-form">{{template "csrf" .CSRF}}
+        <fieldset class="reasons"><legend>What for?</legend>{{range $d.FollowUpReasons}}<label class="pill"><input type="radio" name="reason" value="{{.}}">{{.}}</label>{{end}}</fieldset>
+        <label>What's needed <input name="detail" placeholder="e.g. replace the door latch when the part arrives"></label>
+        <label>Priority <select name="priority"><option value="normal">routine</option><option value="high">high</option><option value="urgent">stat</option><option value="low">low</option></select></label>
+        <label class="check"><input type="checkbox" name="mine" value="yes" checked> Assign it to me</label>
+        {{template "nophi"}}<button>Open the follow-up</button></form></details>{{end}}
   </section>
 
   <section class="side-card side-history" aria-labelledby="hist-h">
@@ -115,7 +125,9 @@
 <section id="work-done">
   <h2>Work done</h2>
   {{if $d.EditWork}}<form autocomplete="off" method="post" action="/work-orders/{{$w.ID}}/work-done" class="narrow work-done">{{template "csrf" .CSRF}}
-    <label>Describe all the work done <textarea name="work_done" rows="6" maxlength="8000" placeholder="e.g. replaced the occlusion sensor, recalibrated the flow, ran it for 30 minutes with no alarms">{{$w.WorkDone}}</textarea></label>
+    <label>Describe all the work done <textarea name="work_done" id="work-done-text" rows="6" maxlength="8000" placeholder="e.g. replaced the occlusion sensor, recalibrated the flow, ran it for 30 minutes with no alarms">{{$w.WorkDone}}</textarea></label>
+    {{with $d.Phrases}}<div class="phrases" data-for="work-done-text" hidden><p class="hint">Tap to add:</p>{{range .}}<button type="button" class="phrase" data-phrase="{{.}}">{{.}}</button>{{end}}
+      {{if $.IsMid}}<p class="hint"><a href="/phrases">Change these phrases</a></p>{{end}}</div>{{end}}
     {{template "nophi"}}
     <button>Save the work done</button></form>
   {{else if $w.WorkDone}}<p class="pre work-done-text">{{$w.WorkDone}}</p>
@@ -207,6 +219,16 @@
       <form autocomplete="off" method="post" action="/assets/{{$d.Asset.ID}}/status" class="time-form">{{template "csrf" .CSRF}}<input type="hidden" name="version" value="{{$d.Asset.Version}}"><input type="hidden" name="back" value="/work-orders/{{$w.ID}}#finish"><input type="hidden" name="status" value="out_of_service">
         <label class="wide">Why <input name="reason" required placeholder="e.g. failed electrical safety, waiting for a part"></label><button class="danger">Take out of service</button></form></details>
     {{else if eq $d.Asset.Status "out_of_service"}}<form autocomplete="off" method="post" action="/assets/{{$d.Asset.ID}}/status">{{template "csrf" .CSRF}}<input type="hidden" name="version" value="{{$d.Asset.Version}}"><input type="hidden" name="back" value="/work-orders/{{$w.ID}}#finish"><input type="hidden" name="status" value="in_service"><button>Put it back in service</button></form>{{end}}
+  </div>{{end}}
+  {{if or $d.Links.Handover.Name $d.CanHandover}}<div class="eq-status handover" id="handover">
+    <h3>Handed back to the department</h3>
+    {{with $d.Links.Handover}}{{if .Name}}<p>{{template "icon-check"}} Received by <strong>{{.Name}}</strong> on {{whenLocal .At $d.SiteTZ}}, recorded by {{.By}}.{{with .Note}}<br>{{.}}{{end}}</p>{{end}}{{end}}
+    {{if $d.CanHandover}}<details{{if not $d.Links.Handover.Name}} open{{end}}><summary>{{if $d.Links.Handover.Name}}Record it again{{else}}Record the handover{{end}}</summary>
+      <p class="hint">Hand the device to the person receiving it, and ask them to type their name.</p>
+      <form autocomplete="off" method="post" action="/work-orders/{{$w.ID}}/handover" class="time-form">{{template "csrf" .CSRF}}
+        <label class="wide">Received by (their name) <input name="name" required maxlength="100" autocomplete="off"></label>
+        <label class="wide">Note (optional) <input name="note" maxlength="500" placeholder="e.g. shown the new battery indicator"></label>
+        <button>Record the handover</button></form></details>{{end}}
   </div>{{end}}
 
   <h3>Signatures</h3>

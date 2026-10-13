@@ -6,7 +6,7 @@
 <title>{{.Title}} · pi-fleet</title>
 <link rel="stylesheet" href="/static/style.css">
 {{if .Large}}<link rel="stylesheet" href="/static/large.css">{{end}}
-{{if .User.ID}}<script src="/static/session.js"></script><script src="/static/clock.js" defer></script>{{end}}
+{{if .User.ID}}<script src="/static/session.js"></script><script src="/static/clock.js" defer></script><script src="/static/phrases.js" defer></script>{{end}}
 {{if .Field}}<script src="/static/field.js" defer></script>{{end}}
 </head>
 <body{{if .Field}} data-user="{{.User.ID}}"{{end}}>
@@ -109,7 +109,11 @@
       {{if $mid}}<label class="check"><input type="checkbox" name="purge" value="yes"> Delete the file itself everywhere (e.g. it shows patient information)</label>{{end}}
       <button class="danger">Remove</button></form></details>{{end}}
   </li>{{end}}</ul>{{else}}<p>No files.</p>{{end}}
-{{if .Can}}<form autocomplete="off" method="post" action="{{.Action}}" enctype="multipart/form-data" class="inline">{{template "csrf" $csrf}}
+{{if .Can}}<form autocomplete="off" method="post" action="{{.Action}}" enctype="multipart/form-data" class="inline camera-form">{{template "csrf" $csrf}}
+  <label class="button camera">{{template "icon-camera"}}Take a photo<input type="file" name="file" accept="image/*" capture="environment" required></label>
+  <label>Description <input name="description" placeholder="e.g. the damaged cable"></label>
+  {{template "nophi"}}<button>Add the photo</button></form>
+<form autocomplete="off" method="post" action="{{.Action}}" enctype="multipart/form-data" class="inline">{{template "csrf" $csrf}}
   <label>File (photo (JPEG, PNG, WebP) or PDF, up to 10 MiB) <input type="file" name="file" accept="image/jpeg,image/png,image/webp,application/pdf" required></label>
   <label>Description <input name="description" placeholder="e.g. calibration certificate"></label>
   {{template "nophi"}}<button>Attach</button></form>
@@ -142,5 +146,7 @@
 {{define "icon-car"}}<svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><path d="M9 17h6"/><circle cx="17" cy="17" r="2"/></svg>{{end}}
 {{define "icon-play"}}<svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M7 4.5v15a1 1 0 0 0 1.5.86l12.5-7.5a1 1 0 0 0 0-1.72L8.5 3.64A1 1 0 0 0 7 4.5z"/></svg>{{end}}
 {{define "icon-stop"}}<svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2.5"/></svg>{{end}}
+{{define "icon-camera"}}<svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3.5"/></svg>{{end}}
+{{define "icon-alert"}}<svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>{{end}}
 {{define "icon-check"}}<svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>{{end}}
 {{define "icon-kind"}}{{if eq . "travel"}}{{template "icon-car"}}{{else}}{{template "icon-wrench"}}{{end}}{{end}}

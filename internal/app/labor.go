@@ -88,3 +88,16 @@ func (a *App) CorrectLabor(ctx context.Context, actor Actor, id string, c domain
 		return a.emit(ctx, tx, actor, domain.TypeLaborCorrected, domain.EntityLabor, id, 0, "", c)
 	})
 }
+
+// RecordHandover records the department's acknowledgement that the
+// equipment was handed back.
+func (a *App) RecordHandover(ctx context.Context, actor Actor, woID, name, note string) error {
+	return a.Store.Update(ctx, func(tx *store.Tx) error {
+		w, err := domain.GetWorkOrder(ctx, tx, woID)
+		if err != nil {
+			return err
+		}
+		return a.emit(ctx, tx, actor, domain.TypeWorkOrderHandedOver, domain.EntityWorkOrder, woID, w.Version, "",
+			domain.WorkOrderHandedOver{Name: name, Note: note})
+	})
+}

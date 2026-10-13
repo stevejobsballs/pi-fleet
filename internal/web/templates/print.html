@@ -27,12 +27,18 @@ As found: <strong>{{.AsFound}}</strong> · As left: <strong>{{.AsLeft}}</strong>
 <table><thead><tr><th>Step</th><th>Result</th><th>Recorded</th><th>Note</th></tr></thead><tbody>
 {{range .Steps}}{{if eq .Kind "heading"}}<tr><th colspan="9">{{.Text}}</th></tr>{{else if eq .Kind "info"}}{{else}}<tr><td>{{.Text}}{{if .Required}} (required){{end}}{{if .Critical}} (critical){{end}}</td><td>{{if not .Applies}}not needed{{else if .Recorded}}{{.Summary}} {{if eq .Kind "number"}}{{.Unit}}{{end}}{{if .Measured}} (measured {{.Measured}}{{if .Unit}} {{.Unit}}{{end}}){{end}}{{if eq .Kind "calibration"}}{{else if eq .Outcome "pass"}} pass{{else if eq .Outcome "fail"}} FAIL{{end}}{{else}}not recorded{{end}}</td>
   <td>{{if .Recorded}}{{.RecordedBy}} {{when .RecordedAt}}{{end}}</td><td>{{.Note}}</td></tr>{{end}}{{end}}</tbody></table>{{end}}
+{{with .Links.FollowUpOf.ID}}<p>Follow-up of {{$.Links.FollowUpOf.Number}} ({{$.Links.FollowUpOf.Title}})</p>{{end}}
+{{with .Links.FollowUps}}<p>Follow-ups: {{range $i, $f := .}}{{if $i}}, {{end}}{{$f.Number}} ({{$f.Title}}, {{label $f.Status}}){{end}}</p>{{end}}
 <h2>Work done</h2>
 {{if .WO.WorkDone}}<p class="pre">{{.WO.WorkDone}}</p>{{else}}<p>Not described.</p>{{end}}
 <h2>Test equipment used</h2>
 {{range .TestEquipment}}<p>{{.Tag}} · {{.Equipment}}{{with .Serial}} · serial {{.}}{{end}} · {{if .Due}}calibration due {{.Due}}{{if .Overdue}} (OVERDUE when used){{end}}{{else}}no calibration schedule{{end}}</p>{{else}}<p>None listed.</p>{{end}}
 <h2>Time (labour {{hhmm .LabourTotal}}, travel {{hhmm .TravelTotal}})</h2>
 {{range .Time}}<p>{{.Date}} · {{timeKind .Kind}}{{if .From}} {{.From}}–{{.To}}{{end}} · {{.User}} · {{.Time}}{{if .Note}} · {{.Note}}{{end}}{{if eq .Status "reversed"}} · removed: {{.ReverseReason}}{{end}}</p>{{else}}<p>None.</p>{{end}}
+<h2>Parts used</h2>
+{{range .Parts}}<p>{{if eq .Kind "return"}}put back {{end}}{{.Qty}} {{.Unit}} · {{.PartNo}} {{.Description}} · {{if eq .Kind "return"}}into{{else}}from{{end}} {{.Location}}</p>{{else}}<p>None.</p>{{end}}
+<h2>Handover</h2>
+{{with .Links.Handover}}{{if .Name}}<p>Received by {{.Name}} on {{when .At}}, recorded by {{.By}}{{with .Note}} · {{.}}{{end}}</p>{{else}}<p>Not recorded.</p>{{end}}{{end}}
 <h2>Files</h2>
 {{range .Attachments}}<p>{{.Filename}} ({{.MIME}}, {{kib .Size}}) added by {{.AddedBy}} {{when .AddedAt}}{{if ne .Status "attached"}} · {{.Status}}: {{.DetachReason}}{{end}}<br><small>sha256 {{.SHA256}}</small></p>{{else}}<p>None.</p>{{end}}
 <h2>Electronic signatures</h2>

@@ -692,7 +692,14 @@ type woData struct {
 	Steps       []woStep
 	Ready       []readyItem
 	NotReady    bool // something stops completion
-	Todo        bool // something recommended is left
+	// Follow-ups, the handover, repeated repairs and quick phrases.
+	Links           domain.WorkOrderLinks
+	Repairs         int // other repair jobs on the equipment recently
+	FollowUpReasons []string
+	CanFollowUp     bool
+	CanHandover     bool
+	Phrases         []string
+	Todo            bool // something recommended is left
 }
 
 func (s *Server) workOrderView(w http.ResponseWriter, r *http.Request, sess *session) error {

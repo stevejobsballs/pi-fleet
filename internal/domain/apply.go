@@ -231,6 +231,8 @@ func (p *Projector) Apply(ctx context.Context, tx *sql.Tx, e *event.Event) error
 		return ap.meterRead(pl)
 	case *MeterVoided:
 		return ap.meterVoided(pl)
+	case *WorkOrderHandedOver:
+		return ap.workOrderHandedOver(pl)
 	case *WorkOrderWorkDone:
 		return ap.workOrderWorkDone(pl)
 	case *WorkOrderTestEquipment:
@@ -878,11 +880,20 @@ func (ap *applier) workOrderOpened(p *WorkOrderOpened) error {
 			return err
 		}
 	}
+	if p.FollowUpOf != "" {
+		prev, err := ap.workOrderFor(p.FollowUpOf)
+		if err != nil {
+			return err
+		}
+		if prev.AssetID != p.AssetID {
+			return invalid("a follow-up is for the same equipment as %s", prev.Number)
+		}
+	}
 	return ap.exec(`INSERT INTO work_orders (id, number, type, asset_id, priority, status, title, problem, due_at,
-			opened_by, assigned_to, lease_id, schedule_id, procedure_id, version, last_event_id, opened_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', '', ?, ?, 1, ?, ?)`,
+			opened_by, assigned_to, lease_id, schedule_id, procedure_id, version, last_event_id, opened_at, follow_up_of)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', '', ?, ?, 1, ?, ?, ?)`,
 		ap.e.EntityID, p.Number, p.Type, p.AssetID, p.Priority, WOOpen, p.Title, p.Problem, p.DueAt,
-		ap.actor.id, p.ScheduleID, p.ProcedureID, ap.e.EventID, ap.wall())
+		ap.actor.id, p.ScheduleID, p.ProcedureID, ap.e.EventID, ap.wall(), p.FollowUpOf)
 }
 
 func parseDue(s string) (time.Time, error) {

@@ -73,8 +73,8 @@ func TestQRLabels(t *testing.T) {
 		t.Fatalf("label page without signing in: %d", c)
 	}
 	// Every other page runs no script but field mode's and the sign-in's.
-	if _, _, page = b.get("/assets/" + pump); strings.Count(page, "<script") != 3 || !strings.Contains(page, `<script src="/static/field.js" defer></script>`) ||
-		!strings.Contains(page, `<script src="/static/session.js"></script>`) || !strings.Contains(page, `<script src="/static/clock.js" defer></script>`) {
+	if _, _, page = b.get("/assets/" + pump); strings.Count(page, "<script") != 4 || !strings.Contains(page, `<script src="/static/field.js" defer></script>`) ||
+		!strings.Contains(page, `<script src="/static/session.js"></script>`) || !strings.Contains(page, `<script src="/static/clock.js" defer></script>`) || !strings.Contains(page, `<script src="/static/phrases.js" defer></script>`) {
 		t.Fatal("scripts on the equipment page other than field mode's, the sign-in's and the clock's")
 	}
 
